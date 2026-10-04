@@ -18,6 +18,7 @@ import { createAuthMiddleware } from './middleware/auth.js';
 import { PtyManager } from './pty/index.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { createConfigRoutes } from './routes/config.js';
+import { createDictationRoutes, stopResidentWhisper } from './routes/dictation.js';
 import { createFileRoutes } from './routes/files.js';
 import { createFilesystemRoutes } from './routes/filesystem.js';
 import { createGitRoutes } from './routes/git.js';
@@ -254,6 +255,11 @@ Environment Variables:
   VIBETUNNEL_CONTROL_DIR Control directory for session data
   PUSH_CONTACT_EMAIL    Contact email for VAPID configuration
   NGROK_AUTHTOKEN       Ngrok auth token (used with --ngrok)
+  VIBETUNNEL_FFMPEG, VIBETUNNEL_WHISPER_CLI, VIBETUNNEL_WHISPER_MODEL,
+  VIBETUNNEL_WHISPER_SERVER
+                        Voice dictation tools (absolute paths; WHISPER_SERVER=off
+                        disables the resident server). Dictation itself needs
+                        "voice": true in config.json; see docs/features/voice-dictation.md
 
 Examples:
   # Run a simple server with authentication
@@ -1200,6 +1206,10 @@ export async function createApp(): Promise<AppInstance> {
   );
   logger.debug('Mounted config routes');
 
+  // Mount voice dictation routes (off unless config.json has "voice": true)
+  app.use('/api', createDictationRoutes({ configService }));
+  logger.debug('Mounted dictation routes');
+
   // Mount Git routes
   app.use('/api', createGitRoutes());
   logger.debug('Mounted Git routes');
@@ -1786,6 +1796,9 @@ export async function startVibeTunnelServer() {
       // Stop configuration service watcher
       configService.stopWatching();
       logger.debug('Stopped configuration service watcher');
+
+      // Stop the resident whisper-server, if dictation started one
+      stopResidentWhisper();
 
       // Stop mDNS advertisement if it was started
       if (mdnsService.isActive()) {

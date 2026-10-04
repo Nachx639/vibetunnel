@@ -30,6 +30,11 @@ export interface VibeTunnelConfig {
    * VIBETUNNEL_AGENT_CHAT=1|0 overrides it.
    */
   agentChat?: boolean;
+  /**
+   * Voice dictation transcribed on this machine with whisper.cpp (`/api/dictation`). Off when
+   * missing: the endpoint refuses and the chat view shows no mic.
+   */
+  voice?: boolean;
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

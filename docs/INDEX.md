@@ -22,6 +22,7 @@
 ### Features
 - [Authentication](features/authentication.md) - Security, tokens
 - [Push Notifications](features/push-notifications.md) - Remote alerts
+- [Voice Dictation](features/voice-dictation.md) - Speech to text with whisper.cpp (opt-in)
 - [Terminal Features](features/terminal-features.md) - CJK, keyboard
 
 ### Reference

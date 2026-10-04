@@ -25,6 +25,7 @@ const ConfigSchema = z.object({
   ),
   repositoryBasePath: z.string().optional(),
   agentChat: z.boolean().optional(),
+  voice: z.boolean().optional(),
   // Extended configuration sections - we parse but don't use most of these yet
   server: z
     .object({
