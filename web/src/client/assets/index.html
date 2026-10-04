@@ -34,6 +34,9 @@
 
     <!-- Styles -->
     <link href="/bundle/styles.css" rel="stylesheet" />
+    <!-- The app's code, fetched and compiled while the head is still being parsed (its
+         <script> is at the end of <body>) -->
+    <link rel="modulepreload" href="/bundle/client-bundle.js" />
 
     <!-- Mobile viewport and address bar handling -->
     <style>
@@ -153,7 +156,8 @@
   <body class="m-0 p-0 bg-bg text-text">
     <vibetunnel-app></vibetunnel-app>
     <div id="vt-boot" aria-hidden="true">
-      <img src="/apple-touch-icon.png" alt="" />
+      <!-- 64 pt: the 192 px icon is sharp at 3x and 43 KB, the 512 px one 195 KB -->
+      <img src="/icon-192.png" alt="" />
       <div class="vt-boot-spinner"></div>
     </div>
 
