@@ -6,6 +6,7 @@
  */
 
 import type { Session } from '../../../shared/types.js';
+import { resetAppHeight, standaloneAppHeight } from '../../utils/app-height.js';
 import { clearCharacterWidthCache } from '../../utils/cursor-position.js';
 import { consumeEvent } from '../../utils/event-utils.js';
 import { isIMEAllowedKey } from '../../utils/ime-constants.js';
@@ -74,8 +75,9 @@ export class LifecycleEventManager extends ManagerEventEmitter {
       const vv = window.visualViewport;
       const ih = window.innerHeight;
 
-      // Update app height
-      const height = vv ? `${vv.height}px` : `${ih}px`;
+      // Update app height. The iPhone home-screen app's status bar is added back while the
+      // window is the visual viewport (utils/app-height.ts), never on top of the keyboard.
+      const height = `${standaloneAppHeight(ih, vv ? vv.height : ih)}px`;
       document.documentElement.style.setProperty('--app-height', height);
 
       // Calculate keyboard offset for fixed elements
@@ -653,6 +655,7 @@ export class LifecycleEventManager extends ManagerEventEmitter {
       }
       this.viewportTrackingHandler = null;
       this.viewportTrackingTarget = null;
+      resetAppHeight();
     }
 
     // Remove window resize listener
@@ -706,6 +709,7 @@ export class LifecycleEventManager extends ManagerEventEmitter {
       }
       this.viewportTrackingHandler = null;
       this.viewportTrackingTarget = null;
+      resetAppHeight();
     }
 
     // Clean up click handler reference

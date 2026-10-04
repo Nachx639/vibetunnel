@@ -66,6 +66,11 @@
         height: 100vh;
         height: calc(var(--vh, 1vh) * 100); /* Dynamic viewport height for mobile */
         height: 100dvh; /* Use dynamic viewport height for better keyboard handling */
+        /* Home-screen app on iPhone: innerHeight (and 100dvh) come up short by the status bar,
+           so the script at the end of <body> sets --app-height to the screen height; without
+           this the rule above wins and leaves a blank band under the page. Everywhere else
+           --app-height is 100dvh (styles.css). */
+        height: var(--app-height, 100dvh);
         overscroll-behavior-y: none; /* Prevent pull-to-refresh */
         -webkit-overflow-scrolling: touch;
       }
@@ -205,6 +210,24 @@
 
       // Set initial height
       setViewportHeight();
+
+      // Home-screen web app on iPhone: innerHeight comes up short by the status bar height
+      // (black-translucent), leaving a blank band at the bottom of every page. The session
+      // view keeps --app-height current (keyboard included); this covers the other pages.
+      // Same rule as iosStandaloneShortfall() (utils/app-height.ts): iPhone standalone,
+      // portrait, a status-bar sized gap.
+      (() => {
+        const gap = window.screen.height - window.innerHeight;
+        if (
+          navigator.standalone === true &&
+          /iPhone|iPod/.test(navigator.userAgent) &&
+          window.innerWidth < window.innerHeight &&
+          gap > 0 &&
+          gap <= 80
+        ) {
+          document.documentElement.style.setProperty('--app-height', `${window.screen.height}px`);
+        }
+      })();
 
       // On mobile, we only set viewport height once to prevent resize loops
       // On desktop, we still allow dynamic resizing
