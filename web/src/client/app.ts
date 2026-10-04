@@ -828,6 +828,10 @@ export class VibeTunnelApp extends LitElement {
       this.loading = true;
     }
 
+    // First load: the previews shown above the sessions are asked for alongside them, not
+    // after them (one round trip less before the list shows).
+    const firstPreviews = this.initialLoadComplete ? null : this.loadPreviews();
+
     const performLoad = async () => {
       try {
         const headers = authClient.getAuthHeader();
@@ -891,7 +895,7 @@ export class VibeTunnelApp extends LitElement {
           // for the previews (nothing to wait for while previews are off).
           if (!this.initialLoadComplete) {
             await Promise.race([
-              this.loadPreviews(),
+              firstPreviews ?? this.loadPreviews(),
               new Promise((resolve) => setTimeout(resolve, FIRST_PREVIEWS_WAIT_MS)),
             ]);
           }

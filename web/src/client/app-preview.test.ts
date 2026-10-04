@@ -290,3 +290,34 @@ describe('previews off on the server (the default)', () => {
     expect(window.location.pathname).toBe('/');
   });
 });
+
+describe('the first load of the list with previews on', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('asks for the previews alongside the sessions, not after them', async () => {
+    const asked: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        asked.push(url);
+        if (url === '/api/preview/config') {
+          return Promise.resolve(Response.json({ enabled: true, port: 7021, origin: null }));
+        }
+        if (url === '/api/previews') return Promise.resolve(Response.json({ previews: [] }));
+        // The sessions never answer: the previews must not wait for them.
+        return new Promise<Response>(() => {});
+      })
+    );
+    const app = new VibeTunnelApp() as unknown as AppInternals & {
+      loadSessions(): Promise<unknown>;
+    };
+    app.currentView = 'list';
+    void app.loadSessions();
+    await flush();
+    expect(asked).toContain('/api/sessions');
+    expect(asked).toContain('/api/previews');
+  });
+});
