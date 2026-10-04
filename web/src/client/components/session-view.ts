@@ -14,7 +14,7 @@
  * @listens browser-cancel - From file browser when cancelled
  */
 import { html, LitElement, type PropertyValues } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
 import { LocaleController, t } from '../i18n/index.js';
 import './clickable-path.js';
@@ -25,6 +25,7 @@ import { authClient } from '../services/auth-client.js';
 import { GitService } from '../services/git-service.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
+import { getPhoneUi, type PhoneUi, subscribeToPhoneUi } from '../utils/phone-ui.js';
 import { TERMINAL_IDS } from '../utils/terminal-constants.js';
 import type { TerminalThemeId } from '../utils/terminal-themes.js';
 // Manager imports
@@ -181,8 +182,20 @@ export class SessionView extends LitElement {
     };
   }
 
+  /** Settings > Phone layout; only phones look at it (see compactPhone). */
+  @state() private phoneUi: PhoneUi = getPhoneUi();
+  private phoneUiUnsubscribe?: () => void;
+
+  /** A phone in the compact phone layout: docked action bar and quick keys, pinned layout. */
+  private get compactPhone(): boolean {
+    return this.uiStateManager.getState().isMobile && this.phoneUi === 'compact';
+  }
+
   connectedCallback() {
     super.connectedCallback();
+    this.phoneUiUnsubscribe = subscribeToPhoneUi((value) => {
+      this.phoneUi = value;
+    });
 
     // Initialize UIStateManager callbacks
     this.uiStateManager.setCallbacks({
@@ -425,6 +438,8 @@ export class SessionView extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.phoneUiUnsubscribe?.();
+    this.phoneUiUnsubscribe = undefined;
 
     // Remove orientation listeners
     if (this.boundHandleOrientationChange) {
@@ -1191,6 +1206,7 @@ export class SessionView extends LitElement {
 
     // Get UI state once for the entire render method
     const uiState = this.uiStateManager.getState();
+    const compactPhone = this.compactPhone;
 
     return html`
       <style>
@@ -1387,6 +1403,40 @@ export class SessionView extends LitElement {
           overflow: visible !important;
         }
         
+        /* Compact phone layout (Settings > Phone layout): the session is pinned to the visible
+           viewport (above the keyboard, following any iOS pan). Header, terminal, quick keys
+           and action bar are rows of this column, so nothing depends on how iOS reports the
+           keyboard height. Applies in landscape too, where phones exceed the 768px
+           breakpoint. */
+        .session-view-grid[data-mobile="true"][data-phone-ui="compact"] {
+          display: flex !important;
+          flex-direction: column !important;
+          position: fixed !important;
+          top: var(--vv-top, 0px) !important;
+          left: 0 !important;
+          right: 0 !important;
+          height: var(--app-height, 100dvh) !important;
+        }
+        .session-view-grid[data-mobile="true"][data-phone-ui="compact"] > .session-header-area {
+          /* The notch inset goes on the header: the wrapper's padding sits above a fixed grid. */
+          padding-top: env(safe-area-inset-top) !important;
+        }
+        .session-view-grid[data-mobile="true"][data-phone-ui="compact"] > .terminal-area {
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+        }
+        .session-view-grid[data-mobile="true"][data-phone-ui="compact"] > terminal-quick-keys {
+          display: block;
+          flex-shrink: 0;
+        }
+        /* The docked action bar takes real layout space: the terminal fits above it instead
+           of being covered. */
+        .session-view-grid[data-mobile="true"][data-phone-ui="compact"] > mobile-action-bar {
+          display: block;
+          flex-shrink: 0 !important;
+          height: auto !important;
+        }
+
         .overlay-container > * {
           pointer-events: auto;
           touch-action: manipulation; /* Eliminates 300ms delay */
@@ -1406,6 +1456,7 @@ export class SessionView extends LitElement {
           style="outline: none !important; box-shadow: none !important; --keyboard-height: ${uiState.keyboardHeight}px; --quickkeys-height: ${uiState.showQuickKeys ? this.quickKeysHeight : 0}px;"
           data-mobile="${uiState.isMobile ? 'true' : 'false'}"
           data-keyboard-visible="${uiState.keyboardHeight > 0 || uiState.showQuickKeys ? 'true' : 'false'}"
+          data-phone-ui="${compactPhone ? 'compact' : 'classic'}"
         >
         <!-- Session Header Area -->
         <div class="session-header-area">
@@ -1542,11 +1593,28 @@ export class SessionView extends LitElement {
           }
         </div>
 
+        <!-- Compact phone layout: quick keys are the row above the action bar, so they sit
+             right above the keyboard however iOS reports its height. -->
+        ${
+          compactPhone
+            ? html`
+          <terminal-quick-keys
+            docked
+            compact
+            .visible=${uiState.useDirectKeyboard && uiState.showQuickKeys && !uiState.chatMode}
+            .onKeyPress=${(key: string) => this.directKeyboardManager.handleQuickKeyPress(key)}
+            @quick-keys-layout-change=${() => this.updateTerminalTransform()}
+          ></terminal-quick-keys>
+        `
+            : ''
+        }
+
         <!-- Quick Keys Area / Mobile Action Bar -->
         ${
           uiState.isMobile
             ? html`
           <mobile-action-bar
+            .docked=${compactPhone}
             .visible=${!uiState.showQuickKeys}
             .session=${this.session}
             .keyboardVisible=${uiState.keyboardHeight > 0}
@@ -1608,6 +1676,7 @@ export class SessionView extends LitElement {
           <overlays-container
             .session=${this.session}
             .uiState=${uiState}
+            .compactPhone=${compactPhone}
             .callbacks=${{
               // Ctrl+Alpha callbacks
               onCtrlKey: (letter: string) => this.handleCtrlKey(letter),
@@ -1656,12 +1725,18 @@ export class SessionView extends LitElement {
 
       <!-- Quick Keys - Outside grid for proper position:fixed behavior -->
       <!-- Terminal Quick Keys (for direct keyboard mode, hidden in chat mode) -->
+      ${
+        compactPhone
+          ? ''
+          : html`
       <terminal-quick-keys
         style="position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; z-index: ${Z_INDEX.TERMINAL_QUICK_KEYS} !important;"
         .visible=${uiState.isMobile && uiState.useDirectKeyboard && uiState.showQuickKeys && !uiState.chatMode}
         .onKeyPress=${(key: string) => this.directKeyboardManager.handleQuickKeyPress(key)}
         @quick-keys-layout-change=${() => this.updateTerminalTransform()}
       ></terminal-quick-keys>
+      `
+      }
 
       <!-- Mobile Input Controls (only show when direct keyboard is disabled) -->
       ${

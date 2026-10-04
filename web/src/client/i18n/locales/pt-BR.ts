@@ -888,4 +888,14 @@ export const ptBR: Messages = {
   'a11y.key.option': 'Option',
   'a11y.key.command': 'Command',
   'a11y.key.controlCombo': 'Control {key}',
+
+  // Quick keys: phone preset
+  'quickKeys.preset.phone': 'Claude (celular)',
+
+  // Settings: phone layout
+  'settings.phoneLayout': 'Layout no celular',
+  'settings.phoneLayout.description':
+    'Como uma sessão aparece no celular neste navegador. Compacto fixa a barra de ações e as teclas rápidas abaixo do terminal, com duas fileiras de teclas rápidas, Ctrl e ⌥ fixos e um deslize sobre as teclas para mover o cursor.',
+  'settings.phoneLayout.classic': 'Clássico',
+  'settings.phoneLayout.compact': 'Compacto',
 };

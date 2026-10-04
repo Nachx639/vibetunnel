@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/component-helpers.js';
+import { setPhoneUi } from './phone-ui.js';
 import {
   COMPACT_QUICK_KEYS_LAYOUT,
   controlCharacterFor,
@@ -10,6 +11,7 @@ import {
   getQuickKeyDescription,
   isValidQuickKeysLayout,
   loadQuickKeysLayout,
+  PHONE_QUICK_KEYS_LAYOUT,
   QUICK_KEYS_LAYOUT_CHANGED_EVENT,
   QUICK_KEYS_STORAGE_KEY,
   resetQuickKeysLayout,
@@ -129,5 +131,43 @@ describe('controlCharacterFor', () => {
 
   it('returns null for characters without a control code', () => {
     expect(controlCharacterFor('1')).toBeNull();
+  });
+});
+
+describe('phone default layout', () => {
+  beforeEach(() => {
+    setupLocalStorageMock();
+  });
+
+  afterEach(() => {
+    restoreLocalStorage();
+    vi.restoreAllMocks();
+  });
+
+  const onPhone = () => {
+    vi.spyOn(window.screen, 'width', 'get').mockReturnValue(430);
+    vi.spyOn(window.screen, 'height', 'get').mockReturnValue(932);
+  };
+
+  it('keeps the default layout on phones in the classic phone layout', () => {
+    onPhone();
+    expect(loadQuickKeysLayout()).toEqual(DEFAULT_QUICK_KEYS_LAYOUT);
+  });
+
+  it('uses the two-row agent layout on phones in the compact phone layout, still honoring a saved layout', () => {
+    onPhone();
+    setPhoneUi('compact');
+    expect(isValidQuickKeysLayout(PHONE_QUICK_KEYS_LAYOUT)).toBe(true);
+    expect(loadQuickKeysLayout()).toEqual(PHONE_QUICK_KEYS_LAYOUT);
+
+    saveQuickKeysLayout(COMPACT_QUICK_KEYS_LAYOUT);
+    expect(loadQuickKeysLayout()).toEqual(COMPACT_QUICK_KEYS_LAYOUT);
+  });
+
+  it('keeps the default layout on larger screens in the compact phone layout', () => {
+    setPhoneUi('compact');
+    vi.spyOn(window.screen, 'width', 'get').mockReturnValue(1024);
+    vi.spyOn(window.screen, 'height', 'get').mockReturnValue(1366);
+    expect(loadQuickKeysLayout()).toEqual(DEFAULT_QUICK_KEYS_LAYOUT);
   });
 });

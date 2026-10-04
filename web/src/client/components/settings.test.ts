@@ -28,6 +28,7 @@ vi.mock('../services/server-config-service.js', () => ({
 }));
 
 import { applyAccent } from '../utils/accent-themes.js';
+import { getPhoneUi } from '../utils/phone-ui.js';
 import { applyThemeMode } from '../utils/theme-mode.js';
 import { Settings } from './settings.js';
 
@@ -83,6 +84,21 @@ describe('Settings', () => {
 
       expect(button('settings-theme-light')?.getAttribute('aria-pressed')).toBe('true');
       expect(button('settings-accent-gold')?.getAttribute('aria-pressed')).toBe('true');
+    });
+  });
+
+  describe('phone layout', () => {
+    const option = (value: string) =>
+      component.querySelector(`[data-phone-ui="${value}"]`) as HTMLButtonElement | null;
+
+    it('starts on Classic and stores Compact when chosen', async () => {
+      expect(option('classic')?.getAttribute('aria-pressed')).toBe('true');
+
+      option('compact')?.click();
+      await component.updateComplete;
+
+      expect(option('compact')?.getAttribute('aria-pressed')).toBe('true');
+      expect(getPhoneUi()).toBe('compact');
     });
   });
 });

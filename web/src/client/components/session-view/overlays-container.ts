@@ -59,6 +59,8 @@ export class OverlaysContainer extends LitElement {
   @property({ type: Object }) session: Session | null = null;
   @property({ type: Object }) uiState: UIState | null = null;
   @property({ type: Object }) callbacks: OverlaysCallbacks | null = null;
+  /** Compact phone layout: the Keyboard button lives in the docked action bar instead. */
+  @property({ type: Boolean }) compactPhone = false;
 
   render() {
     if (!this.uiState || !this.callbacks) {
@@ -107,7 +109,10 @@ export class OverlaysContainer extends LitElement {
       <!-- Floating Keyboard Button (for direct keyboard mode on mobile, hidden in chat mode) -->
       <!-- Always visible when in direct keyboard mode to allow dismissing the keyboard -->
       ${
-        this.uiState.isMobile && this.uiState.useDirectKeyboard && !this.uiState.chatMode
+        this.uiState.isMobile &&
+        this.uiState.useDirectKeyboard &&
+        !this.uiState.chatMode &&
+        !this.compactPhone
           ? html`
             <div
               class="keyboard-button mobile-keyboard-button ${this.uiState.showQuickKeys ? 'quick-keys-visible' : ''}"

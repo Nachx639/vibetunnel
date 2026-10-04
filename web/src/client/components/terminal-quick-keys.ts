@@ -85,6 +85,8 @@ export class TerminalQuickKeys extends LitElement {
    * Off: ⌥ is a one-shot prefix for the arrows and Ctrl goes to the session as before.
    */
   @property({ type: Boolean }) compact = false;
+  /** Render in the layout flow (compact phone layout) instead of fixed above the keyboard. */
+  @property({ type: Boolean }) docked = false;
 
   @state() private showFunctionKeys = false;
   @state() private showCtrlKeys = false;
@@ -935,7 +937,11 @@ export class TerminalQuickKeys extends LitElement {
       <div
         class="terminal-quick-keys-container"
         dir="ltr"
-        style="position: fixed !important; bottom: var(--keyboard-offset, 0px) !important; left: 0 !important; right: 0 !important;"
+        style=${
+          this.docked
+            ? 'position: relative;'
+            : 'position: fixed !important; bottom: var(--keyboard-offset, 0px) !important; left: 0 !important; right: 0 !important;'
+        }
       >
         <div class="quick-keys-bar ${this.compact ? 'compact' : ''}">
           <div class="flex gap-0.5 mb-0.5">${rows[0].map((key) => this.renderQuickKey(key))}</div>

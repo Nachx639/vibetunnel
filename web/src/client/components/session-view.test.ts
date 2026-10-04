@@ -12,6 +12,7 @@ import {
 } from '@/test/utils/component-helpers';
 import { createMockSession } from '@/test/utils/lit-test-utils';
 import { resetFactoryCounters } from '@/test/utils/test-factories';
+import { setPhoneUi } from '../utils/phone-ui.js';
 
 const terminalSocketClientMock = vi.hoisted(() => ({
   initialize: vi.fn(),
@@ -695,6 +696,44 @@ describe('SessionView', () => {
       const keyboardButton = element.querySelector('.mobile-keyboard-button');
       expect(keyboardButton).toBeTruthy();
       expect(keyboardButton?.classList.contains('quick-keys-visible')).toBe(true);
+    });
+
+    it('keeps the classic phone layout unless the compact one is chosen', async () => {
+      const grid = element.querySelector<HTMLElement>('.session-view-grid');
+      expect(grid?.dataset.phoneUi).toBe('classic');
+      expect((element.querySelector('mobile-action-bar') as { docked?: boolean }).docked).toBe(
+        false
+      );
+      // The quick keys stay outside the layout, fixed above the keyboard.
+      expect(grid?.querySelector('terminal-quick-keys')).toBeNull();
+      expect(element.querySelector('terminal-quick-keys')).toBeTruthy();
+    });
+
+    it('docks the quick keys and action bar in the compact phone layout', async () => {
+      setPhoneUi('compact');
+      try {
+        (
+          element as unknown as { uiStateManager: { setShowQuickKeys(value: boolean): void } }
+        ).uiStateManager.setShowQuickKeys(true);
+        await element.updateComplete;
+
+        const grid = element.querySelector<HTMLElement>('.session-view-grid');
+        expect(grid?.dataset.phoneUi).toBe('compact');
+        const quickKeys = element.querySelectorAll('terminal-quick-keys');
+        expect(quickKeys).toHaveLength(1);
+        expect(quickKeys[0].parentElement).toBe(grid);
+        expect((quickKeys[0] as unknown as { docked: boolean; compact: boolean }).docked).toBe(
+          true
+        );
+        expect((quickKeys[0] as unknown as { compact: boolean }).compact).toBe(true);
+        expect((element.querySelector('mobile-action-bar') as { docked?: boolean }).docked).toBe(
+          true
+        );
+        // The Keyboard button lives in the docked action bar instead.
+        expect(element.querySelector('.mobile-keyboard-button')).toBeNull();
+      } finally {
+        setPhoneUi('classic');
+      }
     });
   });
 

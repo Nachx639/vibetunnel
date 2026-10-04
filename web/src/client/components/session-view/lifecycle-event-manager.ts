@@ -10,6 +10,7 @@ import { clearCharacterWidthCache } from '../../utils/cursor-position.js';
 import { consumeEvent } from '../../utils/event-utils.js';
 import { isIMEAllowedKey } from '../../utils/ime-constants.js';
 import { createLogger } from '../../utils/logger.js';
+import { getPhoneUi } from '../../utils/phone-ui.js';
 import { type LifecycleEventManagerCallbacks, ManagerEventEmitter } from './interfaces.js';
 
 // Extend Window interface to include our custom property
@@ -37,6 +38,20 @@ function isFileBrowserShortcut(e: KeyboardEvent): boolean {
  * Chrome on iOS shrinks innerHeight too, so compare with the tallest viewport seen at this
  * width; under 150 px that is the browser's own bars collapsing, not a keyboard.
  */
+/**
+ * Height an iPhone home-screen web app is missing (status bar, about 44-62 px): it reports
+ * innerHeight and the visual viewport short by it. Only iOS standalone in portrait:
+ * landscape, iPad, Android and desktop PWAs report real heights, and screen.height there is
+ * unrelated to the window.
+ */
+export function iosStandaloneShortfall(innerHeight: number): number {
+  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  if (!standalone || !/iPhone|iPod/.test(navigator.userAgent)) return 0;
+  if (window.innerWidth > window.innerHeight) return 0;
+  const gap = window.screen.height - innerHeight;
+  return gap > 0 && gap <= 80 ? gap : 0;
+}
+
 export function estimateKeyboardHeight(
   innerHeight: number,
   viewportHeight: number,
@@ -90,9 +105,17 @@ export class LifecycleEventManager extends ManagerEventEmitter {
       const vv = window.visualViewport;
       const ih = window.innerHeight;
 
-      // Update app height
-      const height = vv ? `${vv.height}px` : `${ih}px`;
+      // Update app height. The compact phone layout is pinned to it: there the home-screen
+      // app's missing status-bar height is added back (else a blank band shows under the
+      // action bar), and --vv-top follows iOS panning the visual viewport for the keyboard.
+      const compact = getPhoneUi() === 'compact';
+      const shortfall = compact ? iosStandaloneShortfall(ih) : 0;
+      const height = `${(vv ? vv.height : ih) + shortfall}px`;
       document.documentElement.style.setProperty('--app-height', height);
+      document.documentElement.style.setProperty(
+        '--vv-top',
+        `${compact && vv ? vv.offsetTop : 0}px`
+      );
 
       // Calculate keyboard offset for fixed elements
       // When keyboard is open: innerHeight - visualViewport.height - offsetTop gives keyboard height

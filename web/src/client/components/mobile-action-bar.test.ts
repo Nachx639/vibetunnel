@@ -93,3 +93,51 @@ describe('MobileActionBar more menu', () => {
     add.mockRestore();
   });
 });
+
+describe('MobileActionBar docked (compact phone layout)', () => {
+  const renderDocked = async (callbacks: Partial<MobileActionBarCallbacks>) => {
+    const bar = await fixture<MobileActionBar>(html`
+      <mobile-action-bar
+        docked
+        .callbacks=${callbacks as unknown as MobileActionBarCallbacks}
+      ></mobile-action-bar>
+    `);
+    (bar as unknown as { isMobile: boolean }).isMobile = true;
+    await bar.updateComplete;
+    return bar;
+  };
+
+  it('puts Keyboard first and pastes on a tap, not at the end of a drag', async () => {
+    const onPasteFromClipboard = vi.fn();
+    const bar = await renderDocked({ onPasteFromClipboard });
+    const labels = [...bar.querySelectorAll('button[aria-label]')].map((b) =>
+      b.getAttribute('aria-label')
+    );
+    expect(labels.slice(0, 2)).toEqual(['Keyboard', 'Paste']);
+
+    const paste = bar.querySelector('button[aria-label="Paste"]') as HTMLButtonElement;
+    const touch = (dy: number) => {
+      const at = (y: number) => ({
+        pointerType: 'touch',
+        pointerId: 7,
+        clientX: 120,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+      });
+      paste.dispatchEvent(new PointerEvent('pointerdown', at(700)));
+      paste.dispatchEvent(new PointerEvent('pointerup', at(700 + dy)));
+    };
+    touch(-100);
+    expect(onPasteFromClipboard).not.toHaveBeenCalled();
+    touch(2);
+    expect(onPasteFromClipboard).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the classic bar (clipboard manager on tap) when not docked', async () => {
+    const { bar } = await renderBar();
+    expect(bar.querySelector('button[aria-label="Clipboard"]')).not.toBeNull();
+    expect(bar.querySelector('button[aria-label="Paste"]')).toBeNull();
+    expect(bar.querySelector('.mobile-action-bar')).toBeNull();
+  });
+});

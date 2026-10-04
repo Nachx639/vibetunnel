@@ -898,4 +898,14 @@ export const fr: Messages = {
   'a11y.key.option': 'Option',
   'a11y.key.command': 'Commande',
   'a11y.key.controlCombo': 'Contrôle {key}',
+
+  // Quick keys: phone preset
+  'quickKeys.preset.phone': 'Claude (téléphone)',
+
+  // Settings: phone layout
+  'settings.phoneLayout': 'Disposition sur téléphone',
+  'settings.phoneLayout.description':
+    'L’apparence d’une session sur un téléphone dans ce navigateur. Compacte fixe la barre d’actions et les touches rapides sous le terminal, avec deux rangées de touches rapides, Ctrl et ⌥ persistantes et un balayage sur les touches pour déplacer le curseur.',
+  'settings.phoneLayout.classic': 'Classique',
+  'settings.phoneLayout.compact': 'Compacte',
 };

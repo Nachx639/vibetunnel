@@ -889,4 +889,14 @@ export const es: Messages = {
   'a11y.key.option': 'Opción',
   'a11y.key.command': 'Comando',
   'a11y.key.controlCombo': 'Control {key}',
+
+  // Quick keys: phone preset
+  'quickKeys.preset.phone': 'Claude (móvil)',
+
+  // Settings: phone layout
+  'settings.phoneLayout': 'Diseño en el móvil',
+  'settings.phoneLayout.description':
+    'Cómo se ve una sesión en un móvil en este navegador. Compacto fija la barra de acciones y las teclas rápidas bajo el terminal, con dos filas de teclas rápidas, Ctrl y ⌥ fijas y un deslizamiento sobre las teclas para mover el cursor.',
+  'settings.phoneLayout.classic': 'Clásico',
+  'settings.phoneLayout.compact': 'Compacto',
 };

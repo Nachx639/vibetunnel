@@ -13,6 +13,7 @@ import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
 import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
 import { createLogger } from '../utils/logger.js';
+import { getPhoneUi, type PhoneUi, setPhoneUi } from '../utils/phone-ui.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
 import './language-picker.js';
@@ -43,6 +44,7 @@ export class Settings extends LitElement {
   @state() private repositoryCount = 0;
   @state() private isDiscoveringRepositories = false;
   @state() private showQuickKeysEditor = false;
+  @state() private phoneUi: PhoneUi = getPhoneUi();
 
   // Appearance state (shared with the header toggle and the session compact menu)
   @state() private themeMode: ThemeMode = getThemeMode();
@@ -785,6 +787,30 @@ export class Settings extends LitElement {
               <p class="text-muted text-xs mt-1">${t('language.description')}</p>
             </div>
             <language-picker></language-picker>
+          </div>
+        </div>
+
+        <!-- Phone layout -->
+        <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-phone-layout">
+          <label class="text-primary font-medium">${t('settings.phoneLayout')}</label>
+          <p class="text-muted text-xs mt-1">${t('settings.phoneLayout.description')}</p>
+          <div class="appearance-modes mt-3" role="group" aria-label=${t('settings.phoneLayout')}>
+            ${(['classic', 'compact'] as const).map(
+              (value) => html`
+                <button
+                  type="button"
+                  class="appearance-mode min-h-[44px] ${this.phoneUi === value ? 'active' : ''}"
+                  aria-pressed=${this.phoneUi === value ? 'true' : 'false'}
+                  data-phone-ui=${value}
+                  @click=${() => {
+                    setPhoneUi(value);
+                    this.phoneUi = value;
+                  }}
+                >
+                  ${t(value === 'classic' ? 'settings.phoneLayout.classic' : 'settings.phoneLayout.compact')}
+                </button>
+              `
+            )}
           </div>
         </div>
 

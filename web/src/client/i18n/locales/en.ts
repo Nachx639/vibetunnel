@@ -884,6 +884,16 @@ export const en = {
   'a11y.key.option': 'Option',
   'a11y.key.command': 'Command',
   'a11y.key.controlCombo': 'Control {key}',
+
+  // Quick keys: phone preset
+  'quickKeys.preset.phone': 'Claude (phone)',
+
+  // Settings: phone layout
+  'settings.phoneLayout': 'Phone layout',
+  'settings.phoneLayout.description':
+    'How a session looks on a phone in this browser. Compact docks the action bar and quick keys under the terminal, with two rows of quick keys, sticky Ctrl and ⌥, and a swipe along the keys to move the cursor.',
+  'settings.phoneLayout.classic': 'Classic',
+  'settings.phoneLayout.compact': 'Compact',
 };
 
 export type MessageKey = keyof typeof en;

@@ -866,4 +866,14 @@ export const bn: Messages = {
   'a11y.key.option': 'অপশন',
   'a11y.key.command': 'কমান্ড',
   'a11y.key.controlCombo': 'কন্ট্রোল {key}',
+
+  // Quick keys: phone preset
+  'quickKeys.preset.phone': 'Claude (ফোন)',
+
+  // Settings: phone layout
+  'settings.phoneLayout': 'ফোন লেআউট',
+  'settings.phoneLayout.description':
+    'এই ব্রাউজারে ফোনে একটি সেশন কেমন দেখায়। কমপ্যাক্টে অ্যাকশন বার ও কুইক কী টার্মিনালের নিচে আটকে থাকে, কুইক কীর দুটি সারি, স্টিকি Ctrl ও ⌥, এবং কার্সর সরাতে কীগুলোর উপর সোয়াইপ।',
+  'settings.phoneLayout.classic': 'ক্লাসিক',
+  'settings.phoneLayout.compact': 'কমপ্যাক্ট',
 };

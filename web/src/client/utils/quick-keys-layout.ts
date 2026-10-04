@@ -1,4 +1,5 @@
 import { type MessageKey, t } from '../i18n/index.js';
+import { getPhoneUi, PHONE_UI_CHANGED_EVENT } from './phone-ui.js';
 
 interface QuickKeyAttributes {
   key: string;
@@ -98,6 +99,29 @@ export const COMPACT_QUICK_KEYS_LAYOUT: QuickKeysLayout = [
 ];
 
 /**
+ * Default on phones in the compact phone layout: two rows tuned for coding agents (Esc
+ * interrupts, ⇧Tab cycles modes, @ mentions files, ! runs shell, / opens commands).
+ * Brackets and quotes stay on the phone keyboard, and the dropped third row gives the
+ * terminal about three more lines.
+ */
+export const PHONE_QUICK_KEYS_LAYOUT: QuickKeysLayout = [
+  [
+    'Escape',
+    'shift_tab',
+    'Tab',
+    'Ctrl+C',
+    'Control',
+    'CtrlExpand',
+    'Symbols',
+    'ArrowLeft',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowRight',
+  ],
+  ['Paste', '/', '@', '!', '-', '|', '~', 'Home', 'End', 'Delete', 'Enter'],
+];
+
+/**
  * Shell symbols that sit two or three taps deep on a phone keyboard (redirects, pipes,
  * globs, variables, braces). The #+ toggle swaps them into the second row.
  */
@@ -119,7 +143,20 @@ export const SYMBOL_QUICK_KEYS: QuickKeyId[] = [
 export const QUICK_KEYS_PRESETS = [
   { id: 'default', name: 'Default', layout: DEFAULT_QUICK_KEYS_LAYOUT },
   { id: 'compact', name: 'Compact', layout: COMPACT_QUICK_KEYS_LAYOUT },
+  { id: 'phone', name: 'Claude (phone)', layout: PHONE_QUICK_KEYS_LAYOUT },
 ] as const;
+
+/**
+ * The layout used while nothing is saved: the phone layout on phones (shortest screen side
+ * under 600 px) when the compact phone layout is on, else the default layout.
+ */
+export function getDefaultQuickKeysLayout(): QuickKeysLayout {
+  if (typeof window === 'undefined' || getPhoneUi() !== 'compact') {
+    return DEFAULT_QUICK_KEYS_LAYOUT;
+  }
+  const shortestSide = Math.min(window.screen.width, window.screen.height);
+  return shortestSide < 600 ? PHONE_QUICK_KEYS_LAYOUT : DEFAULT_QUICK_KEYS_LAYOUT;
+}
 
 export const QUICK_KEYS_STORAGE_KEY = 'vibetunnel.quickKeys.v1';
 export const QUICK_KEYS_LAYOUT_CHANGED_EVENT = 'vibetunnel-quick-keys-layout-changed';
@@ -163,7 +200,7 @@ export function loadQuickKeysLayout(): QuickKeysLayout {
   try {
     const stored = localStorage.getItem(QUICK_KEYS_STORAGE_KEY);
     if (!stored) {
-      return cloneLayout(DEFAULT_QUICK_KEYS_LAYOUT);
+      return cloneLayout(getDefaultQuickKeysLayout());
     }
 
     const parsed = JSON.parse(stored) as { version?: unknown; rows?: unknown };
@@ -174,7 +211,7 @@ export function loadQuickKeysLayout(): QuickKeysLayout {
     // Storage can be unavailable in private browsing or restricted embedded contexts.
   }
 
-  return cloneLayout(DEFAULT_QUICK_KEYS_LAYOUT);
+  return cloneLayout(getDefaultQuickKeysLayout());
 }
 
 export function saveQuickKeysLayout(layout: QuickKeysLayout): boolean {
@@ -212,10 +249,13 @@ export function subscribeToQuickKeysLayout(listener: () => void): () => void {
   };
 
   window.addEventListener(QUICK_KEYS_LAYOUT_CHANGED_EVENT, listener);
+  // The phone layout setting changes the default layout.
+  window.addEventListener(PHONE_UI_CHANGED_EVENT, listener);
   window.addEventListener('storage', handleStorage);
 
   return () => {
     window.removeEventListener(QUICK_KEYS_LAYOUT_CHANGED_EVENT, listener);
+    window.removeEventListener(PHONE_UI_CHANGED_EVENT, listener);
     window.removeEventListener('storage', handleStorage);
   };
 }
@@ -284,6 +324,7 @@ export function getQuickKeyDisplayLabel(key: string, label: string): string {
 const PRESET_NAME_KEYS: Partial<Record<string, MessageKey>> = {
   default: 'quickKeys.preset.default',
   compact: 'quickKeys.preset.compact',
+  phone: 'quickKeys.preset.phone',
 };
 
 /** Preset name in the active language. */

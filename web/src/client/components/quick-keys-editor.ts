@@ -2,7 +2,7 @@ import { html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
 import {
-  DEFAULT_QUICK_KEYS_LAYOUT,
+  getDefaultQuickKeysLayout,
   getHiddenQuickKeys,
   getQuickKeyDefinition,
   getQuickKeyDescription,
@@ -397,7 +397,7 @@ export class QuickKeysEditor extends LitElement {
             <button
               type="button"
               class="btn-secondary text-xs px-3 py-2"
-              @click=${() => this.applyPreset(DEFAULT_QUICK_KEYS_LAYOUT)}
+              @click=${() => this.applyPreset(getDefaultQuickKeysLayout())}
             >
               ${t('quickKeys.editor.resetDraft')}
             </button>

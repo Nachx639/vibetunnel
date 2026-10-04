@@ -855,4 +855,14 @@ export const zhCN: Messages = {
   'a11y.key.option': 'Option 键',
   'a11y.key.command': 'Command 键',
   'a11y.key.controlCombo': 'Control {key}',
+
+  // Quick keys: phone preset
+  'quickKeys.preset.phone': 'Claude（手机）',
+
+  // Settings: phone layout
+  'settings.phoneLayout': '手机布局',
+  'settings.phoneLayout.description':
+    '在此浏览器中会话在手机上的显示方式。紧凑模式将操作栏和快捷键固定在终端下方，提供两行快捷键、可锁定的 Ctrl 和 ⌥，并可在快捷键上滑动来移动光标。',
+  'settings.phoneLayout.classic': '经典',
+  'settings.phoneLayout.compact': '紧凑',
 };

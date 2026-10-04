@@ -56,7 +56,7 @@ interface ActionButton {
     | 'showClipboardManager'
     | 'showSlashCommands';
   shortcut?: string;
-  longPressAction?: keyof MobileActionBarCallbacks;
+  longPressAction?: ActionButton['action'];
   highlight?: boolean;
   badge?: string | number;
   category: 'primary' | 'secondary' | 'utility';
@@ -75,6 +75,12 @@ export class MobileActionBar extends LitElement {
   @property({ type: Boolean }) keyboardVisible = false;
   @property({ type: String }) currentMode: 'normal' | 'plan' | 'auto-accept' = 'normal';
   @property({ type: Number }) keyboardHeight = 0;
+  /**
+   * Compact phone layout: a bar docked under the terminal (it takes layout space instead of
+   * floating over the last rows), Keyboard first, and Paste pastes on tap (long press opens
+   * the clipboard manager).
+   */
+  @property({ type: Boolean }) docked = false;
 
   @state() private showCommandPalette = false;
   @state() private showClipboardManager = false;
@@ -117,6 +123,24 @@ export class MobileActionBar extends LitElement {
       title: 'actionBar.keyboard',
       icon: '⌨️',
       action: 'onShowKeyboard',
+      category: 'primary',
+    },
+  ];
+
+  private readonly dockedPrimaryActions: ActionButton[] = [
+    {
+      id: 'keyboard',
+      title: 'actionBar.keyboard',
+      icon: '⌨️',
+      action: 'onShowKeyboard',
+      category: 'primary',
+    },
+    {
+      id: 'clipboard',
+      title: 'quickKeys.paste',
+      icon: '📋',
+      action: 'onPasteFromClipboard',
+      longPressAction: 'showClipboardManager',
       category: 'primary',
     },
   ];
@@ -230,6 +254,7 @@ export class MobileActionBar extends LitElement {
       // Unless the finger moved: iOS ends a scroll that started on the button here too.
       if (endsADrag(event)) return;
       logger.debug(`Button tap: ${button.id} -> ${button.action}`);
+      if (this.docked && button.category === 'secondary') this.isExpanded = false;
       this.executeAction(button.action);
     } else {
       logger.debug(`Button release but no timer: ${button.id}`);
@@ -401,24 +426,7 @@ export class MobileActionBar extends LitElement {
     this.showSlashCommands = false;
   }
 
-  render() {
-    if (!this.visible || !this.isMobile) {
-      logger.debug('Mobile action bar not rendering:', {
-        visible: this.visible,
-        isMobile: this.isMobile,
-      });
-      return html``;
-    }
-
-    // Debug logging
-    logger.debug('Mobile action bar rendering:', {
-      visible: this.visible,
-      isMobile: this.isMobile,
-      showCommandPalette: this.showCommandPalette,
-      showClipboardManager: this.showClipboardManager,
-      showSlashCommands: this.showSlashCommands,
-    });
-
+  private renderFloating() {
     const dynamicStyle =
       this.keyboardVisible && this.keyboardHeight > 0
         ? `bottom: ${this.keyboardHeight + 16}px; left: 50%; transform: translateX(-50%);`
@@ -557,6 +565,104 @@ export class MobileActionBar extends LitElement {
             : ''
         }
       </div>
+    `;
+  }
+
+  /** Compact phone layout: docked in the session view's flex column (see `docked`). */
+  private renderDocked() {
+    const renderButton = (button: ActionButton, extraClass = '') => html`
+      <button
+        class="relative flex items-center gap-1.5 h-10 px-3 rounded-lg text-sm font-medium bg-bg-tertiary/80 text-text active:scale-95 active:bg-surface-hover transition-transform duration-100 touch-manipulation ${extraClass}"
+        @pointerdown=${(e: PointerEvent) => this.handleButtonPress(button, e)}
+        @pointerup=${(e: PointerEvent) => {
+          if (button.action !== 'onShowKeyboard') this.handleButtonRelease(button, e);
+        }}
+        @pointercancel=${() => this.cancelLongPress()}
+        @touchend=${(e: TouchEvent) => this.handleKeyboardTouchEnd(button, e)}
+        @click=${(e: MouseEvent) => this.handleButtonClick(button, e)}
+        title=${button.longPressAction ? t('actionBar.longPressHint', { action: t(button.title) }) : t(button.title)}
+        aria-label=${t(button.title)}
+      >
+        <span class="text-base leading-none" aria-hidden="true">${button.icon}</span>
+        <span class="leading-none">${t(button.title)}</span>
+      </button>
+    `;
+
+    return html`
+      <div
+        class="mobile-action-bar relative flex items-center gap-2 px-2 pt-1.5 bg-bg-secondary border-t border-border/50 select-none"
+        style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); -webkit-user-select: none; -webkit-touch-callout: none;"
+      >
+        ${this.dockedPrimaryActions.map((button) =>
+          button.action === 'onShowKeyboard'
+            ? html`<span class="relative inline-flex" @click=${this.swallowClick}>
+                ${renderButton(button)} ${this.renderKeyboardProxy()}
+              </span>`
+            : renderButton(button)
+        )}
+        <div class="flex-1"></div>
+        ${
+          this.currentMode !== 'normal'
+            ? html`
+          <span class="inline-flex items-center gap-1.5 text-xs font-medium text-primary uppercase">
+            <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+            ${this.currentMode === 'plan' ? t('palette.planMode.title') : t('palette.autoAccept.title')}
+          </span>
+        `
+            : ''
+        }
+        <button
+          class="flex items-center justify-center w-10 h-10 rounded-lg text-text-muted active:bg-surface-hover touch-manipulation"
+          @click=${(e: Event) => {
+            this.swallowClick(e);
+            this.isExpanded = !this.isExpanded;
+            this.triggerHaptic('light');
+          }}
+          title=${this.isExpanded ? t('actionBar.collapse') : t('actionBar.moreActions')}
+          aria-label=${this.isExpanded ? t('actionBar.collapseMenu') : t('actionBar.showMoreActions')}
+          aria-expanded="${this.isExpanded}"
+        >
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" class="transition-transform duration-200 ${this.isExpanded ? 'rotate-180' : ''}">
+            <path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+
+        ${
+          this.isExpanded
+            ? html`
+          <div
+            class="absolute right-2 bottom-full mb-2 p-2 grid grid-cols-2 gap-2 bg-bg-secondary border border-border/50 rounded-xl shadow-2xl"
+            style="z-index: 30;"
+          >
+            ${this.secondaryActions.map((button) => renderButton(button, 'justify-start'))}
+          </div>
+        `
+            : ''
+        }
+      </div>
+    `;
+  }
+
+  render() {
+    if (!this.visible || !this.isMobile) {
+      logger.debug('Mobile action bar not rendering:', {
+        visible: this.visible,
+        isMobile: this.isMobile,
+      });
+      return html``;
+    }
+
+    // Debug logging
+    logger.debug('Mobile action bar rendering:', {
+      visible: this.visible,
+      isMobile: this.isMobile,
+      showCommandPalette: this.showCommandPalette,
+      showClipboardManager: this.showClipboardManager,
+      showSlashCommands: this.showSlashCommands,
+    });
+
+    return html`
+      ${this.docked ? this.renderDocked() : this.renderFloating()}
 
       <!-- Command Palette Modal -->
       <command-palette

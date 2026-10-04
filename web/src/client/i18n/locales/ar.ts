@@ -863,4 +863,14 @@ export const ar: Messages = {
   'a11y.key.option': 'مفتاح الخيار',
   'a11y.key.command': 'مفتاح الأوامر',
   'a11y.key.controlCombo': 'تحكم {key}',
+
+  // Quick keys: phone preset
+  'quickKeys.preset.phone': 'Claude (الهاتف)',
+
+  // Settings: phone layout
+  'settings.phoneLayout': 'تخطيط الهاتف',
+  'settings.phoneLayout.description':
+    'كيف تظهر الجلسة على الهاتف في هذا المتصفح. يثبّت الوضع المضغوط شريط الإجراءات والمفاتيح السريعة أسفل الطرفية، مع صفين من المفاتيح السريعة وCtrl و⌥ ثابتين، والسحب على المفاتيح لتحريك المؤشر.',
+  'settings.phoneLayout.classic': 'كلاسيكي',
+  'settings.phoneLayout.compact': 'مضغوط',
 };
