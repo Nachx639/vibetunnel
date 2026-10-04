@@ -2,9 +2,9 @@
 /// <reference lib="es2020" />
 /// <reference lib="webworker" />
 
-declare const self: ServiceWorkerGlobalScope;
+import { type PreviewReadyPushData, previewReadyTapPath } from '../shared/preview-push.js';
 
-export {};
+declare const self: ServiceWorkerGlobalScope;
 
 // Notification tag prefix for VibeTunnel notifications
 const NOTIFICATION_TAG_PREFIX = 'vibetunnel-';
@@ -62,7 +62,11 @@ interface CommandErrorData {
   timestamp: string;
 }
 
+/** "Preview ready" (`vt preview`); the push service adds the timestamp. */
+type PreviewReadyData = PreviewReadyPushData & { timestamp: string };
+
 type NotificationData =
+  | PreviewReadyData
   | SessionExitData
   | SessionStartData
   | SessionErrorData
@@ -270,8 +274,14 @@ async function handleNotificationClick(action: string, data: NotificationData): 
 
   // No existing window, open a new one
   let url = self.location.origin;
+  // "Preview ready" (tapped, or its "Open" button): the preview's own view.
+  const previewPath = action === 'dismiss' ? null : previewReadyTapPath(data);
 
-  switch (action) {
+  switch (previewPath ? 'open-preview' : action) {
+    case 'open-preview': {
+      url += previewPath;
+      break;
+    }
     case 'view-session': {
       if (
         data.type === 'session-exit' ||

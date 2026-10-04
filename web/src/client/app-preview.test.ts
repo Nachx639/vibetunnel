@@ -129,6 +129,17 @@ describe('opening a preview', () => {
     expectFullScreenView();
   });
 
+  it('a tapped "Preview ready" push opens its view; Dismiss and other pushes do not', () => {
+    app.setupNotificationHandlers();
+    const tap = (action: string, data: unknown) =>
+      app.dispatchEvent(new CustomEvent('notification-action', { detail: { action, data } }));
+    tap('dismiss', { type: 'preview-ready', id: ID, sessionId: 's1', port: 5173, path: '/' });
+    tap('', { type: 'session-exit', sessionId: 's1' });
+    expect(app.currentView).toBe('list');
+    tap('', { type: 'preview-ready', id: ID, sessionId: 's1', port: 5173, path: '/cart' });
+    expectFullScreenView('/cart');
+  });
+
   it('`vt preview` with the session on screen opens the view; elsewhere it highlights the row', () => {
     const handlers = new Map<string, (event: unknown) => void>();
     vi.spyOn(serverEventService, 'on').mockImplementation((type, handler) => {

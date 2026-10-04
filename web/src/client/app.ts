@@ -6,6 +6,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { keyed } from 'lit/directives/keyed.js';
 
 // Import shared types
+import { previewReadyTapPath } from '../shared/preview-push.js';
 import type { Session } from '../shared/types.js';
 import { HttpMethod, ServerEventType } from '../shared/types.js';
 import { LocaleController, t, whenLocaleReady } from './i18n/index.js';
@@ -1860,7 +1861,19 @@ export class VibeTunnelApp extends LitElement {
     window.addEventListener('vt-open-preview', this.handleOpenPreview as EventListener);
     window.addEventListener('vt-open-preview-view', this.handleOpenPreviewView as EventListener);
     window.addEventListener(PREVIEWS_CHANGED_EVENT, this.handlePreviewsChanged);
+    // A tapped push, forwarded by the service worker to this open window.
+    this.addEventListener('notification-action', this.handlePreviewNotification as EventListener);
   }
+
+  /** A tapped "Preview ready" push: straight into that preview's own view. */
+  private handlePreviewNotification = (e: CustomEvent<{ action?: string; data?: unknown }>) => {
+    if (e.detail?.action === 'dismiss') return;
+    const tap = previewReadyTapPath(e.detail?.data);
+    if (!tap) return;
+    const [pathname, search = ''] = tap.split('?');
+    const route = parsePreviewViewUrl(pathname, search);
+    if (route) this.openPreviewView(route.id, route.path, { from: null });
+  };
 
   /** The split panel inside a session (the preview view's "show beside the session"). */
   private showPreview(sessionId: string, port?: number, path?: string, mode?: 'split' | 'full') {

@@ -47,6 +47,7 @@ import { NgrokService } from './services/ngrok-service.js';
 import { normalizeIgnoredProcesses } from './services/preview-candidates.js';
 import { createPreviewFeature, previewsRequested } from './services/preview-feature.js';
 import { VIBETUNNEL_SERVER_HEADER } from './services/preview-proxy.js';
+import { schedulePreviewReadyPush } from './services/preview-push.js';
 import { type PreviewOpenEvent, parseOpenTarget } from './services/preview-registry.js';
 import { foreignApiRequestReason, mainOriginPreviewGuard } from './services/preview-server.js';
 import { PushNotificationService } from './services/push-notification-service.js';
@@ -848,6 +849,18 @@ export async function createApp(): Promise<AppInstance> {
         logger.error('Failed to send push notification for SessionMonitor event:', error);
       }
     });
+
+    // `vt preview` (previews on): "Preview ready", which opens the preview's own view.
+    if (previews) {
+      const pushService = pushNotificationService;
+      previews.registry.on('open', (event: PreviewOpenEvent) => {
+        const openedIn = ptyManager.getSession(event.sessionId);
+        schedulePreviewReadyPush(event, openedIn?.name || event.sessionId, {
+          send: (payload) => pushService.sendNotification(payload),
+          onError: (error) => logger.debug(`preview-ready push failed: ${error}`),
+        });
+      });
+    }
   }
 
   // Initialize HQ components
