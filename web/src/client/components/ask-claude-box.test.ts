@@ -189,6 +189,13 @@ describe('ask-claude-box', () => {
     expect(css).not.toMatch(/\.ask-agent-(mark|name) \{\s*display: none;/);
   });
 
+  it('tightens its spacing only inside the tight phone list', () => {
+    const css = readFileSync(join(__dirname, '../styles.css'), 'utf8');
+    expect(css).toMatch(/\.phone-list-tight \.ask-claude \{[^}]*margin-bottom: 8px/);
+    // The box's own rule keeps its spacing everywhere else.
+    expect(css).not.toMatch(/(^|\n)\.ask-claude \{[^}]*margin-bottom: 8px/);
+  });
+
   it('gives the question back when the session could not start', async () => {
     const box = await fixture<AskClaudeBox>(html`<ask-claude-box></ask-claude-box>`);
     type(box, 'hello');

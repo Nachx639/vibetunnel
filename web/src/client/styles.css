@@ -3704,6 +3704,19 @@ claude-activity-elapsed {
   min-width: 34px;
   padding: 2px 9px;
 }
+/* Compact phone list on a small screen (utils/phone-list-layout.ts, the "fit" change to the
+   phone list): `phone-list-tight` tightens vertical spacing so the first session fits on a
+   small phone's first screen. Inert until that change sets the class on the list. */
+.phone-list-tight .vtm-tabs {
+  margin-bottom: 8px;
+}
+.phone-list-tight .ask-claude {
+  margin-bottom: 8px;
+  padding: 8px 10px 6px 12px;
+}
+.phone-list-tight .ask-claude-bar {
+  margin-top: 4px;
+}
 /* It names the folder (not its path): the system font fits a longer name in the room a small
    phone leaves it than a monospace one would. */
 .ask-claude-folder {
