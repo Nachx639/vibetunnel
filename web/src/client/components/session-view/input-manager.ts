@@ -487,6 +487,8 @@ export class InputManager {
     await this.sendInput(inputText);
   }
 
+  private httpInputQueue: Promise<void> = Promise.resolve();
+
   private async sendInputInternal(
     input: { text?: string; key?: string },
     errorContext: string
@@ -508,11 +510,21 @@ export class InputManager {
       if (sentViaSocket) return;
 
       logger.debug('v3 socket unavailable, falling back to HTTP');
-      const response = await fetch(`/api/sessions/${this.session.id}/input`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeader() },
-        body: JSON.stringify(input),
-      });
+      // Independent requests can arrive out of order (a pasted line, then its Enter a few
+      // milliseconds later), so each HTTP write waits for the previous one.
+      const sessionId = this.session.id;
+      const send = this.httpInputQueue.then(() =>
+        fetch(`/api/sessions/${sessionId}/input`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeader() },
+          body: JSON.stringify(input),
+        })
+      );
+      this.httpInputQueue = send.then(
+        () => undefined,
+        () => undefined
+      );
+      const response = await send;
 
       if (!response.ok) {
         if (response.status === 400) {
@@ -537,6 +549,16 @@ export class InputManager {
 
     // Update IME input position after sending text
     this.refreshIMEPosition();
+  }
+
+  /**
+   * Send pasted text. When the app enabled bracketed paste (most shells and full-screen
+   * apps do), wrap it so embedded newlines are not taken as Enter: multi-line pastes used
+   * to submit their first line and run the rest as separate commands.
+   */
+  async sendPastedText(text: string): Promise<void> {
+    const bracketed = this.callbacks?.getTerminalElement?.()?.isBracketedPasteEnabled?.() ?? false;
+    await this.sendInputText(bracketed ? `\x1b[200~${text}\x1b[201~` : text);
   }
 
   async sendControlSequence(controlChar: string): Promise<void> {

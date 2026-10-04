@@ -242,6 +242,15 @@ export class Terminal extends LitElement {
     requestAnimationFrame(() => callback());
   }
 
+  /** True when the running app asked for bracketed paste (DECSET 2004). */
+  public isBracketedPasteEnabled(): boolean {
+    try {
+      return this.terminal?.hasBracketedPaste() ?? false;
+    } catch {
+      return false;
+    }
+  }
+
   public getTerminalSize(): { cols: number; rows: number } {
     return { cols: this.cols, rows: this.rows };
   }
