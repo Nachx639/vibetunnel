@@ -73,6 +73,7 @@ const logger = createLogger('session-manager');
 export class SessionManager {
   private controlPath: string;
   private static readonly SESSION_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
+  private sessionInfoCache = new Map<string, { key: string; info: SessionInfo | null }>();
 
   constructor(controlPath?: string) {
     this.controlPath = controlPath || path.join(os.homedir(), '.vibetunnel', 'control');
@@ -364,46 +365,94 @@ export class SessionManager {
    * List all sessions
    */
   listSessions(): Session[] {
+    return this.scanSessions().sessions;
+  }
+
+  /**
+   * List all sessions, and which running sessions were just found dead (and marked exited).
+   */
+  listSessionsAndZombies(): { sessions: Session[]; zombies: string[] } {
+    return this.scanSessions();
+  }
+
+  /**
+   * session.json of a session, re-parsed only when the file changed (inode, mtime or size).
+   * The returned object is shared with the cache: callers must not mutate it.
+   *
+   * GET /sessions (polled every second by each client) read and parsed every
+   * session.json twice per request with sync fs (existsSync + readFileSync, plus a second full
+   * scan for zombies): ~6 ms of blocked event loop per poll with 110 sessions.
+   */
+  private cachedSessionInfo(sessionId: string): SessionInfo | null {
+    const sessionJsonPath = path.join(this.controlPath, sessionId, 'session.json');
+    let stat: fs.Stats;
     try {
-      if (!fs.existsSync(this.controlPath)) {
-        return [];
+      stat = fs.statSync(sessionJsonPath);
+    } catch {
+      this.sessionInfoCache.delete(sessionId);
+      return null;
+    }
+    const key = `${stat.ino}:${stat.mtimeMs}:${stat.size}`;
+    const cached = this.sessionInfoCache.get(sessionId);
+    if (cached?.key === key) return cached.info;
+    // An unreadable file is cached too: it is not re-read (and re-logged) until it changes.
+    const info = this.loadSessionInfo(sessionId);
+    this.sessionInfoCache.set(sessionId, { key, info });
+    return info;
+  }
+
+  private scanSessions(): { sessions: Session[]; zombies: string[] } {
+    try {
+      const sessions: Session[] = [];
+      const zombies: string[] = [];
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(this.controlPath, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          this.sessionInfoCache.clear();
+          return { sessions, zombies };
+        }
+        throw error;
       }
 
-      const sessions: Session[] = [];
-      const entries = fs.readdirSync(this.controlPath, { withFileTypes: true });
-
+      const seen = new Set<string>();
       for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const sessionId = entry.name;
-          const sessionDir = path.join(this.controlPath, sessionId);
-          const stdoutPath = path.join(sessionDir, 'stdout');
+        if (!entry.isDirectory()) continue;
+        const sessionId = entry.name;
+        seen.add(sessionId);
+        let sessionInfo = this.cachedSessionInfo(sessionId);
+        if (!sessionInfo) continue;
 
-          const sessionInfo = this.loadSessionInfo(sessionId);
-          if (sessionInfo) {
-            // Determine active state for running processes
-            if (sessionInfo.status === 'running' && sessionInfo.pid) {
-              // Update status if process is no longer alive
-              if (!ProcessUtils.isProcessRunning(sessionInfo.pid)) {
-                logger.debug(
-                  chalk.yellow(
-                    `process ${sessionInfo.pid} no longer running for session ${sessionId}`
-                  )
-                );
-                sessionInfo.status = 'exited';
-                if (sessionInfo.exitCode === undefined) {
-                  sessionInfo.exitCode = 1; // Default exit code for dead processes
-                }
-                this.saveSessionInfo(sessionId, sessionInfo);
-              }
-            }
-            if (fs.existsSync(stdoutPath)) {
-              const lastModified = fs.statSync(stdoutPath).mtime.toISOString();
-              sessions.push({ ...sessionInfo, id: sessionId, lastModified });
-            } else {
-              sessions.push({ ...sessionInfo, id: sessionId, lastModified: sessionInfo.startedAt });
-            }
+        // Determine active state for running processes
+        if (sessionInfo.status === 'running' && sessionInfo.pid) {
+          // Update status if process is no longer alive
+          if (!ProcessUtils.isProcessRunning(sessionInfo.pid)) {
+            logger.debug(
+              chalk.yellow(`process ${sessionInfo.pid} no longer running for session ${sessionId}`)
+            );
+            sessionInfo = {
+              ...sessionInfo,
+              status: 'exited',
+              exitCode: sessionInfo.exitCode ?? 1, // Default exit code for dead processes
+            };
+            this.saveSessionInfo(sessionId, sessionInfo);
+            zombies.push(sessionId);
           }
         }
+
+        let lastModified = sessionInfo.startedAt;
+        try {
+          lastModified = fs
+            .statSync(path.join(this.controlPath, sessionId, 'stdout'))
+            .mtime.toISOString();
+        } catch {
+          // No output yet
+        }
+        sessions.push({ ...sessionInfo, id: sessionId, lastModified });
+      }
+      for (const sessionId of this.sessionInfoCache.keys()) {
+        if (!seen.has(sessionId)) this.sessionInfoCache.delete(sessionId);
       }
 
       // Sort by startedAt timestamp (newest first)
@@ -413,13 +462,10 @@ export class SessionManager {
         return bTime - aTime;
       });
 
-      logger.debug(`listSessions found ${sessions.length} sessions`);
-      sessions.forEach((session) => {
-        logger.debug(
-          `  - Session ${session.id}: name="${session.name}", status="${session.status}"`
-        );
-      });
-      return sessions;
+      // No log line here: the list is scanned on every client poll (each phone and tab, every
+      // 1-3 s) and debug lines always reach the log file. A line per session filled the 50 MB
+      // log in minutes; even one per call was ~30 MB/day per client.
+      return { sessions, zombies };
     } catch (error) {
       throw new PtyError(
         `Failed to list sessions: ${error instanceof Error ? error.message : String(error)}`,
@@ -606,9 +652,6 @@ export class SessionManager {
     sessionJsonPath: string;
   } | null {
     const sessionDir = path.join(this.controlPath, sessionId);
-    logger.debug(
-      `[SessionManager] getSessionPaths for ${sessionId}, sessionDir: ${sessionDir}, checkExists: ${checkExists}`
-    );
 
     if (checkExists && !fs.existsSync(sessionDir)) {
       logger.debug(`[SessionManager] Session directory does not exist: ${sessionDir}`);
@@ -650,30 +693,9 @@ export class SessionManager {
    * Update sessions that have zombie processes
    */
   updateZombieSessions(): string[] {
-    const updatedSessions: string[] = [];
-
     try {
-      const sessions = this.listSessions();
-
-      for (const session of sessions) {
-        if (session.status === 'running' && session.pid) {
-          if (!ProcessUtils.isProcessRunning(session.pid)) {
-            // Process is dead, update status
-            const paths = this.getSessionPaths(session.id);
-            if (paths) {
-              logger.debug(
-                chalk.yellow(
-                  `marking zombie process ${session.pid} as exited for session ${session.id}`
-                )
-              );
-              this.updateSessionStatus(session.id, 'exited', undefined, 1);
-              updatedSessions.push(session.id);
-            }
-          }
-        }
-      }
-
-      return updatedSessions;
+      // The scan marks running sessions whose process is gone as exited.
+      return this.scanSessions().zombies;
     } catch (error) {
       logger.warn('failed to update zombie sessions:', error);
       return [];

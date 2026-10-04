@@ -1,3 +1,4 @@
+import type { FSWatcher } from 'fs';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -101,9 +102,9 @@ describe('PTY Session.json Watcher', () => {
 
     // Mock process.stdout.write to capture title sequences
     const originalWrite = process.stdout.write;
-    const writeSpy = vi.fn((data: string | Uint8Array, ...args: unknown[]): boolean => {
+    const writeSpy = vi.fn((...args: Parameters<typeof originalWrite>): boolean => {
       // Call the original write method
-      return originalWrite.call(process.stdout, data, ...args) as boolean;
+      return originalWrite.apply(process.stdout, args);
     });
     process.stdout.write = writeSpy as typeof process.stdout.write;
 
@@ -154,8 +155,8 @@ describe('PTY Session.json Watcher', () => {
 
     // Mock process.stdout.write to capture title sequences
     const originalWrite = process.stdout.write;
-    const writeSpy = vi.fn((data: string | Uint8Array, ...args: unknown[]): boolean => {
-      return originalWrite.call(process.stdout, data, ...args) as boolean;
+    const writeSpy = vi.fn((...args: Parameters<typeof originalWrite>): boolean => {
+      return originalWrite.apply(process.stdout, args);
     });
     process.stdout.write = writeSpy as typeof process.stdout.write;
 
@@ -408,5 +409,60 @@ describe('PTY Session.json Watcher', () => {
     });
 
     expect(titleWrites.length).toBe(0);
+  });
+
+  it('does not re-read session.json while it is unchanged', async () => {
+    const sessionId = `t-${Math.random().toString(36).substring(2, 8)}`;
+    testSessionIds.push(sessionId);
+    await ptyManager.createSession(['sleep', '10'], {
+      sessionId,
+      name: 'idle',
+      workingDir: process.cwd(),
+      titleMode: TitleMode.STATIC,
+      forwardToStdout: true,
+    });
+    const internal = ptyManager as unknown as { sessionManager: SessionManager };
+    const loadSpy = vi.spyOn(internal.sessionManager, 'loadSessionInfo');
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    // The old 100 ms poll would have read the file ~6 times here.
+    expect(loadSpy).not.toHaveBeenCalled();
+    loadSpy.mockRestore();
+  });
+
+  it('falls back to polling when fs.watch misses the change', async () => {
+    const previousPoll = PtyManager.SESSION_JSON_FALLBACK_POLL_MS;
+    PtyManager.SESSION_JSON_FALLBACK_POLL_MS = 100;
+    const sessionId = `t-${Math.random().toString(36).substring(2, 8)}`;
+    testSessionIds.push(sessionId);
+    try {
+      await ptyManager.createSession(['sleep', '10'], {
+        sessionId,
+        name: 'before',
+        workingDir: process.cwd(),
+        titleMode: TitleMode.STATIC,
+        forwardToStdout: true,
+      });
+      // Simulate a platform where fs.watch never fires: swap in a deaf watcher.
+      const internalSession = ptyManager.getInternalSession(sessionId);
+      if (!internalSession) throw new Error('session missing');
+      internalSession.sessionJsonWatcher?.close();
+      internalSession.sessionJsonWatcher = { close() {} } as unknown as FSWatcher;
+      const changed = new Promise<string>((resolve) => {
+        ptyManager.once('sessionNameChanged', (_id, name) => resolve(name));
+      });
+      const info = sessionManager.loadSessionInfo(sessionId);
+      if (info) {
+        info.name = 'after';
+        sessionManager.saveSessionInfo(sessionId, info);
+      }
+      await expect(
+        Promise.race([
+          changed,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
+        ])
+      ).resolves.toBe('after');
+    } finally {
+      PtyManager.SESSION_JSON_FALLBACK_POLL_MS = previousPoll;
+    }
   });
 });

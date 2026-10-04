@@ -205,20 +205,12 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
 
   // List all sessions (aggregate local + remote in HQ mode)
   router.get('/sessions', async (_req, res) => {
-    logger.debug('[GET /sessions] Listing all sessions');
+    // Polled every few seconds by every client: no per-poll log lines.
     try {
       let allSessions = [];
 
       // Get local sessions
       const localSessions = ptyManager.listSessions();
-      logger.debug(`[GET /sessions] Found ${localSessions.length} local sessions`);
-
-      // Log session names for debugging
-      // localSessions.forEach((session) => {
-      //   logger.debug(
-      //     `[GET /sessions] Session ${session.id}: name="${session.name || 'null'}", workingDir="${session.workingDir}"`
-      //   );
-      // });
 
       // Add source info to local sessions and detect Git info if missing
       const localSessionsWithSource = await Promise.all(
@@ -302,7 +294,6 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
         allSessions = [...allSessions, ...remoteSessions];
       }
 
-      logger.debug(`returning ${allSessions.length} total sessions`);
       res.json(allSessions);
     } catch (error) {
       logger.error('error listing sessions:', error);
@@ -543,7 +534,6 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
   // Get single session info
   router.get('/sessions/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
-    logger.debug(`getting info for session ${sessionId}`);
 
     try {
       // If in HQ mode, check if this is a remote session

@@ -205,6 +205,48 @@ describe('SessionManager', () => {
     });
   });
 
+  describe('Listing cache', () => {
+    const info = (id: string, name: string, pid?: number): SessionInfo => ({
+      id,
+      command: ['sleep', '1'],
+      name,
+      workingDir: testDir,
+      pid,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+    });
+
+    it('sees session.json changes made by anyone, including other processes', () => {
+      sessionManager.createSessionDirectory('cached');
+      sessionManager.saveSessionInfo('cached', info('cached', 'First', process.pid));
+      expect(sessionManager.listSessions().find((s) => s.id === 'cached')?.name).toBe('First');
+
+      sessionManager.saveSessionInfo('cached', info('cached', 'Second', process.pid));
+      expect(sessionManager.listSessions().find((s) => s.id === 'cached')?.name).toBe('Second');
+
+      // An external writer (vt fwd) rewriting the file in place
+      const file = path.join(testDir, 'cached', 'session.json');
+      const external = info('cached', 'Third, longer name', process.pid);
+      fs.writeFileSync(file, JSON.stringify(external));
+      expect(sessionManager.listSessions().find((s) => s.id === 'cached')?.name).toBe(
+        'Third, longer name'
+      );
+
+      fs.rmSync(path.join(testDir, 'cached'), { recursive: true });
+      expect(sessionManager.listSessions().find((s) => s.id === 'cached')).toBeUndefined();
+    });
+
+    it('reports sessions whose process died exactly once', () => {
+      sessionManager.createSessionDirectory('dead');
+      sessionManager.saveSessionInfo('dead', info('dead', 'Dead', 99999));
+
+      expect(sessionManager.listSessionsAndZombies().zombies).toEqual(['dead']);
+      const again = sessionManager.listSessionsAndZombies();
+      expect(again.zombies).toEqual([]);
+      expect(again.sessions.find((s) => s.id === 'dead')?.status).toBe('exited');
+    });
+  });
+
   describe('Zombie Detection', () => {
     it('should identify zombie sessions', () => {
       // Create sessions with different PIDs

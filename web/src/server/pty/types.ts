@@ -98,6 +98,8 @@ export interface PtySession {
   sessionJsonWatcher?: fs.FSWatcher;
   // Interval for polling session.json changes
   sessionJsonInterval?: NodeJS.Timeout;
+  // Stops pending debounced session.json checks
+  sessionJsonDispose?: () => void;
   // Connected socket clients for broadcasting
   connectedClients?: Set<net.Socket>;
   // Foreground process tracking
@@ -105,7 +107,6 @@ export interface PtySession {
   currentForegroundPgid?: number; // Current foreground process group
   currentCommand?: string; // Command line of current foreground process
   commandStartTime?: number; // When current command started (timestamp)
-  processPollingInterval?: NodeJS.Timeout; // Interval for checking process state
   // Tmux attachment tracking
   isTmuxAttachment?: boolean; // True if this session is attached to tmux
   /** End of the previous output chunk, re-scanned for split terminal mode sequences. */

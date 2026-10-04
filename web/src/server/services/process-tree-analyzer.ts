@@ -49,7 +49,7 @@ export class ProcessTreeAnalyzer {
     const isMacOS = process.platform === 'darwin';
 
     // Always use the recursive approach since process groups aren't working reliably
-    logger.log(
+    logger.debug(
       'ProcessTreeAnalyzer',
       `Using recursive child search for ${rootPid} to find all descendants`
     );
@@ -121,7 +121,7 @@ export class ProcessTreeAnalyzer {
             const command = parts.slice(10).join(' ');
 
             if (!Number.isNaN(pid) && !Number.isNaN(ppid) && !Number.isNaN(pgid) && command) {
-              logger.log(
+              logger.debug(
                 'ProcessTreeAnalyzer',
                 `Parsed macOS process: PID=${pid}, COMMAND="${command.trim()}"`
               );
@@ -220,7 +220,7 @@ export class ProcessTreeAnalyzer {
    */
   async identifyBellSource(sessionPid: number): Promise<ProcessInfo | null> {
     const tree = await this.getProcessTree(sessionPid);
-    logger.log(
+    logger.debug(
       'ProcessTreeAnalyzer',
       `Process tree for session ${sessionPid}: ${JSON.stringify(tree.map((p) => ({ pid: p.pid, ppid: p.ppid, command: p.command })))}`
     );
@@ -291,7 +291,7 @@ export class ProcessTreeAnalyzer {
         !this.isBackgroundProcess(p.command)
     );
 
-    logger.log(
+    logger.debug(
       'ProcessTreeAnalyzer',
       `Direct child candidates: ${JSON.stringify(candidates.map((p) => ({ pid: p.pid, command: p.command })))}`
     );
@@ -305,14 +305,14 @@ export class ProcessTreeAnalyzer {
           !this.isBackgroundProcess(p.command)
       );
 
-      logger.log(
+      logger.debug(
         'ProcessTreeAnalyzer',
         `Descendant candidates: ${JSON.stringify(candidates.map((p) => ({ pid: p.pid, command: p.command })))}`
       );
     }
 
     if (candidates.length === 0) {
-      logger.log(
+      logger.debug(
         'ProcessTreeAnalyzer',
         'No suitable candidate processes found, bell likely from shell itself'
       );
@@ -329,7 +329,7 @@ export class ProcessTreeAnalyzer {
 
       // If process is less than 100ms old, it's likely a prompt utility
       if (ageMs < 100) {
-        logger.log(
+        logger.debug(
           'ProcessTreeAnalyzer',
           `Filtering out very recent process: ${p.command} (age: ${ageMs}ms)`
         );
@@ -340,7 +340,7 @@ export class ProcessTreeAnalyzer {
     });
 
     if (recentCandidates.length === 0) {
-      logger.log(
+      logger.debug(
         'ProcessTreeAnalyzer',
         'All candidates were very recent (likely prompt utilities)'
       );
@@ -355,7 +355,7 @@ export class ProcessTreeAnalyzer {
       return 0;
     });
 
-    logger.log(
+    logger.debug(
       'ProcessTreeAnalyzer',
       `Selected foreground candidate: ${sorted[0].command} (PID: ${sorted[0].pid})`
     );
@@ -377,7 +377,7 @@ export class ProcessTreeAnalyzer {
       children = tree.filter((p) => p.ppid === sessionPid && p.pid !== sessionPid);
     }
 
-    logger.log(
+    logger.debug(
       'ProcessTreeAnalyzer',
       `Recent child candidates: ${JSON.stringify(children.map((p) => ({ pid: p.pid, command: p.command })))}`
     );
@@ -446,7 +446,7 @@ export class ProcessTreeAnalyzer {
 
     // Check for shell prompt utilities
     if (promptUtilities.some((utility) => lowerCommand.includes(utility))) {
-      logger.log('ProcessTreeAnalyzer', `Identified prompt utility: ${command}`);
+      logger.debug('ProcessTreeAnalyzer', `Identified prompt utility: ${command}`);
       return true;
     }
 
@@ -465,11 +465,14 @@ export class ProcessTreeAnalyzer {
       ? 'ps -eo pid,ppid,pgid,tty,state,lstart,command'
       : 'ps -eo pid,ppid,pgid,sid,tty,state,lstart,command';
 
-    logger.log('ProcessTreeAnalyzer', `Getting all system processes with: ${psCommand}`);
+    logger.debug('ProcessTreeAnalyzer', `Getting all system processes with: ${psCommand}`);
     const { stdout } = await execAsync(psCommand, { timeout: 10000 });
     const allSystemProcesses = this.parseUnixProcessOutput(stdout, isMacOS);
 
-    logger.log('ProcessTreeAnalyzer', `Found ${allSystemProcesses.length} total system processes`);
+    logger.debug(
+      'ProcessTreeAnalyzer',
+      `Found ${allSystemProcesses.length} total system processes`
+    );
 
     // Build a map of parent -> children
     const childrenMap = new Map<number, ProcessInfo[]>();
@@ -485,7 +488,7 @@ export class ProcessTreeAnalyzer {
 
     // Check what children exist for our root PID
     const directChildren = childrenMap.get(rootPid) || [];
-    logger.log(
+    logger.debug(
       'ProcessTreeAnalyzer',
       `Direct children of ${rootPid}: ${JSON.stringify(directChildren.map((p) => ({ pid: p.pid, command: p.command })))}`
     );
@@ -510,7 +513,7 @@ export class ProcessTreeAnalyzer {
 
     collectProcessTree(rootPid);
 
-    logger.log(
+    logger.debug(
       'ProcessTreeAnalyzer',
       `Final process tree: ${JSON.stringify(allProcesses.map((p) => ({ pid: p.pid, ppid: p.ppid, command: p.command })))}`
     );

@@ -43,6 +43,7 @@ import { controlUnixHandler } from '../websocket/control-unix-handler.js';
 import { computeActivityStatus } from './activity-status.js';
 import { AsciinemaWriter } from './asciinema-writer.js';
 import { FishHandler } from './fish-handler.js';
+import { readForegroundPgids } from './foreground-pgids.js';
 import { ProcessUtils } from './process-utils.js';
 import { SessionManager } from './session-manager.js';
 import {
@@ -123,6 +124,10 @@ const SHELL_COMMANDS = new Set(['cd', 'ls', 'pwd', 'echo', 'export', 'alias', 'u
  */
 export class PtyManager extends EventEmitter {
   private sessions = new Map<string, PtySession>();
+  // Sessions whose foreground command is tracked; one shared timer polls all of them.
+  private foregroundTracked = new Set<PtySession>();
+  private foregroundPollTimer: NodeJS.Timeout | null = null;
+  private foregroundPollRunning = false;
   private sessionManager: SessionManager;
   private defaultTerm = 'xterm-256color';
   private inputSocketClients = new Map<string, net.Socket>(); // Cache socket connections
@@ -134,6 +139,8 @@ export class PtyManager extends EventEmitter {
     { cols: number; rows: number; source: 'browser' | 'terminal'; timestamp: number }
   >();
   private static initialized = false;
+  /** Safety-net poll for session.json when fs.watch misses an event. */
+  static SESSION_JSON_FALLBACK_POLL_MS = 2000;
   private sessionEventListeners = new Map<string, Set<(...args: unknown[]) => void>>();
   private sessionExitTimes = new Map<string, number>(); // Track session exit times to avoid false bells
   private processTreeAnalyzer = new ProcessTreeAnalyzer(); // Process tree analysis for bell source identification
@@ -881,43 +888,97 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
-   * Setup file watcher for session.json changes
+   * Setup file watcher for session.json changes.
+   *
+   * This used to re-read and JSON.parse session.json every 100 ms in
+   * every `vt fwd` process (10 reads/s per session, forever). Now fs.watch wakes us
+   * on change and a slow fallback poll (stat only, read on identity change) covers
+   * filesystems/platforms where fs.watch misses events. saveSessionInfo writes via
+   * tmp + rename, so each save swaps the inode and the file watcher is re-armed.
    */
   private setupSessionWatcher(session: PtySession): void {
-    const _sessionJsonPath = path.join(session.controlDir, 'session.json');
+    const sessionJsonPath = path.join(session.controlDir, 'session.json');
+    let lastIdentity = '';
+    let checkTimer: NodeJS.Timeout | undefined;
+    let disposed = false;
+
+    const statIdentity = (): string | null => {
+      try {
+        const st = fs.statSync(sessionJsonPath);
+        return `${st.ino}:${st.size}:${st.mtimeMs}`;
+      } catch {
+        return null;
+      }
+    };
+
+    const check = () => {
+      if (disposed || this.sessions.get(session.id) !== session) return;
+      const identity = statIdentity();
+      if (identity === null || identity === lastIdentity) return;
+      lastIdentity = identity;
+      try {
+        const updatedInfo = this.sessionManager.loadSessionInfo(session.id);
+        if (updatedInfo && updatedInfo.name !== session.sessionInfo.name) {
+          const oldName = session.sessionInfo.name;
+          session.sessionInfo.name = updatedInfo.name;
+
+          logger.debug(
+            `Session ${session.id} name changed from "${oldName}" to "${updatedInfo.name}"`
+          );
+
+          this.trackAndEmit('sessionNameChanged', session.id, updatedInfo.name);
+
+          if (session.isExternalTerminal && session.titleMode === TitleMode.STATIC) {
+            this.markTitleUpdateNeeded(session);
+          }
+        }
+      } catch (error) {
+        logger.debug(`Failed to read session file for ${session.id}:`, error);
+      }
+    };
+
+    // Coalesce bursts of fs events (write tmp + rename) into one read.
+    const scheduleCheck = () => {
+      if (disposed || checkTimer) return;
+      checkTimer = setTimeout(() => {
+        checkTimer = undefined;
+        // Re-arm first (the rename swapped the inode) so a save landing during
+        // the check below still wakes us.
+        armWatcher();
+        check();
+      }, 15);
+    };
+
+    const armWatcher = () => {
+      if (disposed) return;
+      session.sessionJsonWatcher?.close();
+      session.sessionJsonWatcher = undefined;
+      try {
+        const watcher = fs.watch(sessionJsonPath, { persistent: false }, scheduleCheck);
+        watcher.on('error', () => {
+          watcher.close();
+          if (session.sessionJsonWatcher === watcher) session.sessionJsonWatcher = undefined;
+        });
+        session.sessionJsonWatcher = watcher;
+      } catch {
+        // File momentarily missing (mid-rename) or fs.watch unsupported: the
+        // fallback poll below still picks the change up.
+      }
+    };
 
     try {
-      // Use polling approach for better reliability on macOS
-      // Check for changes every 100ms
-      const checkInterval = setInterval(() => {
-        try {
-          // Read the current session info from disk
-          const updatedInfo = this.sessionManager.loadSessionInfo(session.id);
-          if (updatedInfo && updatedInfo.name !== session.sessionInfo.name) {
-            // Name has changed, update our internal state
-            const oldName = session.sessionInfo.name;
-            session.sessionInfo.name = updatedInfo.name;
-
-            logger.debug(
-              `Session ${session.id} name changed from "${oldName}" to "${updatedInfo.name}"`
-            );
-
-            // Emit event for name change
-            this.trackAndEmit('sessionNameChanged', session.id, updatedInfo.name);
-
-            // Update title if needed for external terminals
-            if (session.isExternalTerminal && session.titleMode === TitleMode.STATIC) {
-              this.markTitleUpdateNeeded(session);
-            }
-          }
-        } catch (error) {
-          // Session file might be deleted, ignore
-          logger.debug(`Failed to read session file for ${session.id}:`, error);
-        }
-      }, 100);
-
-      // Store interval for cleanup
-      session.sessionJsonInterval = checkInterval;
+      lastIdentity = statIdentity() ?? '';
+      armWatcher();
+      const fallback = setInterval(() => {
+        check();
+        if (!session.sessionJsonWatcher) armWatcher();
+      }, PtyManager.SESSION_JSON_FALLBACK_POLL_MS);
+      fallback.unref?.();
+      session.sessionJsonInterval = fallback;
+      session.sessionJsonDispose = () => {
+        disposed = true;
+        if (checkTimer) clearTimeout(checkTimer);
+      };
       logger.debug(`Session watcher setup for ${session.id}`);
     } catch (error) {
       logger.error(`Failed to setup session watcher for ${session.id}:`, error);
@@ -1678,9 +1739,9 @@ export class PtyManager extends EventEmitter {
    * List all sessions (both active and persisted)
    */
   listSessions() {
-    // Update zombie sessions first and clean up socket connections
-    const zombieSessionIds = this.sessionManager.updateZombieSessions();
-    for (const sessionId of zombieSessionIds) {
+    // One scan: it also marks sessions whose process died as exited; drop their sockets.
+    const { sessions, zombies } = this.sessionManager.listSessionsAndZombies();
+    for (const sessionId of zombies) {
       const socket = this.inputSocketClients.get(sessionId);
       if (socket) {
         socket.destroy();
@@ -1688,9 +1749,8 @@ export class PtyManager extends EventEmitter {
       }
     }
 
-    // Get all sessions from storage
     const now = Date.now();
-    return this.sessionManager.listSessions().map((session) => {
+    return sessions.map((session) => {
       const activeSession = this.sessions.get(session.id);
       const activityStatus = computeActivityStatus({
         status: session.status,
@@ -1713,8 +1773,7 @@ export class PtyManager extends EventEmitter {
    * Get a specific session
    */
   getSession(sessionId: string): Session | null {
-    logger.debug(`[PtyManager] getSession called for sessionId: ${sessionId}`);
-
+    // Called by every per-session request (chat polls every 1.5 s): no per-call log lines.
     const paths = this.sessionManager.getSessionPaths(sessionId, true);
     if (!paths) {
       logger.debug(`[PtyManager] No session paths found for ${sessionId}`);
@@ -1750,7 +1809,6 @@ export class PtyManager extends EventEmitter {
       startedAt: session.startedAt,
     });
 
-    logger.debug(`[PtyManager] Found session: ${JSON.stringify(session)}`);
     return session;
   }
 
@@ -1916,6 +1974,8 @@ export class PtyManager extends EventEmitter {
     }
 
     // Clean up session.json watcher/interval
+    session.sessionJsonDispose?.();
+    session.sessionJsonDispose = undefined;
     if (session.sessionJsonWatcher) {
       session.sessionJsonWatcher.close();
       session.sessionJsonWatcher = undefined;
@@ -1968,6 +2028,8 @@ export class PtyManager extends EventEmitter {
       clearInterval(session.titleInjectionTimer);
       session.titleInjectionTimer = undefined;
     }
+
+    this.stopForegroundProcessTracking(session);
   }
 
   /**
@@ -2194,31 +2256,36 @@ export class PtyManager extends EventEmitter {
   private startForegroundProcessTracking(session: PtySession): void {
     if (!session.ptyProcess) return;
 
-    logger.debug(`Starting foreground process tracking for session ${session.id}`);
     const ptyPid = session.ptyProcess.pid;
 
     // Get the shell's process group ID (pgid)
     this.getProcessPgid(ptyPid)
       .then((shellPgid) => {
-        if (shellPgid) {
-          session.shellPgid = shellPgid;
-          session.currentForegroundPgid = shellPgid;
-          logger.info(
-            `🔔 NOTIFICATION DEBUG: Starting command tracking for session ${session.id} - shellPgid: ${shellPgid}, polling every ${PROCESS_POLL_INTERVAL_MS}ms`
-          );
-          logger.debug(`Session ${session.id}: Shell PGID is ${shellPgid}, starting polling`);
-
-          // Start polling for foreground process changes
-          session.processPollingInterval = setInterval(() => {
-            this.checkForegroundProcess(session);
-          }, PROCESS_POLL_INTERVAL_MS);
-        } else {
+        // The session may have exited while ps ran: never track it then.
+        if (this.sessions.get(session.id) !== session || !session.ptyProcess) return;
+        if (!shellPgid) {
           logger.warn(`Session ${session.id}: Could not get shell PGID`);
+          return;
         }
+        session.shellPgid = shellPgid;
+        session.currentForegroundPgid = shellPgid;
+        logger.debug(`Session ${session.id}: Shell PGID is ${shellPgid}, tracking commands`);
+        this.foregroundTracked.add(session);
+        this.foregroundPollTimer ??= setInterval(() => {
+          void this.pollForegroundProcesses();
+        }, PROCESS_POLL_INTERVAL_MS);
       })
       .catch((err) => {
         logger.warn(`Failed to get shell PGID for session ${session.id}:`, err);
       });
+  }
+
+  private stopForegroundProcessTracking(session: PtySession): void {
+    this.foregroundTracked.delete(session);
+    if (this.foregroundTracked.size === 0 && this.foregroundPollTimer) {
+      clearInterval(this.foregroundPollTimer);
+      this.foregroundPollTimer = null;
+    }
   }
 
   /**
@@ -2226,7 +2293,9 @@ export class PtyManager extends EventEmitter {
    */
   private async getProcessPgid(pid: number): Promise<number | null> {
     try {
-      const { stdout } = await this.execAsync(`ps -o pgid= -p ${pid}`, { timeout: 1000 });
+      const { stdout } = await this.execFileAsync('ps', ['-o', 'pgid=', '-p', String(pid)], {
+        timeout: 1000,
+      });
       const pgid = Number.parseInt(stdout.trim(), 10);
       return Number.isNaN(pgid) ? null : pgid;
     } catch (_error) {
@@ -2235,127 +2304,61 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
-   * Get the foreground process group of a terminal
+   * One `ps` for every tracked session: the foreground process group of each session's
+   * terminal (tpgid of its root process).
+   *
+   * Each session used to poll on its own timer with a `ps -t … | grep | head` shell
+   * pipeline every 500 ms, the timer was never cleared when the session exited, and every
+   * tick logged 3-4 lines. 10 running + 100 exited sessions cost ~7% CPU and 87 KB/s of log
+   * while idle, forever. Exited sessions now leave the set, and the poll stops when it is empty.
    */
-  private async getTerminalForegroundPgid(session: PtySession): Promise<number | null> {
-    if (!session.ptyProcess) return null;
-
-    try {
-      // On Unix-like systems, we can check the terminal's foreground process group
-      // biome-ignore lint/suspicious/noExplicitAny: Accessing internal node-pty property
-      const ttyName = (session.ptyProcess as any)._pty; // Internal PTY name
-      if (!ttyName) {
-        logger.debug(`Session ${session.id}: No TTY name found, falling back to process tree`);
-        return this.getForegroundFromProcessTree(session);
+  private async pollForegroundProcesses(): Promise<void> {
+    if (this.foregroundPollRunning) return;
+    for (const session of this.foregroundTracked) {
+      if (!session.ptyProcess || this.sessions.get(session.id) !== session) {
+        this.stopForegroundProcessTracking(session);
       }
-
-      // Use ps to find processes associated with this terminal
-      const psCommand = `ps -t ${ttyName} -o pgid,pid,ppid,command | grep -v PGID | head -1`;
-      const { stdout } = await this.execAsync(psCommand, { timeout: 1000 });
-
-      const lines = stdout.trim().split('\n');
-      if (lines.length > 0 && lines[0].trim()) {
-        const parts = lines[0].trim().split(/\s+/);
-        const pgid = Number.parseInt(parts[0], 10);
-
-        // Log the raw ps output for debugging
-        logger.debug(`Session ${session.id}: ps output for TTY ${ttyName}: "${lines[0].trim()}"`);
-
-        if (!Number.isNaN(pgid)) {
-          return pgid;
-        }
-      }
-
-      logger.debug(`Session ${session.id}: Could not parse PGID from ps output, falling back`);
-    } catch (error) {
-      logger.debug(`Session ${session.id}: Error getting terminal PGID: ${error}, falling back`);
-      // Fallback: try to get foreground process from process tree
-      return this.getForegroundFromProcessTree(session);
     }
+    if (this.foregroundTracked.size === 0) return;
 
-    return null;
-  }
-
-  /**
-   * Get foreground process from process tree analysis
-   */
-  private async getForegroundFromProcessTree(session: PtySession): Promise<number | null> {
-    if (!session.ptyProcess) return null;
-
+    this.foregroundPollRunning = true;
     try {
-      const processTree = await this.processTreeAnalyzer.getProcessTree(session.ptyProcess.pid);
-
-      // Find the most recent non-shell process
-      for (const proc of processTree) {
-        if (proc.pgid !== session.shellPgid && proc.command && !this.isShellProcess(proc.command)) {
-          return proc.pgid;
-        }
+      const tracked = [...this.foregroundTracked];
+      const foreground = await readForegroundPgids(
+        tracked.map((session) => session.ptyProcess?.pid ?? 0)
+      );
+      for (const session of tracked) {
+        const pid = session.ptyProcess?.pid;
+        const pgid = pid ? foreground.get(pid) : undefined;
+        if (pgid) await this.checkForegroundProcess(session, pgid);
       }
     } catch (error) {
-      logger.debug(`Failed to analyze process tree for session ${session.id}:`, error);
+      logger.debug(`Foreground process poll failed: ${error}`);
+    } finally {
+      this.foregroundPollRunning = false;
     }
-
-    return session.shellPgid || null;
   }
 
   /**
-   * Check if a command is a shell process
+   * Detect foreground process changes of one session
    */
-  private isShellProcess(command: string): boolean {
-    const shellNames = ['bash', 'zsh', 'fish', 'sh', 'dash', 'tcsh', 'csh'];
-    const cmdLower = command.toLowerCase();
-    return shellNames.some((shell) => cmdLower.includes(shell));
-  }
-
-  /**
-   * Check current foreground process and detect changes
-   */
-  private async checkForegroundProcess(session: PtySession): Promise<void> {
+  private async checkForegroundProcess(session: PtySession, currentPgid: number): Promise<void> {
     if (!session.ptyProcess || !session.shellPgid) return;
+    if (currentPgid === session.currentForegroundPgid) return;
 
     try {
-      const currentPgid = await this.getTerminalForegroundPgid(session);
-
-      // Enhanced debug logging
-      const timestamp = new Date().toISOString();
+      const previousPgid = session.currentForegroundPgid;
+      session.currentForegroundPgid = currentPgid;
       logger.debug(
-        chalk.gray(
-          `[${timestamp}] Session ${session.id} PGID check: current=${currentPgid}, previous=${session.currentForegroundPgid}, shell=${session.shellPgid}`
-        )
+        `Session ${session.id}: Foreground PGID changed from ${previousPgid} to ${currentPgid}`
       );
 
-      // Add debug logging
-      if (currentPgid !== session.currentForegroundPgid) {
-        logger.info(
-          `🔔 NOTIFICATION DEBUG: PGID change detected - sessionId: ${session.id}, from ${session.currentForegroundPgid} to ${currentPgid}, shellPgid: ${session.shellPgid}`
-        );
-        logger.debug(
-          chalk.yellow(
-            `Session ${session.id}: Foreground PGID changed from ${session.currentForegroundPgid} to ${currentPgid}`
-          )
-        );
-      }
-
-      if (currentPgid && currentPgid !== session.currentForegroundPgid) {
-        // Foreground process changed
-        const previousPgid = session.currentForegroundPgid;
-        session.currentForegroundPgid = currentPgid;
-
-        if (currentPgid === session.shellPgid && previousPgid !== session.shellPgid) {
-          // A command just finished (returned to shell)
-          logger.debug(
-            chalk.green(
-              `Session ${session.id}: Command finished, returning to shell (PGID ${previousPgid} → ${currentPgid})`
-            )
-          );
-          await this.handleCommandFinished(session, previousPgid);
-        } else if (currentPgid !== session.shellPgid) {
-          // A new command started
-          logger.debug(
-            chalk.blue(`Session ${session.id}: New command started (PGID ${currentPgid})`)
-          );
-          await this.handleCommandStarted(session, currentPgid);
-        }
+      if (currentPgid === session.shellPgid && previousPgid !== session.shellPgid) {
+        // A command just finished (returned to shell)
+        await this.handleCommandFinished(session, previousPgid);
+      } else if (currentPgid !== session.shellPgid) {
+        // A new command started
+        await this.handleCommandStarted(session, currentPgid);
       }
     } catch (error) {
       logger.debug(`Error checking foreground process for session ${session.id}:`, error);
