@@ -75,6 +75,13 @@ describe('startup port', () => {
     expect(await portIsFree(held.port, '0.0.0.0')).toBe(true);
   });
 
+  it('ignores an unrelated listener on another loopback address for a specific bind', async (ctx) => {
+    const held = await hold('::1').catch(() => null);
+    if (!held) return ctx.skip('no ::1 on this machine');
+    // Nothing on 127.0.0.1:port; the listener on ::1 is not where this server would listen.
+    expect(await portIsFree(held.port, '127.0.0.1')).toBe(true);
+  });
+
   it('does not wait at all for a free port or an ephemeral one', async () => {
     const onWait = vi.fn();
     const { server, port } = await hold();

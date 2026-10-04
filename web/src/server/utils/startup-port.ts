@@ -13,7 +13,8 @@ const CONNECT_TIMEOUT_MS = 300;
 
 /**
  * True when `listen(port, host)` would succeed right now (found out by doing it) and nothing
- * accepts a connection on the port on loopback or on `host`. The bind alone misses a server
+ * accepts a connection on the port where this server would listen (both loopbacks for a
+ * wildcard bind or "localhost", else `host` itself). The bind alone misses a server
  * on another address: on macOS 0.0.0.0 binds while one listens on 127.0.0.1 or ::1, and a
  * second server started with the default bind would pass the check.
  */
@@ -32,12 +33,15 @@ function canListen(port: number, host: string): Promise<boolean> {
   });
 }
 
-/** Both loopbacks, plus `host` when it is a specific address other than them. */
+/**
+ * Where a server already on this port would take connections meant for this one: both
+ * loopbacks for a wildcard bind (the bind alone misses them) or "localhost", else only the
+ * specific address. Probing both loopbacks for a specific bind made an unrelated listener on
+ * 127.0.0.1 or ::1 stop a server bound to a LAN address with exit 9.
+ */
 function probeHosts(host: string): string[] {
   const wildcard = host === '' || host === '0.0.0.0' || host === '::';
-  const loopback =
-    host === 'localhost' || host === '::1' || (net.isIPv4(host) && host.startsWith('127.'));
-  return wildcard || loopback ? ['127.0.0.1', '::1'] : ['127.0.0.1', '::1', host];
+  return wildcard || host === 'localhost' ? ['127.0.0.1', '::1'] : [host];
 }
 
 /**
