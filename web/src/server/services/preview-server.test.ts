@@ -1,5 +1,10 @@
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
 import * as http from 'node:http';
+import * as https from 'node:https';
 import type { AddressInfo } from 'node:net';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import express from 'express';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -20,6 +25,48 @@ import {
   previewUnreachableReason,
   resolvePreviewPort,
 } from './preview-server.js';
+
+/** The test makes its https app's certificate with the openssl CLI; without it, that test skips. */
+const opensslAvailable = (() => {
+  try {
+    execFileSync('openssl', ['version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+function throwawayLocalhostCertificate(): { key: Buffer; cert: Buffer } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vt-preview-tls-'));
+  try {
+    const keyFile = path.join(dir, 'key.pem');
+    const certFile = path.join(dir, 'cert.pem');
+    execFileSync(
+      'openssl',
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'ec',
+        '-pkeyopt',
+        'ec_paramgen_curve:prime256v1',
+        '-nodes',
+        '-days',
+        '1',
+        '-subj',
+        '/CN=localhost',
+        '-keyout',
+        keyFile,
+        '-out',
+        certFile,
+      ],
+      { stdio: 'ignore' }
+    );
+    return { key: fs.readFileSync(keyFile), cert: fs.readFileSync(certFile) };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 describe('preview listener config', () => {
   it('is off unless a port is named, takes the flag before the env, refuses the main port', () => {
@@ -134,6 +181,9 @@ describe('preview origin end to end', () => {
   let upstream: http.Server;
   let upstreamWss: WebSocketServer;
   let upstreamPort: number;
+  let secureUpstream: https.Server;
+  let secureWss: WebSocketServer;
+  let securePort: number;
   let main: http.Server;
   let mainPort: number;
   let preview: http.Server;
@@ -164,6 +214,22 @@ describe('preview origin end to end', () => {
     });
     await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
     upstreamPort = (upstream.address() as AddressInfo).port;
+
+    // An app that only serves https, like one behind an OAuth or banking callback, with a
+    // throwaway certificate made here (no private key lives in the repository).
+    secureUpstream = https.createServer(
+      opensslAvailable ? throwawayLocalhostCertificate() : {},
+      (_req, res) => {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end('<html><head></head><body>secure app</body></html>');
+      }
+    );
+    secureWss = new WebSocketServer({ server: secureUpstream });
+    secureWss.on('connection', (ws, req) => {
+      ws.send(JSON.stringify({ type: 'connected', url: req.url, secure: true }));
+    });
+    await new Promise<void>((resolve) => secureUpstream.listen(0, '127.0.0.1', resolve));
+    securePort = (secureUpstream.address() as AddressInfo).port;
 
     const proxy = createPreviewProxy({ getOwnPorts: () => [mainPort, previewPort] });
 
@@ -196,7 +262,10 @@ describe('preview origin end to end', () => {
 
   afterAll(async () => {
     upstreamWss.close();
+    secureWss.close();
     await new Promise((resolve) => upstream.close(resolve));
+    secureUpstream.closeAllConnections?.();
+    await new Promise((resolve) => secureUpstream.close(resolve));
     for (const server of [main, preview]) {
       server.closeAllConnections?.();
       await new Promise((resolve) => server.close(resolve));
@@ -481,4 +550,21 @@ describe('preview origin end to end', () => {
       host: `localhost:${upstreamPort}`,
     });
   });
+  it.skipIf(!opensslAvailable)(
+    'reaches an app that only serves https over TLS, pages and WebSockets',
+    async () => {
+      const { cookie } = await login(securePort);
+      const res = await request(previewPort, `/preview/${securePort}/`, { headers: { cookie } });
+      expect(res.status).toBe(200);
+      expect(res.body).toContain('secure app');
+      expect(res.body).toContain('__vt_preview_client.js');
+      const result = await openSocket(previewPort, `/preview/${securePort}/live`, { cookie });
+      expect(result.ok).toBe(true);
+      expect(JSON.parse(result.message ?? '{}')).toEqual({
+        type: 'connected',
+        url: '/live',
+        secure: true,
+      });
+    }
+  );
 });

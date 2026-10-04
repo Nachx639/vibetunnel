@@ -35,8 +35,10 @@
  */
 import { randomBytes } from 'node:crypto';
 import * as http from 'node:http';
+import * as https from 'node:https';
 import * as net from 'node:net';
 import type { Duplex } from 'node:stream';
+import * as tls from 'node:tls';
 import type { NextFunction, Request, Response } from 'express';
 import { createLogger } from '../utils/logger.js';
 
@@ -542,6 +544,43 @@ export async function resolveLoopbackHost(port: number): Promise<string | null> 
 }
 
 /**
+ * Whether the server on this port speaks TLS. Some local apps only serve https (an OAuth or
+ * banking callback that requires it) and answer plain http with a redirect to
+ * `https://localhost:<port>/`, which the preview maps back onto itself: a redirect loop.
+ * Those are reached over TLS instead. The certificate isn't checked: the peer is a loopback
+ * address on this machine, usually with a self-signed or mkcert certificate.
+ */
+const tlsCache = new Map<number, { secure: boolean; at: number }>();
+function probeTls(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = tls.connect({
+      host,
+      port,
+      servername: 'localhost',
+      rejectUnauthorized: false,
+      ALPNProtocols: ['http/1.1'],
+    });
+    const done = (ok: boolean) => {
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(1000, () => done(false));
+    socket.once('secureConnect', () => done(true));
+    socket.once('error', () => done(false));
+  });
+}
+export async function upstreamUsesTls(host: string, port: number): Promise<boolean> {
+  const cached = tlsCache.get(port);
+  if (cached && Date.now() - cached.at < 60_000) return cached.secure;
+  const secure = await probeTls(host, port);
+  tlsCache.set(port, { secure, at: Date.now() });
+  return secure;
+}
+export function forgetUpstreamTls(port: number): void {
+  tlsCache.delete(port);
+}
+
+/**
  * While previews are on, every VibeTunnel response carries this header (main and preview
  * origins). A port that answers with it is another VibeTunnel server (a second instance, an
  * older one…) and is never previewed: its UI on the shared preview origin could keep a login
@@ -701,9 +740,11 @@ export function createPreviewProxy(options: PreviewProxyOptions) {
       return;
     }
 
-    const upstream = http.request({
+    const secure = await upstreamUsesTls(host, target.port);
+    const upstream = (secure ? https : http).request({
       host,
       port: target.port,
+      ...(secure ? { servername: 'localhost', rejectUnauthorized: false } : {}),
       method: req.method,
       path: target.path,
       headers: buildUpstreamHeaders(req.headers, target.port, {
@@ -742,6 +783,7 @@ export function createPreviewProxy(options: PreviewProxyOptions) {
       upstreamRes.pipe(res);
     });
     upstream.on('error', (error) => {
+      forgetUpstreamTls(target.port); // the app may have restarted with or without TLS
       logger.debug(`preview upstream error on port ${target.port}: ${error.message}`);
       if (!res.headersSent) {
         res
@@ -788,7 +830,8 @@ export function createPreviewProxy(options: PreviewProxyOptions) {
       upgrade: true,
       isVibeTunnelAuthorization: options.isVibeTunnelAuthorization,
     });
-    const upstream = net.connect({ host, port: target.port }, () => {
+    const secure = await upstreamUsesTls(host, target.port);
+    const onConnect = () => {
       let request = `${req.method ?? 'GET'} ${target.path} HTTP/1.1\r\n`;
       for (const [name, value] of Object.entries(headers)) {
         if (value === undefined) continue;
@@ -800,7 +843,13 @@ export function createPreviewProxy(options: PreviewProxyOptions) {
       if (head.length > 0) upstream.write(head);
       upstream.pipe(socket);
       socket.pipe(upstream);
-    });
+    };
+    const upstream: net.Socket = secure
+      ? tls.connect(
+          { host, port: target.port, servername: 'localhost', rejectUnauthorized: false },
+          onConnect
+        )
+      : net.connect({ host, port: target.port }, onConnect);
     const close = () => {
       upstream.destroy();
       socket.destroy();
