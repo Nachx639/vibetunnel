@@ -337,6 +337,76 @@ describe('withoutPermissionBypass', () => {
       'npm test',
     ]);
   });
+
+  it('finds Claude Code behind npx, pnpm dlx, bunx, env and absolute paths', () => {
+    const skip = '--dangerously-skip-permissions';
+    expect(withoutPermissionBypass(['npx', '@anthropic-ai/claude-code', skip, '-p'])).toEqual([
+      'npx',
+      '@anthropic-ai/claude-code',
+      '-p',
+    ]);
+    expect(
+      withoutPermissionBypass(['npx', '-y', '@anthropic-ai/claude-code@latest', skip])
+    ).toEqual(['npx', '-y', '@anthropic-ai/claude-code@latest']);
+    expect(
+      withoutPermissionBypass([
+        'pnpm',
+        'dlx',
+        '@anthropic-ai/claude-code',
+        '--permission-mode',
+        'bypassPermissions',
+      ])
+    ).toEqual(['pnpm', 'dlx', '@anthropic-ai/claude-code']);
+    expect(withoutPermissionBypass(['bunx', '@anthropic-ai/claude-code@2.1.0', skip])).toEqual([
+      'bunx',
+      '@anthropic-ai/claude-code@2.1.0',
+    ]);
+    expect(withoutPermissionBypass(['env', 'FOO=1', 'claude', skip])).toEqual([
+      'env',
+      'FOO=1',
+      'claude',
+    ]);
+    expect(withoutPermissionBypass(['/usr/local/bin/claude', skip])).toEqual([
+      '/usr/local/bin/claude',
+    ]);
+  });
+
+  it('drops the =true and config spellings of Gemini and Codex bypasses', () => {
+    expect(withoutPermissionBypass(['gemini', '--yolo=true'])).toEqual(['gemini']);
+    expect(withoutPermissionBypass(['gemini', '--approval-mode', 'yolo'])).toEqual(['gemini']);
+    expect(withoutPermissionBypass(['gemini', '--approval-mode=yolo', '-m', 'pro'])).toEqual([
+      'gemini',
+      '-m',
+      'pro',
+    ]);
+    expect(withoutPermissionBypass(['codex', '-c', 'approval_policy=never', 'fix it'])).toEqual([
+      'codex',
+      'fix it',
+    ]);
+    expect(
+      withoutPermissionBypass(['codex', '--config', 'sandbox_mode="danger-full-access"'])
+    ).toEqual(['codex']);
+    expect(withoutPermissionBypass(['codex', '--config=approval_policy=never'])).toEqual(['codex']);
+    expect(withoutPermissionBypass(['codex', '-c', 'model="o3"'])).toEqual([
+      'codex',
+      '-c',
+      'model="o3"',
+    ]);
+  });
+
+  it('refuses a command that still carries a bypass flag it could not strip', () => {
+    // No known agent: a wrapper script, or an agent name we don't know.
+    expect(
+      withoutPermissionBypass(['my-claude-wrapper', '--dangerously-skip-permissions'])
+    ).toBeNull();
+    expect(withoutPermissionBypass(['node', 'cli.js', '--yolo'])).toBeNull();
+    expect(withoutPermissionBypass(['run-agent', '-c', 'approval_policy=never'])).toBeNull();
+    // A bypass flag of another agent, or after `--`.
+    expect(withoutPermissionBypass(['gemini', '--dangerously-skip-permissions'])).toBeNull();
+    expect(withoutPermissionBypass(['claude', '--', '--dangerously-skip-permissions'])).toBeNull();
+    // Short flags stay ambiguous on purpose: `npx -y` is not a bypass.
+    expect(withoutPermissionBypass(['npx', '-y', 'serve'])).toEqual(['npx', '-y', 'serve']);
+  });
 });
 
 describe('shieldReopenPlan', () => {
@@ -437,6 +507,19 @@ describe('shieldRestorePlan', () => {
     expect(shieldRestorePlan({ command: ['gemini', '-y'] }, 'all')?.command).toEqual(['gemini']);
     // A bypass inside a shell string can't be removed safely: not restored at all.
     expect(shieldRestorePlan({ command: ['/bin/zsh', '-c', 'codex --yolo'] }, 'all')).toBeNull();
+    // Claude Code through npx, with a conversation id it can't resume as `claude`: no bypass.
+    expect(
+      shieldRestorePlan(
+        {
+          command: ['npx', '@anthropic-ai/claude-code', '--dangerously-skip-permissions'],
+          claudeSessionId: 'c4',
+        },
+        'all'
+      )
+    ).toEqual({ command: ['npx', '@anthropic-ai/claude-code'], kind: 'same-command' });
+    expect(
+      shieldRestorePlan({ command: ['claude-wrapper', '--dangerously-skip-permissions'] }, 'all')
+    ).toBeNull();
   });
 
   it('writes the restored line in English', () => {

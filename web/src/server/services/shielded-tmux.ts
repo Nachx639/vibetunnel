@@ -621,31 +621,57 @@ const BYPASS_FLAGS: Record<BypassAgent, { flags: string[]; valued: Record<string
   },
 };
 
-/** The agent a command-line word starts (`claude`, `/x/codex`, `@google/gemini-cli`), if any. */
+/**
+ * The agent a command-line word starts (`claude`, `/x/codex`, `@google/gemini-cli`,
+ * `@anthropic-ai/claude-code@latest`), if any. Launchers such as `npx`, `pnpm dlx`, `bunx` or
+ * `env FOO=1` come before it and are kept as they are.
+ */
 function bypassAgent(word: string): BypassAgent | null {
   const name = word.split('/').pop() ?? '';
-  const match = /^(claude|codex|gemini)(?:-cli)?(?:@[\w.-]+)?$/.exec(name);
+  const match = /^(claude|codex|gemini)(?:-code|-cli)?(?:@[\w.-]+)?$/.exec(name);
   return match ? (match[1] as BypassAgent) : null;
+}
+
+/** A Codex `-c`/`--config` value that turns approvals or the sandbox off. */
+const CODEX_BYPASS_CONFIG =
+  /^\s*(approval_policy|sandbox_mode)\s*=\s*["']?(never|danger-full-access)["']?\s*$/;
+
+/**
+ * Bypass spellings that are unambiguous whatever program they follow. If one is still there
+ * after stripping (an agent that wasn't recognised, a flag of another agent, a value we can't
+ * parse), the command is not restored at all. Short flags such as `-y` are left out: launchers
+ * like `npx -y` use them for something else.
+ */
+const UNAMBIGUOUS_BYPASS =
+  /^(--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--dangerously-bypass-approvals-and-sandbox|--yolo)(=.*)?$|^(--permission-mode=bypassPermissions|--approval-mode=yolo|--sandbox=danger-full-access|--ask-for-approval=never|bypassPermissions|danger-full-access)$/;
+
+function isUnambiguousBypass(word: string): boolean {
+  if (UNAMBIGUOUS_BYPASS.test(word)) return true;
+  const config = /^--config=(.*)$/s.exec(word);
+  return CODEX_BYPASS_CONFIG.test(config ? config[1] : word);
 }
 
 /**
  * `command` without the flags that turn an agent's permission prompts off (Claude Code's
- * `--dangerously-skip-permissions`, Codex's `--dangerously-bypass-approvals-and-sandbox` or
- * `--yolo`, Gemini's `--yolo` or `-y`, and their sandbox/approval-mode spellings), for a
- * restore that runs with nobody watching. Null when such a flag sits inside a shell command
- * string (`zsh -c "codex --yolo"`), which can't be edited safely: that session isn't restored.
+ * `--dangerously-skip-permissions`, Codex's `--dangerously-bypass-approvals-and-sandbox`,
+ * `--yolo` or `-c approval_policy=never`, Gemini's `--yolo` or `-y`, their `=true` forms and
+ * their sandbox/approval-mode spellings), for a restore that runs with nobody watching. Null
+ * when a bypass can't be removed safely: inside a shell command string (`zsh -c "codex --yolo"`)
+ * or anywhere it is left after stripping. That session isn't restored.
  */
 export function withoutPermissionBypass(command: string[]): string[] | null {
   const agentAt = command.findIndex((word) => bypassAgent(word) !== null);
   if (agentAt === -1) {
     const bypassWord =
-      /(^|\s)(--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--permission-mode[=\s]+bypassPermissions|--dangerously-bypass-approvals-and-sandbox|--yolo|-y|--approval-mode[=\s]+yolo|--sandbox[=\s]+danger-full-access)(\s|$)/;
+      /(^|\s)(--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--permission-mode[=\s]+bypassPermissions|--dangerously-bypass-approvals-and-sandbox|--yolo|-y|--approval-mode[=\s]+yolo|--sandbox[=\s]+danger-full-access|approval_policy\s*=\s*["']?never|sandbox_mode\s*=\s*["']?danger-full-access)(=\S*)?(\s|$)/;
     const inShellString = command.some(
       (word) => /\s/.test(word) && /(claude|codex|gemini)/.test(word) && bypassWord.test(word)
     );
-    return inShellString ? null : command;
+    if (inShellString || command.some(isUnambiguousBypass)) return null;
+    return command;
   }
-  const { flags, valued } = BYPASS_FLAGS[bypassAgent(command[agentAt]) as BypassAgent];
+  const agent = bypassAgent(command[agentAt]) as BypassAgent;
+  const { flags, valued } = BYPASS_FLAGS[agent];
   const kept = command.slice(0, agentAt + 1);
   const rest = command.slice(agentAt + 1);
   for (let i = 0; i < rest.length; i++) {
@@ -654,8 +680,9 @@ export function withoutPermissionBypass(command: string[]): string[] | null {
       kept.push(...rest.slice(i));
       break;
     }
-    if (flags.includes(word)) continue;
     const [name, inlineValue] = word.split(/=(.*)/s, 2);
+    // A boolean bypass flag, also as `--yolo=true` (any value: `=false` is the default anyway).
+    if (flags.includes(name)) continue;
     const values = valued[name];
     if (values) {
       if (inlineValue !== undefined && values.includes(inlineValue)) continue;
@@ -664,9 +691,16 @@ export function withoutPermissionBypass(command: string[]): string[] | null {
         continue;
       }
     }
+    if (agent === 'codex' && (name === '-c' || name === '--config')) {
+      const value = inlineValue ?? rest[i + 1];
+      if (value !== undefined && CODEX_BYPASS_CONFIG.test(value)) {
+        if (inlineValue === undefined) i++;
+        continue;
+      }
+    }
     kept.push(word);
   }
-  return kept;
+  return kept.some(isUnambiguousBypass) ? null : kept;
 }
 
 /**
