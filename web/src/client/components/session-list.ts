@@ -1496,7 +1496,7 @@ export class SessionList extends LitElement {
     if (this.sessions.length === 0) return '';
 
     return html`
-      <div class="sticky bottom-0 border-t border-border bg-bg-secondary shadow-lg" data-testid="session-list-footer" style="z-index: ${Z_INDEX.SESSION_LIST_BOTTOM_BAR};${
+      <div class="vt-chrome sticky bottom-0 border-t border-border bg-bg-secondary shadow-lg" data-testid="session-list-footer" style="z-index: ${Z_INDEX.SESSION_LIST_BOTTOM_BAR};${
         // The home-screen app on a phone draws under the home indicator.
         this.usePhoneRows() ? ' padding-bottom: env(safe-area-inset-bottom, 0px);' : ''
       }">

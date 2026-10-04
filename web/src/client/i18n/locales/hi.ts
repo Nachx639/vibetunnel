@@ -999,4 +999,7 @@ export const hi: Messages = {
   'chat.yesterday': 'कल',
   'chat.yourInput': 'आपका इनपुट',
   'chat.sending': 'भेजा जा रहा है…',
+  'appearance.systemTextSize': 'सिस्टम का टेक्स्ट आकार इस्तेमाल करें',
+  'appearance.systemTextSize.description':
+    'iPhone या iPad पर सेट टेक्स्ट आकार अपनाता है (सेटिंग्स → एक्सेसिबिलिटी → डिस्प्ले और टेक्स्ट आकार)। टर्मिनल अपना आकार रखता है।',
 };

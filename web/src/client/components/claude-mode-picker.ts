@@ -237,7 +237,7 @@ export function openClaudeModePicker(options: ModePickerOptions): void {
             min-height: 56px;
             padding: 10px 16px;
             text-align: start;
-            font-size: 16px;
+            font-size: 1rem;
             color: var(--color-text);
           }
           .vt-mode-check {
@@ -257,7 +257,7 @@ export function openClaudeModePicker(options: ModePickerOptions): void {
             font-weight: 600;
           }
           .vt-mode-desc {
-            font-size: 13px;
+            font-size: 0.8125rem;
             color: var(--color-text-muted);
           }
           .vt-mode-spinner {
@@ -276,7 +276,7 @@ export function openClaudeModePicker(options: ModePickerOptions): void {
           }
           .vt-mode-message {
             padding: 10px 16px;
-            font-size: 14px;
+            font-size: 0.875rem;
             text-align: center;
             color: var(--color-status-warning);
             border-top: 1px solid var(--color-border-light);

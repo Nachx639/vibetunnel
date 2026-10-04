@@ -522,7 +522,7 @@ export class ClaudeChatView extends LitElement {
       /* Same inset on both sides so the title stays centred next to the search icon. */
       padding: 6px 36px;
       text-align: center;
-      font-size: 12px;
+      font-size: 0.75rem;
       color: var(--chat-muted);
       white-space: nowrap;
       overflow: hidden;
@@ -537,7 +537,7 @@ export class ClaudeChatView extends LitElement {
       height: 44px;
       margin: 0;
       opacity: 0.01;
-      font-size: 16px;
+      font-size: max(16px, 1rem);
       border: 0;
       padding: 0;
       background: transparent;
@@ -574,19 +574,20 @@ export class ClaudeChatView extends LitElement {
       flex: 1 1 0;
       width: 0;
       min-width: 0;
-      height: 32px;
+      /* 32px at 16px text; taller with the system text size instead of clipping it. */
+      height: 2em;
       padding: 0 10px;
       border: 1px solid var(--chat-border-strong);
       border-radius: 8px;
       background: var(--chat-bg);
       color: var(--chat-text);
       /* 16px keeps iOS from zooming into the field. */
-      font-size: 16px;
+      font-size: max(16px, 1rem);
     }
     .search-count {
       flex-shrink: 0;
       padding: 0 4px;
-      font-size: 12px;
+      font-size: 0.75rem;
       color: var(--chat-muted);
       font-variant-numeric: tabular-nums;
     }
@@ -629,11 +630,11 @@ export class ClaudeChatView extends LitElement {
       padding: 4px 10px;
       background: var(--chat-panel);
       color: var(--chat-text);
-      font-size: 12px;
+      font-size: 0.75rem;
     }
     .mode span {
       color: var(--chat-muted);
-      font-size: 11px;
+      font-size: 0.6875rem;
     }
     .scroll-area {
       position: relative;
@@ -661,16 +662,16 @@ export class ClaudeChatView extends LitElement {
       position: absolute;
       top: -6px;
       right: -4px;
-      min-width: 20px;
-      height: 20px;
+      min-width: 1.82em;
+      height: 1.82em;
       padding: 0 5px;
       box-sizing: border-box;
-      border-radius: 10px;
+      border-radius: 0.91em;
       background: var(--color-primary, #10b981);
       color: #fff;
-      font-size: 11px;
+      font-size: 0.6875rem;
       font-weight: 600;
-      line-height: 20px;
+      line-height: 1.82em;
       text-align: center;
     }
     .scroller {
@@ -700,9 +701,10 @@ export class ClaudeChatView extends LitElement {
     .bubble {
       position: relative;
       max-width: 85%;
-      padding: 6px 9px 18px;
+      /* The bottom padding is the time's line (0.6875rem): it grows with the text size. */
+      padding: 6px 9px calc(0.6875rem * 1.6);
       border-radius: 10px;
-      font-size: 15px;
+      font-size: 0.9375rem;
       line-height: 1.38;
       overflow-wrap: anywhere;
       box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
@@ -720,12 +722,12 @@ export class ClaudeChatView extends LitElement {
     }
     /* Room for the action icons (left) and the time (right) under a one-word answer. */
     .row.assistant .bubble {
-      min-width: 116px;
+      min-width: max(116px, 7.25rem);
     }
     /* And for the time under a one-character message ("2"), which wrapped a character per
        line in a bubble narrower than it. */
     .row.user .bubble {
-      min-width: 84px;
+      min-width: max(84px, 5.25rem);
     }
     .row.assistant .bubble.actions-2 {
       min-width: 160px;
@@ -856,7 +858,7 @@ export class ClaudeChatView extends LitElement {
       border-radius: 6px;
       background: var(--chat-panel);
       color: var(--chat-muted);
-      font-size: 11px;
+      font-size: 0.6875rem;
     }
     .copy-code.copied::after {
       content: ' ✓';
@@ -865,7 +867,7 @@ export class ClaudeChatView extends LitElement {
       position: absolute;
       right: 8px;
       bottom: 3px;
-      font-size: 11px;
+      font-size: 0.6875rem;
       color: var(--chat-muted);
       white-space: nowrap;
     }
@@ -888,7 +890,7 @@ export class ClaudeChatView extends LitElement {
       gap: 4px;
       margin-block: 2px 4px;
       padding-inline: 4px;
-      font-size: 12px;
+      font-size: 0.75rem;
       color: var(--chat-muted);
     }
     .send-note.failed {
@@ -950,7 +952,7 @@ export class ClaudeChatView extends LitElement {
     }
     .bubble code {
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 13px;
+      font-size: 0.8125rem;
       /* A tint of the text colour: light grey on a light theme, lighter than a dark bubble
          on a dark one (a fixed 25 % black was a heavy mid-grey in light mode). */
       background: color-mix(in srgb, var(--chat-text) 10%, transparent);
@@ -977,7 +979,7 @@ export class ClaudeChatView extends LitElement {
     .bubble pre code {
       background: none;
       padding: 0;
-      font-size: 12px;
+      font-size: 0.75rem;
     }
     .day {
       align-self: center;
@@ -986,7 +988,7 @@ export class ClaudeChatView extends LitElement {
       border-radius: 8px;
       background: var(--chat-chip);
       color: var(--chat-muted);
-      font-size: 12px;
+      font-size: 0.75rem;
     }
     .tool {
       align-self: center;
@@ -996,7 +998,7 @@ export class ClaudeChatView extends LitElement {
       border-radius: 8px;
       background: var(--chat-chip);
       color: var(--chat-muted);
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      font: 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1031,7 +1033,7 @@ export class ClaudeChatView extends LitElement {
     .tool-detail pre {
       margin: 0;
       padding: 8px 10px;
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      font: 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       color: var(--chat-text);
@@ -1047,7 +1049,7 @@ export class ClaudeChatView extends LitElement {
     }
     .tool-detail .diff {
       padding: 6px 0;
-      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+      font: 0.75rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
       max-height: 20rem;
       overflow-y: auto;
       border-bottom: 1px solid var(--chat-border);
@@ -1109,7 +1111,7 @@ export class ClaudeChatView extends LitElement {
       padding: 8px 14px;
       background: var(--chat-panel);
       color: var(--chat-text);
-      font-size: 13px;
+      font-size: 0.8125rem;
     }
     .stop:active {
       background: var(--chat-border-strong);
@@ -1179,7 +1181,7 @@ export class ClaudeChatView extends LitElement {
     }
     .question-text {
       padding: 2px 4px 4px;
-      font-size: 15px;
+      font-size: 0.9375rem;
     }
     .question button {
       border: 1px solid var(--chat-border-strong);
@@ -1187,7 +1189,7 @@ export class ClaudeChatView extends LitElement {
       padding: 9px 12px;
       background: var(--chat-panel);
       color: var(--chat-link);
-      font-size: 15px;
+      font-size: 0.9375rem;
       text-align: center;
       /* A path in an option has no spaces to wrap at: it would run past the edge. */
       overflow-wrap: anywhere;
@@ -1205,7 +1207,7 @@ export class ClaudeChatView extends LitElement {
       border-radius: 10px;
       background: var(--chat-warn-bg);
       color: var(--chat-text);
-      font-size: 13px;
+      font-size: 0.8125rem;
     }
     .waiting button {
       border: none;
@@ -1214,13 +1216,13 @@ export class ClaudeChatView extends LitElement {
       background: var(--chat-warn);
       color: #1a1405;
       font-weight: 600;
-      font-size: 13px;
+      font-size: 0.8125rem;
     }
     .offline {
       flex-shrink: 0;
       padding: 6px 12px;
       text-align: center;
-      font-size: 12px;
+      font-size: 0.75rem;
       color: var(--chat-text);
       background: var(--chat-warn-bg);
       border-bottom: 1px solid var(--chat-border);
@@ -1229,7 +1231,7 @@ export class ClaudeChatView extends LitElement {
       margin: auto;
       text-align: center;
       color: var(--chat-muted);
-      font-size: 14px;
+      font-size: 0.875rem;
       padding: 24px;
     }
   `;

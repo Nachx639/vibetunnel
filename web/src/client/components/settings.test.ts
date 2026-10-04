@@ -64,6 +64,51 @@ describe('Settings', () => {
     });
   });
 
+  describe('system text size', () => {
+    async function mountWith(touchWebKit: boolean) {
+      vi.stubGlobal('CSS', {
+        supports: (property: string) => touchWebKit && property === '-webkit-touch-callout',
+      });
+      const settings = new Settings();
+      settings.visible = true;
+      document.body.append(settings);
+      await settings.updateComplete;
+      return settings;
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      document.documentElement.removeAttribute('data-text-size');
+    });
+
+    it('is an Appearance switch, off by default, that sets the root font from Dynamic Type', async () => {
+      const settings = await mountWith(true);
+      const toggle = settings.querySelector<HTMLButtonElement>(
+        '[data-testid="settings-appearance"] [data-testid="settings-system-text-size-toggle"]'
+      );
+      expect(toggle?.getAttribute('aria-checked')).toBe('false');
+      const label = settings.querySelector(`#${toggle?.getAttribute('aria-labelledby')}`);
+      expect(label?.textContent?.trim()).toBe('Use the system text size');
+
+      toggle?.click();
+      await settings.updateComplete;
+      expect(toggle?.getAttribute('aria-checked')).toBe('true');
+      expect(document.documentElement.getAttribute('data-text-size')).toBe('system');
+      expect(localStorage.getItem('vt-system-text-size')).toBe('on');
+
+      toggle?.click();
+      await settings.updateComplete;
+      expect(document.documentElement.hasAttribute('data-text-size')).toBe(false);
+      settings.remove();
+    });
+
+    it('is not offered where it would do nothing (a Mac, other browsers)', async () => {
+      const settings = await mountWith(false);
+      expect(settings.querySelector('[data-testid="settings-system-text-size"]')).toBeNull();
+      settings.remove();
+    });
+  });
+
   describe('appearance', () => {
     it('starts on the default color theme', () => {
       expect(button('settings-accent-emerald')?.getAttribute('aria-pressed')).toBe('true');

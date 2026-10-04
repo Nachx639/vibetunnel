@@ -155,7 +155,7 @@ export class FullHeader extends HeaderBase {
 
     return html`
       <div
-        class="app-header bg-bg-secondary border-b border-border p-3"
+        class="app-header vt-chrome bg-bg-secondary border-b border-border p-3"
         style="padding-top: max(0.75rem, calc(0.75rem + env(safe-area-inset-top))); padding-right: max(0.75rem, calc(0.75rem + env(safe-area-inset-right))); padding-left: max(0.75rem, calc(0.75rem + env(safe-area-inset-left)));"
       >
         <div class="flex items-center justify-between gap-2 overflow-hidden">

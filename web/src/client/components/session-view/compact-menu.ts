@@ -252,7 +252,7 @@ export class CompactMenu extends LitElement {
     let menuItemIndex = 0;
     return html`
       <div 
-        class="absolute right-0 top-full mt-2 bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[250px]"
+        class="vt-content absolute right-0 top-full mt-2 bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[250px] max-w-[calc(100vw-16px)]"
         style="z-index: ${Z_INDEX.WIDTH_SELECTOR_DROPDOWN};"
       >
         
@@ -345,7 +345,7 @@ export class CompactMenu extends LitElement {
         <!-- Theme: light / dark / system in place -->
         <div class="flex items-center gap-3 px-4 pt-3 pb-2 text-sm font-mono text-primary">
           ${this.getThemeIcon()}
-          <div class="flex flex-1 rounded-lg border border-border overflow-hidden" role="group" aria-label=${t('menu.theme', { theme: this.getThemeLabel() })} data-testid="compact-theme-toggle">
+          <div class="flex flex-1 flex-wrap rounded-lg border border-border overflow-hidden" role="group" aria-label=${t('menu.theme', { theme: this.getThemeLabel() })} data-testid="compact-theme-toggle">
             ${(
               [
                 ['light', t('theme.light')],
@@ -355,7 +355,7 @@ export class CompactMenu extends LitElement {
             ).map(
               ([mode, label]) => html`
                 <button
-                  class="flex-1 px-2 py-1.5 text-xs font-mono ${this.currentTheme === mode ? 'bg-primary text-bg' : 'text-primary hover:bg-surface-hover'}"
+                  class="flex-1 min-w-max px-2 py-1.5 text-xs font-mono ${this.currentTheme === mode ? 'bg-primary text-bg' : 'text-primary hover:bg-surface-hover'}"
                   aria-pressed=${this.currentTheme === mode ? 'true' : 'false'}
                   data-testid="compact-theme-${mode}"
                   tabindex="${this.showMenu ? '0' : '-1'}"

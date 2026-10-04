@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from 'lit';
+import { html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/config.js';
@@ -14,6 +14,11 @@ import { ServerConfigService } from '../services/server-config-service.js';
 import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
 import { createLogger } from '../utils/logger.js';
 import { getPhoneUi, type PhoneUi, setPhoneUi } from '../utils/phone-ui.js';
+import {
+  readSystemTextSize,
+  systemTextSizeSupported,
+  writeSystemTextSize,
+} from '../utils/system-text-size.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
 import { isQuickSwitcherEnabled, setQuickSwitcherEnabled } from './session-quick-switcher.js';
@@ -517,7 +522,7 @@ export class Settings extends LitElement {
           class="modal-content font-mono text-sm w-full max-w-[calc(100vw-1rem)] sm:max-w-md lg:max-w-2xl mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col"
         >
           <!-- Header -->
-          <div class="p-4 pb-4 border-b border-border/50 relative flex-shrink-0">
+          <div class="vt-chrome p-4 pb-4 border-b border-border/50 relative flex-shrink-0">
             <h2 class="text-primary text-lg font-bold">${t('common.settings')}</h2>
             <button
               class="absolute top-4 right-4 text-text-muted hover:text-primary transition-colors p-1"
@@ -538,7 +543,7 @@ export class Settings extends LitElement {
           </div>
 
           <!-- Footer -->
-          <div class="p-4 pt-3 border-t border-border/50 flex-shrink-0">
+          <div class="vt-chrome p-4 pt-3 border-t border-border/50 flex-shrink-0">
             <div class="flex items-center justify-between text-xs font-mono">
               <span class="text-muted">v${VERSION}</span>
               <a href="/logs" class="text-primary hover:text-primary-hover transition-colors" target="_blank">
@@ -770,6 +775,46 @@ export class Settings extends LitElement {
             `
           )}
         </div>
+        ${this.renderSystemTextSize()}
+      </div>
+    `;
+  }
+
+  /** "Use the system text size" (utils/system-text-size.ts): iPhone and iPad only. */
+  @state() private systemTextSize = readSystemTextSize();
+
+  private handleSystemTextSizeToggle = () => {
+    this.systemTextSize = !this.systemTextSize;
+    writeSystemTextSize(this.systemTextSize);
+  };
+
+  private renderSystemTextSize() {
+    if (!systemTextSizeSupported()) return nothing;
+    const on = this.systemTextSize;
+    return html`
+      <div class="flex items-center justify-between gap-4 mt-4" data-testid="settings-system-text-size">
+        <div class="min-w-0">
+          <div class="text-primary font-medium" id="settings-system-text-size-label">
+            ${t('appearance.systemTextSize')}
+          </div>
+          <p class="text-muted text-xs mt-1">${t('appearance.systemTextSize.description')}</p>
+        </div>
+        <button
+          role="switch"
+          aria-checked=${on ? 'true' : 'false'}
+          aria-labelledby="settings-system-text-size-label"
+          data-testid="settings-system-text-size-toggle"
+          @click=${this.handleSystemTextSizeToggle}
+          class="relative flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-bg ${
+            on ? 'bg-primary' : 'bg-border'
+          }"
+        >
+          <span
+            class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+              on ? 'translate-x-5' : 'translate-x-0.5'
+            }"
+          ></span>
+        </button>
       </div>
     `;
   }

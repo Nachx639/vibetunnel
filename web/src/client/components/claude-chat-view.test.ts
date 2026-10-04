@@ -552,7 +552,8 @@ describe('ClaudeChatView', () => {
   it('keeps the time on one line under a one-character message', () => {
     const styles = ClaudeChatView.styles.toString();
     expect(styles).toMatch(/\.time \{[^}]*white-space: nowrap;/);
-    expect(styles).toMatch(/\.row\.user \.bubble \{\s*min-width: 84px;/);
+    // 84px, or more when the system text size makes the time wider.
+    expect(styles).toMatch(/\.row\.user \.bubble \{\s*min-width: max\(84px, 5\.25rem\);/);
   });
 
   it('does not open the search when a tap that closed something above it ends on its field', async () => {

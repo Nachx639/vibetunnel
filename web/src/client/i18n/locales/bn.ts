@@ -1001,4 +1001,7 @@ export const bn: Messages = {
   'chat.yesterday': 'গতকাল',
   'chat.yourInput': 'আপনার ইনপুট',
   'chat.sending': 'পাঠানো হচ্ছে…',
+  'appearance.systemTextSize': 'সিস্টেমের লেখার আকার ব্যবহার করুন',
+  'appearance.systemTextSize.description':
+    'iPhone বা iPad-এ সেট করা লেখার আকার অনুসরণ করে (সেটিংস → অ্যাক্সেসিবিলিটি → ডিসপ্লে ও টেক্সটের আকার)। টার্মিনাল নিজের আকার রাখে।',
 };

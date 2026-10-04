@@ -1025,4 +1025,7 @@ export const ptBR: Messages = {
   'chat.yesterday': 'Ontem',
   'chat.yourInput': 'sua entrada',
   'chat.sending': 'Enviando…',
+  'appearance.systemTextSize': 'Usar o tamanho de texto do sistema',
+  'appearance.systemTextSize.description':
+    'Segue o tamanho de texto do iPhone ou iPad (Ajustes → Acessibilidade → Tela e Tamanho do Texto). O terminal mantém o seu.',
 };

@@ -190,7 +190,7 @@ export class SessionHeader extends LitElement {
       </style>
       <!-- Header content -->
       <div
-        class="flex items-center justify-between border-b border-border text-sm min-w-0 max-w-[100vw] bg-bg-secondary py-2 session-header-container"
+        class="flex items-center justify-between border-b border-border text-sm min-w-0 max-w-[100vw] bg-bg-secondary py-2 session-header-container vt-chrome"
       >
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 overflow-hidden flex-shrink">
           <!-- Sidebar Toggle (when sidebar is collapsed) - visible on all screen sizes -->

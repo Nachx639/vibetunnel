@@ -179,7 +179,7 @@ export class TerminalChatView extends LitElement {
       border-radius: 1.5rem;
       color: var(--color-text);
       font-family: inherit;
-      font-size: 16px; /* Prevent zoom on iOS */
+      font-size: max(16px, 1rem); /* Prevent zoom on iOS */
       outline: none;
       -webkit-user-select: text;
       user-select: text;
@@ -205,12 +205,12 @@ export class TerminalChatView extends LitElement {
       background: none;
       color: var(--color-text);
       text-align: left;
-      font-size: 15px;
+      font-size: 0.9375rem;
     }
 
     .slash-list button span {
       color: var(--color-text-dim);
-      font-size: 13px;
+      font-size: 0.8125rem;
     }
 
     /* One-tap prompts above the composer; scrolls sideways, hidden while typing. */
@@ -243,7 +243,7 @@ export class TerminalChatView extends LitElement {
       background-color: var(--color-bg-tertiary);
       color: var(--color-text);
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
-      font-size: 14px;
+      font-size: 0.875rem;
       white-space: nowrap;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
@@ -283,14 +283,14 @@ export class TerminalChatView extends LitElement {
     .prompt-editor h2 {
       margin: 0;
       padding: 14px 16px 4px;
-      font-size: 16px;
+      font-size: 1rem;
     }
 
     .prompt-editor p {
       margin: 0;
       padding: 0 16px 8px;
       color: var(--color-text-dim);
-      font-size: 13px;
+      font-size: 0.8125rem;
     }
 
     .prompt-editor ol {
@@ -319,7 +319,7 @@ export class TerminalChatView extends LitElement {
       background-color: var(--color-bg-tertiary);
       color: var(--color-text);
       font: inherit;
-      font-size: 16px; /* Prevent zoom on iOS */
+      font-size: max(16px, 1rem); /* Prevent zoom on iOS */
     }
 
     .prompt-editor li button {
@@ -329,7 +329,7 @@ export class TerminalChatView extends LitElement {
       border-radius: 8px;
       background: none;
       color: var(--color-text-dim);
-      font-size: 18px;
+      font-size: 1.125rem;
     }
 
     .prompt-editor li button:disabled {
@@ -351,7 +351,7 @@ export class TerminalChatView extends LitElement {
       background-color: var(--color-bg-tertiary);
       color: var(--color-text);
       font: inherit;
-      font-size: 14px;
+      font-size: 0.875rem;
     }
 
     .prompt-editor footer .spacer {
@@ -364,12 +364,13 @@ export class TerminalChatView extends LitElement {
       color: white;
     }
 
+    /* Icon buttons stay in px: grown with the system text size they squeezed the field. */
     .attach-button {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 2.5rem;
-      height: 2.75rem;
+      width: 40px;
+      height: 44px;
       flex-shrink: 0;
       border: none;
       background: none;
@@ -402,8 +403,8 @@ export class TerminalChatView extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 2.75rem;
-      height: 2.75rem;
+      width: 44px;
+      height: 44px;
       background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
       border: none;
       border-radius: 50%;
@@ -435,7 +436,7 @@ export class TerminalChatView extends LitElement {
       margin: 0 12px 6px;
       padding: 6px 10px;
       border-radius: 10px;
-      font-size: 13px;
+      font-size: 0.8125rem;
       line-height: 1.35;
       color: var(--color-text);
       background: var(--color-bg-tertiary);
@@ -444,8 +445,8 @@ export class TerminalChatView extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 2.5rem;
-      height: 2.5rem;
+      width: 40px;
+      height: 40px;
       background-color: var(--color-bg-tertiary);
       border: 1px solid var(--color-border);
       border-radius: 50%;

@@ -990,4 +990,7 @@ export const zhCN: Messages = {
   'chat.yesterday': '昨天',
   'chat.yourInput': '你的输入',
   'chat.sending': '正在发送…',
+  'appearance.systemTextSize': '使用系统文字大小',
+  'appearance.systemTextSize.description':
+    '跟随 iPhone 或 iPad 上设置的文字大小（设置 → 辅助功能 → 显示与文字大小）。终端保留自己的字号。',
 };

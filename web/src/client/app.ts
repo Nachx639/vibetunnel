@@ -40,6 +40,7 @@ import { pushNotificationService } from './services/push-notification-service.js
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
 import { prunePinned } from './utils/pinned-sessions.js';
+import { watchSystemTextSize } from './utils/system-text-size.js';
 import { VisibilityPoller } from './utils/visibility-poller.js';
 
 const logger = createLogger('app');
@@ -150,6 +151,9 @@ export class VibeTunnelApp extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    // "Use the system text size" (off unless chosen): apply it, and re-read Dynamic Type
+    // when the page comes back.
+    watchSystemTextSize();
     // Safari only announces live regions that existed before their text changed.
     ensureLiveRegion();
     this.setupHotReload();

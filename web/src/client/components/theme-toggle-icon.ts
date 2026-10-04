@@ -73,9 +73,11 @@ export class ThemeToggleIcon extends LitElement {
       // anywhere from the left edge (phone) to the right (desktop).
       const rect = this.querySelector('button')?.getBoundingClientRect();
       if (rect) {
-        const width = 232;
+        // 232 px, wider with the system text size (14.5rem), never wider than the screen.
+        const rootPx = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+        const width = Math.min(Math.max(232, rootPx * 14.5), window.innerWidth - 16);
         const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
-        this.panelPosition = `top: ${rect.bottom + 8}px; left: ${left}px;`;
+        this.panelPosition = `top: ${rect.bottom + 8}px; left: ${left}px; width: ${width}px;`;
       }
     }
     this.open = open;

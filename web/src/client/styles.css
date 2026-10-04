@@ -219,6 +219,42 @@
   }
 }
 
+/*
+ * "Use the system text size" (Settings → Appearance, utils/system-text-size.ts): the root
+ * font follows iOS Dynamic Type, read by a probe and clamped to 16–22 px (--vt-root-text),
+ * so every rem text size scales. Spacing stays at 4 px steps: iOS grows text, not margins,
+ * and Tailwind's p-*, h-*, w-* in rem would double the header buttons and push the title out.
+ * Chrome (headers, the list's bottom bar, the Settings header and footer) grows at most
+ * 1.15× (--vt-chrome-scale): unclamped at AX5 the bottom bar took half the screen and the
+ * header read "V…". Only on touch WebKit: on a Mac the keyword is 13 px. Nothing here
+ * applies unless the switch is on (html[data-text-size]).
+ */
+@supports (-webkit-touch-callout: none) {
+  html[data-text-size='system'] {
+    font-size: var(--vt-root-text, 16px);
+    --spacing: 4px;
+  }
+  /* Phones and small windows; an iPad's sm: header sizes are left alone. Menus that open
+     from the chrome (.vt-content) are content: they scale up to the cap. */
+  @media (max-width: 639px) {
+    html[data-text-size='system'] :is(.vt-chrome .text-xs, .vt-chrome.text-xs):not(.vt-content *) {
+      font-size: calc(12px * var(--vt-chrome-scale, 1));
+    }
+    html[data-text-size='system'] :is(.vt-chrome .text-sm, .vt-chrome.text-sm):not(.vt-content *) {
+      font-size: calc(14px * var(--vt-chrome-scale, 1));
+    }
+    html[data-text-size='system'] :is(.vt-chrome .text-base, .vt-chrome.text-base):not(.vt-content *) {
+      font-size: calc(16px * var(--vt-chrome-scale, 1));
+    }
+    html[data-text-size='system'] :is(.vt-chrome .text-lg, .vt-chrome.text-lg):not(.vt-content *) {
+      font-size: calc(18px * var(--vt-chrome-scale, 1));
+    }
+    html[data-text-size='system'] :is(.vt-chrome .text-xl, .vt-chrome.text-xl):not(.vt-content *) {
+      font-size: calc(20px * var(--vt-chrome-scale, 1));
+    }
+  }
+}
+
 /* Global theme-aware styles */
 @layer base {
   html {
@@ -2599,18 +2635,18 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--color-text);
 }
 .psr-time {
   flex: none;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-text-dim);
 }
 .psr-flag {
   flex: none;
-  font-size: 11px;
+  font-size: 0.6875rem;
   line-height: 1;
   opacity: 0.75;
 }
@@ -2620,14 +2656,14 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.35;
   color: var(--color-text-muted);
   word-break: break-word;
 }
 .psr-path {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .psr-menu {
   flex: none;
@@ -2660,7 +2696,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   width: 100%;
   padding: 11px 12px;
   border-radius: 9px;
-  font-size: 15px;
+  font-size: 0.9375rem;
   color: var(--color-text);
   text-align: start;
 }
@@ -2679,7 +2715,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 }
 .phone-menu-user {
   padding: 4px 12px 2px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-text-dim);
 }
 /* Phone row action sheet (phone-session-row.ts) */
@@ -2718,7 +2754,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 .psr-sheet-title {
   padding: 12px 16px;
   text-align: center;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--color-text-dim);
   border-bottom: 1px solid var(--color-border-light);
   overflow: hidden;
@@ -2736,7 +2772,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   display: block;
   width: 100%;
   padding: 16px;
-  font-size: 18px;
+  font-size: 1.125rem;
   color: var(--color-primary-text);
   text-align: center;
 }
@@ -2781,7 +2817,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 16px;
+  font-size: 1rem;
   color: var(--color-text);
 }
 /* Phone start screen when nothing is running (session-list.ts) */
@@ -2795,20 +2831,20 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
 }
 .phone-empty h2 {
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 700;
   color: var(--color-text);
 }
 .phone-empty p {
   max-width: 300px;
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.45;
   color: var(--color-text-muted);
   margin-bottom: 12px;
 }
 .phone-empty-link {
   margin-top: 8px;
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--color-primary-text);
 }
 .phone-empty-tools {
@@ -2824,7 +2860,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   color: var(--color-text);
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2865,13 +2901,13 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   border: none;
   outline: none;
   color: var(--color-text);
-  font: 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  font: max(16px, 1rem) -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
 }
 .phone-search-empty {
   padding: 24px 0;
   text-align: center;
   color: var(--color-text-dim);
-  font: 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  font: 0.9375rem -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
 }
 
 /* Session switcher sheet (session-view/session-switcher-sheet.ts) */
@@ -2882,7 +2918,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   min-height: 60px;
   padding: 10px 14px;
   text-align: left;
-  font-size: 15px;
+  font-size: 0.9375rem;
   color: var(--color-text);
 }
 .vt-switch-list {
@@ -3063,18 +3099,20 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   animation: scaleIn 140ms ease-out;
 }
 .appearance-modes {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
   gap: 4px;
   padding: 3px;
   border-radius: 10px;
   background: var(--color-bg-tertiary);
+  flex-wrap: wrap;
 }
 .appearance-mode {
-  padding: 6px 0;
+  padding: 6px 8px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--color-text-muted);
+  flex: 1 1 0;
+  min-width: max-content;
 }
 .appearance-mode.active {
   background: var(--color-bg-elevated);
@@ -3084,7 +3122,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 }
 .appearance-label {
   margin: 12px 2px 8px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -3127,7 +3165,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   border: 1px solid var(--color-border);
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
   color: var(--color-text-muted);
-  font: 500 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  font: 500 0.8125rem -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
   animation: fadeIn 200ms ease-out;
 }
 .reconnecting-dot {

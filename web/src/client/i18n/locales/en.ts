@@ -1020,6 +1020,9 @@ export const en = {
   'chat.yesterday': 'Yesterday',
   'chat.yourInput': 'your input',
   'chat.sending': 'Sending…',
+  'appearance.systemTextSize': 'Use the system text size',
+  'appearance.systemTextSize.description':
+    'Follow the text size set on the iPhone or iPad (Settings → Accessibility → Display & Text Size). The terminal keeps its own size.',
 };
 
 export type MessageKey = keyof typeof en;

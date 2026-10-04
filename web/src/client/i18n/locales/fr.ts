@@ -1037,4 +1037,7 @@ export const fr: Messages = {
   'chat.yesterday': 'Hier',
   'chat.yourInput': 'votre saisie',
   'chat.sending': 'Envoi…',
+  'appearance.systemTextSize': 'Utiliser la taille de texte du système',
+  'appearance.systemTextSize.description':
+    'Suit la taille du texte réglée sur l’iPhone ou l’iPad (Réglages → Accessibilité → Affichage et taille du texte). Le terminal garde la sienne.',
 };

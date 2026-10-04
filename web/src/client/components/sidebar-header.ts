@@ -17,7 +17,7 @@ export class SidebarHeader extends HeaderBase {
 
     return html`
       <div
-        class="app-header sidebar-header bg-bg-secondary px-4 py-2"
+        class="app-header sidebar-header vt-chrome bg-bg-secondary px-4 py-2"
         style="padding-top: max(0.625rem, env(safe-area-inset-top));"
       >
         <!-- Compact layout for sidebar -->

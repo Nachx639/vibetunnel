@@ -998,4 +998,7 @@ export const ar: Messages = {
   'chat.yesterday': 'أمس',
   'chat.yourInput': 'مُدخلك',
   'chat.sending': 'جارٍ الإرسال…',
+  'appearance.systemTextSize': 'استخدام حجم نص النظام',
+  'appearance.systemTextSize.description':
+    'يتبع حجم النص المضبوط على iPhone أو iPad (الإعدادات ← تسهيلات الاستخدام ← شاشة العرض وحجم النص). تحتفظ الطرفية بحجمها.',
 };
