@@ -52,6 +52,53 @@ describe('InputManager', () => {
     terminalSocketClientMock.sendInputKey.mockClear();
   });
 
+  it.each([
+    [true, '\x1b[200~line one\nline two\x1b[201~'],
+    [false, 'line one\nline two'],
+  ])('pastes multi-line text with bracketed paste=%s', async (bracketed, expected) => {
+    terminalSocketClientMock.sendInputText.mockReturnValue(true);
+    inputManager.setCallbacks({
+      ...mockCallbacks,
+      getTerminalElement: () =>
+        ({ isBracketedPasteEnabled: () => bracketed }) as unknown as ReturnType<
+          NonNullable<Parameters<InputManager['setCallbacks']>[0]['getTerminalElement']>
+        >,
+    });
+
+    await inputManager.sendPastedText('line one\nline two');
+
+    expect(terminalSocketClientMock.sendInputText).toHaveBeenCalledWith(
+      'test-session-id',
+      expected
+    );
+  });
+
+  it('keeps HTTP fallback writes in the order they were sent', async () => {
+    terminalSocketClientMock.sendInputText.mockReturnValue(false);
+    const bodies: string[] = [];
+    let releaseFirst: () => void = () => {};
+    vi.mocked(global.fetch).mockImplementation(async (url, init) => {
+      if (!String(url).endsWith('/input')) return { ok: true, status: 200 } as Response;
+      bodies.push(String(init?.body));
+      if (bodies.length === 1) {
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return { ok: true, status: 200 } as Response;
+    });
+
+    const message = inputManager.sendInputText('hello');
+    const enter = inputManager.sendInputText('\r');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(bodies).toHaveLength(1);
+
+    releaseFirst();
+    await Promise.all([message, enter]);
+    expect(bodies.map((b) => JSON.parse(b).text)).toEqual(['hello', '\r']);
+  });
+
   afterEach(() => {
     inputManager.cleanup();
     vi.useRealTimers();

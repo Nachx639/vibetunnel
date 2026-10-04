@@ -7,12 +7,15 @@ import type { InputManager } from './input-manager';
 
 describe('DirectKeyboardManager', () => {
   let manager: DirectKeyboardManager;
-  let mockInputManager: Pick<InputManager, 'isKeyboardShortcut' | 'sendInput' | 'sendInputText'>;
+  let mockInputManager: Pick<
+    InputManager,
+    'isKeyboardShortcut' | 'sendInput' | 'sendInputText' | 'sendPastedText'
+  >;
   let originalRequestAnimationFrame: typeof requestAnimationFrame;
 
   const getManagerState = () =>
     manager as unknown as {
-      hiddenInput: HTMLInputElement | null;
+      hiddenInput: HTMLTextAreaElement | null;
       focusRetentionInterval: number | null;
       keyboardReopenTimeout: ReturnType<typeof setTimeout> | null;
       reopeningKeyboard: boolean;
@@ -32,6 +35,7 @@ describe('DirectKeyboardManager', () => {
       isKeyboardShortcut: vi.fn().mockReturnValue(false),
       sendInput: vi.fn(),
       sendInputText: vi.fn(),
+      sendPastedText: vi.fn(),
     };
     manager.setInputManager(mockInputManager as InputManager);
 
@@ -62,7 +66,7 @@ describe('DirectKeyboardManager', () => {
   it('should handle Paste quick key and send clipboard content', async () => {
     await manager.handleQuickKeyPress('Paste');
     expect(navigator.clipboard.readText).toHaveBeenCalled();
-    expect(mockInputManager.sendInputText).toHaveBeenCalledWith('clipboard content');
+    expect(mockInputManager.sendPastedText).toHaveBeenCalledWith('clipboard content');
   });
 
   it('recreates the hidden input only for an explicit keyboard reopen', () => {
@@ -134,6 +138,31 @@ describe('DirectKeyboardManager', () => {
     hiddenInput.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
 
     expect(mockInputManager.sendInputText).toHaveBeenCalledWith(expected);
+  });
+
+  it('uses a textarea, so phones show no AutoFill bar above the keyboard', () => {
+    expect(getManagerState().hiddenInput?.tagName).toBe('TEXTAREA');
+  });
+
+  it('sends only the newly typed characters when typing outpaces the placeholder reset', () => {
+    const hiddenInput = getManagerState().hiddenInput;
+    expect(hiddenInput).toBeTruthy();
+    if (!hiddenInput) return;
+
+    // Fast typing: the value keeps accumulating because the reset to the placeholder only
+    // happens on the next animation frame.
+    for (const [value, data] of [
+      [' c', 'c'],
+      [' cu', 'u'],
+      [' cue', 'e'],
+    ]) {
+      hiddenInput.value = value;
+      hiddenInput.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertText', data })
+      );
+    }
+
+    expect(vi.mocked(mockInputManager.sendInputText).mock.calls).toEqual([['c'], ['u'], ['e']]);
   });
 
   it('sends Escape without bubbling to app navigation', () => {

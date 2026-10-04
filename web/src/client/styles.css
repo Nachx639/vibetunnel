@@ -2766,3 +2766,14 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
     animation-iteration-count: infinite !important;
   }
 }
+
+/* iOS (Safari and Chrome) zooms the whole page when a field with text under 16px gets
+ * focus, pushing modals such as New Session off the right edge. Keep form fields at 16px
+ * on touch phones; pinch zoom stays available. */
+@media (max-width: 768px) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

@@ -243,7 +243,7 @@ export class TerminalLifecycleManager {
     const customEvent = e as CustomEvent;
     const text = customEvent.detail?.text;
     if (text && this.session && this.inputManager) {
-      this.inputManager.sendInputText(text);
+      this.inputManager.sendPastedText(text);
     }
   }
 

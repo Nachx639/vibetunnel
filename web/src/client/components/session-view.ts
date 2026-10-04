@@ -1118,7 +1118,7 @@ export class SessionView extends LitElement {
       if (navigator.clipboard?.readText) {
         const text = await navigator.clipboard.readText();
         if (text && this.inputManager) {
-          await this.inputManager.sendInputText(text);
+          await this.inputManager.sendPastedText(text);
         }
       }
     } catch (error) {

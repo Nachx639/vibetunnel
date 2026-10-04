@@ -63,7 +63,7 @@ export interface DirectKeyboardCallbacks {
 }
 
 export class DirectKeyboardManager extends ManagerEventEmitter {
-  private hiddenInput: HTMLInputElement | null = null;
+  private hiddenInput: HTMLTextAreaElement | null = null;
   private focusRetentionInterval: number | null = null;
   // While reopening the keyboard via TAP, suppress all automatic re-focus (interval,
   // focus handler, blur re-focus) so they don't make iOS think the field is already
@@ -282,8 +282,14 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
   }
 
   private createHiddenInput(): void {
-    this.hiddenInput = document.createElement('input');
-    this.hiddenInput.type = 'text';
+    // A textarea, not <input type="text">: mobile browsers attach their AutoFill bar
+    // (passwords / cards / addresses) above the keyboard for single-line inputs, which
+    // cost about 60px above the quick keys in Chrome on iOS. Enter is intercepted on keydown.
+    this.hiddenInput = document.createElement('textarea');
+    this.hiddenInput.rows = 1;
+    this.hiddenInput.wrap = 'off';
+    this.hiddenInput.style.resize = 'none';
+    this.hiddenInput.style.overflow = 'hidden';
     this.hiddenInput.style.position = 'absolute';
 
     // Hidden input that receives keyboard focus
@@ -354,7 +360,7 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
 
     // Handle input events (non-composition)
     this.hiddenInput.addEventListener('input', (e) => {
-      const input = e.target as HTMLInputElement;
+      const input = e.target as HTMLTextAreaElement;
       const inputEvent = e as InputEvent;
 
       // Skip processing if we're in the middle of IME composition
@@ -397,6 +403,20 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
           if (this.hiddenInput && document.activeElement === this.hiddenInput) {
             this.hiddenInput.value = ' ';
             this.hiddenInput.setSelectionRange(0, 0);
+          }
+        });
+        return;
+      }
+
+      // Typed characters: send exactly what this event inserted. The value is only reset to
+      // the placeholder on the next animation frame, so with fast typing several input events
+      // see the accumulated value; resending it turned "cue" into "ccucue".
+      if (inputEvent.inputType === 'insertText' && inputEvent.data && this.inputManager) {
+        this.inputManager.sendInputText(inputEvent.data);
+        requestAnimationFrame(() => {
+          if (this.hiddenInput && document.activeElement === this.hiddenInput) {
+            this.hiddenInput.value = ' ';
+            this.hiddenInput.setSelectionRange(1, 1);
           }
         });
         return;
@@ -477,9 +497,11 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
           logger.log('Showing quick keys due to keyboard mode');
         }
 
-        // iOS specific: Set selection to trigger keyboard
+        // iOS specific: Set selection to trigger keyboard. The caret goes AFTER the
+        // single-space placeholder (offset 1), as the backspace handler leaves it, so
+        // backspace keeps repeating on iPad.
         if (this.hiddenInput) {
-          this.hiddenInput.setSelectionRange(0, 0);
+          this.hiddenInput.setSelectionRange(1, 1);
         }
       } else if (!this.callbacks?.getChatMode()) {
         // Only show quick keys if keyboard is actually visible (skip in chat mode)
@@ -644,7 +666,7 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
 
           if (text && this.inputManager) {
             logger.log('Sending clipboard text to terminal');
-            this.inputManager.sendInputText(text);
+            this.inputManager.sendPastedText(text);
             return; // Success - exit early
           } else if (!text) {
             logger.warn('Clipboard is empty or contains no text');
@@ -928,7 +950,7 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
 
       if (clipboardData && this.inputManager) {
         logger.log('Sending native paste text to terminal');
-        this.inputManager.sendInputText(clipboardData);
+        this.inputManager.sendPastedText(clipboardData);
       } else {
         logger.warn('No clipboard data received in paste event');
       }
@@ -968,7 +990,7 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
         const clipboardData = pasteEvent.clipboardData?.getData('text/plain');
         if (clipboardData && this.inputManager) {
           logger.log('Global paste event captured, text length:', clipboardData.length);
-          this.inputManager.sendInputText(clipboardData);
+          this.inputManager.sendPastedText(clipboardData);
           pasteEvent.preventDefault();
           pasteEvent.stopPropagation();
         }
