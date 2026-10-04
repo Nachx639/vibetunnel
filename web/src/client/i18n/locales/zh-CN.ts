@@ -887,4 +887,7 @@ export const zhCN: Messages = {
   'switcher.quickLabel': '快速切换会话',
   'switcher.quickPlaceholder': '切换会话…（输入以筛选）',
   'switcher.noMatches': '没有匹配的会话',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': '断开连接',
+  'sessions.row.disconnectConfirm': '断开与“{name}”的连接？它会继续在 tmux 中运行。',
 };

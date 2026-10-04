@@ -917,6 +917,9 @@ export const en = {
   'switcher.quickLabel': 'Quick switch session',
   'switcher.quickPlaceholder': 'Switch session… (type to filter)',
   'switcher.noMatches': 'No matching sessions',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'Disconnect',
+  'sessions.row.disconnectConfirm': 'Disconnect from “{name}”? It keeps running in tmux.',
 };
 
 export type MessageKey = keyof typeof en;

@@ -895,4 +895,7 @@ export const ar: Messages = {
   'switcher.quickLabel': 'تبديل سريع للجلسة',
   'switcher.quickPlaceholder': 'تبديل الجلسة… (اكتب للتصفية)',
   'switcher.noMatches': 'لا توجد جلسات مطابقة',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'قطع الاتصال',
+  'sessions.row.disconnectConfirm': 'قطع الاتصال بـ «{name}»؟ ستستمر في العمل داخل tmux.',
 };

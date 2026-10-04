@@ -898,4 +898,7 @@ export const bn: Messages = {
   'switcher.quickLabel': 'দ্রুত সেশন বদলান',
   'switcher.quickPlaceholder': 'সেশন বদলান… (ফিল্টার করতে লিখুন)',
   'switcher.noMatches': 'কোনো সেশন মেলেনি',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'বিচ্ছিন্ন করুন',
+  'sessions.row.disconnectConfirm': '“{name}” থেকে বিচ্ছিন্ন হবেন? এটি tmux-এ চলতে থাকবে।',
 };

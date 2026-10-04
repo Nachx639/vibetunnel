@@ -896,4 +896,7 @@ export const hi: Messages = {
   'switcher.quickLabel': 'सत्र जल्दी बदलें',
   'switcher.quickPlaceholder': 'सत्र बदलें… (फ़िल्टर करने के लिए लिखें)',
   'switcher.noMatches': 'कोई सत्र मेल नहीं खाता',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'डिस्कनेक्ट करें',
+  'sessions.row.disconnectConfirm': '“{name}” से डिस्कनेक्ट करें? यह tmux में चलता रहेगा।',
 };

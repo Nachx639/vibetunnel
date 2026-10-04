@@ -921,4 +921,7 @@ export const ptBR: Messages = {
   'switcher.quickLabel': 'Troca rápida de sessão',
   'switcher.quickPlaceholder': 'Trocar de sessão… (digite para filtrar)',
   'switcher.noMatches': 'Nenhuma sessão corresponde',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'Desconectar',
+  'sessions.row.disconnectConfirm': 'Desconectar de “{name}”? Ela continua rodando no tmux.',
 };

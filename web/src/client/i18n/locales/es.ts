@@ -923,4 +923,7 @@ export const es: Messages = {
   'switcher.quickLabel': 'Cambio rápido de sesión',
   'switcher.quickPlaceholder': 'Cambiar de sesión… (escribe para filtrar)',
   'switcher.noMatches': 'Ninguna sesión coincide',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'Desconectar',
+  'sessions.row.disconnectConfirm': '¿Desconectar de «{name}»? Seguirá en marcha en tmux.',
 };
