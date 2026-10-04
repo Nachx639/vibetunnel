@@ -218,6 +218,31 @@ describe('SessionView phone chat with agent chat', () => {
     );
   });
 
+  it('lays the chat out for a phone on its side only in the compact phone layout', async () => {
+    const landscapeOf = () => ({
+      chat: (element.querySelector('claude-chat-view') as ClaudeChatView | null)?.landscape,
+      composer: (
+        element.querySelector('terminal-chat-view[composeronly]') as TerminalChatView | null
+      )?.landscape,
+    });
+    // A small phone on its side, under Safari's bars.
+    setViewport(667, 330);
+
+    // Classic layout (the default): unchanged, no landscape chat.
+    await open({ agentChat: true });
+    await enterChatMode();
+    expect(landscapeOf()).toEqual({ chat: false, composer: false });
+    element.remove();
+
+    // Compact layout: the centred column and the composer's ⚡ button.
+    vi.mocked(localStorage.getItem).mockImplementation((key: string) =>
+      key === 'vibetunnel_app_preferences' ? JSON.stringify({ phoneUi: 'compact' }) : null
+    );
+    await open({ agentChat: true });
+    await enterChatMode();
+    expect(landscapeOf()).toEqual({ chat: true, composer: true });
+  });
+
   it('keeps the classic desktop chat mode even with agent chat on', async () => {
     await open({ agentChat: true, mobile: false });
     await enterChatMode();

@@ -234,6 +234,18 @@ export class TerminalChatView extends LitElement {
       border-top: none;
     }
 
+    /* One slim row, opened from the composer on a phone on its side. */
+    .quick-prompts.slim {
+      padding-top: 4px;
+    }
+    .quick-prompts.slim .quick-prompt {
+      min-height: 30px;
+      padding: 0 10px;
+    }
+    .prompts-toggle.open {
+      color: var(--color-primary);
+    }
+
     .quick-prompt {
       flex-shrink: 0;
       min-height: 36px;
@@ -697,6 +709,14 @@ export class TerminalChatView extends LitElement {
   @property({ type: Boolean }) active = false;
   /** Render only the input bar (phones show the live terminal above it). */
   @property({ type: Boolean }) composerOnly = false;
+  /**
+   * A phone on its side (utils/short-landscape.ts), compact phone layout. The prompt chips stay
+   * hidden, but a ⚡ button in the composer opens them as one slim row: the chat has about
+   * 190 pt there, and a row of chips always shown took a fifth of it.
+   */
+  @property({ type: Boolean }) landscape = false;
+  /** The slim row of prompt chips opened from the composer (`landscape`). */
+  @state() private promptsOpen = false;
   @property({ type: String }) pendingInput = '';
   @property({ type: String }) sessionId = '';
   /** Whether the session runs Claude Code, when the parent knows; quick prompts hide only on false. */
@@ -1534,6 +1554,7 @@ export class TerminalChatView extends LitElement {
                 </button>`
               : nothing
           }
+          ${this.renderPromptsToggle()}
           ${
             this.composerOnly
               ? html`<textarea
@@ -1714,15 +1735,26 @@ export class TerminalChatView extends LitElement {
 
   private syncComposerEmpty() {
     this.composerEmpty = !this.inputElement?.value.trim();
+    // Typing closes the slim row of prompts (landscape): it doesn't come back after the send.
+    if (!this.composerEmpty) this.promptsOpen = false;
+  }
+
+  /** Whether quick prompts make sense now, room aside. */
+  private quickPromptsOffered(): boolean {
+    if (!this.composerOnly || !this.composerEmpty) return false;
+    // Quick prompts are for Claude Code, not plain shells.
+    return this.claudeSession !== false;
   }
 
   private renderQuickPrompts() {
-    if (!this.composerOnly || !this.composerEmpty) return nothing;
-    // Quick prompts are for Claude Code, not plain shells.
-    if (this.claudeSession === false) return nothing;
+    if (!this.quickPromptsOffered()) return nothing;
+    // On a phone on its side the chips show only when opened from the composer.
+    if (this.landscape && !this.promptsOpen) return nothing;
     const prompts = this.customPrompts ?? defaultQuickPrompts();
     return html`<div
-      class="quick-prompts"
+      class="quick-prompts ${this.landscape ? 'slim' : ''}"
+      id="quick-prompts-row"
+      data-testid="quick-prompts"
       role="toolbar"
       aria-label=${t('prompts.rowLabel')}
       @click=${(e: Event) => e.stopPropagation()}
@@ -1912,10 +1944,34 @@ export class TerminalChatView extends LitElement {
     };
   }
 
+  /** The composer's button for the prompt chips on a phone on its side (`landscape`). */
+  private renderPromptsToggle() {
+    if (!this.landscape || !this.quickPromptsOffered()) return nothing;
+    const toggle = () => {
+      this.promptsOpen = !this.promptsOpen;
+    };
+    return html`<button
+      class="attach-button prompts-toggle ${this.promptsOpen ? 'open' : ''}"
+      data-testid="quick-prompts-toggle"
+      aria-label=${t('prompts.rowLabel')}
+      title=${t('prompts.rowLabel')}
+      aria-expanded=${this.promptsOpen ? 'true' : 'false'}
+      aria-controls="quick-prompts-row"
+      @pointerdown=${(e: Event) => e.preventDefault()}
+      @mousedown=${(e: Event) => e.preventDefault()}
+      @pointerup=${this.quickPromptTap(toggle)}
+      @click=${this.quickPromptTap(toggle)}
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>
+    </button>`;
+  }
+
   /** Send the prompt as if typed and sent; a "…" template goes into the field instead. */
   private runQuickPrompt(prompt: QuickPrompt) {
     const input = this.inputElement;
     if (!input) return;
+    // The slim row opened for this prompt has done its job.
+    this.promptsOpen = false;
     const template = templateText(prompt.text);
     if (template !== null) {
       input.value = template;

@@ -642,6 +642,25 @@ export class ClaudeChatView extends LitElement {
       display: flex;
       flex-direction: column;
     }
+    /* A phone on its side: a centred column at most 720 px wide. */
+    :host([landscape]) .scroller {
+      --chat-column-inset: max(10px, calc((100% - 720px) / 2));
+      padding-left: var(--chat-column-inset);
+      padding-right: var(--chat-column-inset);
+    }
+    /* The mode chip over the conversation's bottom left corner, in line with the column; the
+       conversation ends above it. */
+    .mode-row.floating {
+      position: absolute;
+      left: max(10px, calc((100% - 720px) / 2));
+      bottom: 12px;
+      z-index: 1;
+      padding: 0;
+      background: none;
+    }
+    .scroll-area.with-mode .scroller {
+      padding-bottom: 48px;
+    }
     .jump {
       position: absolute;
       right: 12px;
@@ -1236,6 +1255,13 @@ export class ClaudeChatView extends LitElement {
 
   @property({ type: String }) sessionId = '';
   @property({ type: Boolean, reflect: true }) unavailable = false;
+  /**
+   * A phone on its side (utils/short-landscape.ts), compact phone layout: the conversation is a
+   * centred column at most 720 px wide instead of bubbles along the left edge of a wide screen,
+   * and the permission mode is a small chip floating over the conversation instead of a row
+   * of its own (the chat has about 190 pt there).
+   */
+  @property({ type: Boolean, reflect: true }) landscape = false;
   /** Last lines of the terminal screen, where Claude Code shows its mode. */
   @property({ attribute: false }) getScreenTail?: () => string;
 
@@ -2331,7 +2357,7 @@ export class ClaudeChatView extends LitElement {
     return html`
       ${this.renderTop()}
       ${this.offline ? html`<div class="offline" role="status">${t('chat.offline')}</div>` : nothing}
-      <div class="scroll-area">
+      <div class="scroll-area ${this.floatingMode ? 'with-mode' : ''}">
       <div
         class="scroller"
         @scroll=${this.handleScroll}
@@ -2358,6 +2384,7 @@ export class ClaudeChatView extends LitElement {
             : nothing
         }
       </div>
+      ${this.floatingMode && this.mode ? this.renderModeRow(this.mode, true) : nothing}
       ${
         this.showJump
           ? html`<button
@@ -2371,22 +2398,27 @@ export class ClaudeChatView extends LitElement {
           : nothing
       }
       </div>
-      ${
-        this.mode
-          ? html`<div class="mode-row">
-              <button
-                class="mode"
-                data-testid="mode-chip"
-                aria-haspopup="dialog"
-                @click=${this.openModePicker}
-                aria-label=${t('chat.changeMode')}
-              >
-                ${modeLabel(this.mode)}<span aria-hidden="true">▾</span>
-              </button>
-            </div>`
-          : nothing
-      }
+      ${this.mode && !this.floatingMode ? this.renderModeRow(this.mode, false) : nothing}
     `;
+  }
+
+  /** The mode chip floats over the conversation on a phone on its side. */
+  private get floatingMode(): boolean {
+    return Boolean(this.mode) && this.landscape;
+  }
+
+  private renderModeRow(mode: string, floating: boolean) {
+    return html`<div class="mode-row ${floating ? 'floating' : ''}">
+      <button
+        class="mode"
+        data-testid="mode-chip"
+        aria-haspopup="dialog"
+        @click=${this.openModePicker}
+        aria-label=${t('chat.changeMode')}
+      >
+        ${modeLabel(mode)}<span aria-hidden="true">▾</span>
+      </button>
+    </div>`;
   }
 }
 

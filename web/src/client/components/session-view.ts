@@ -26,6 +26,8 @@ import { GitService } from '../services/git-service.js';
 import { agentChatEnabled } from '../utils/agent-chat.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
+import { usesCompactPhoneUi } from '../utils/phone-ui.js';
+import { ShortLandscapeController } from '../utils/short-landscape.js';
 import { TERMINAL_IDS } from '../utils/terminal-constants.js';
 import type { TerminalThemeId } from '../utils/terminal-themes.js';
 // Manager imports
@@ -199,6 +201,17 @@ export class SessionView extends LitElement {
   @state() private agentChat = false;
   /** The chat view shows this session's conversation, over the terminal. */
   @state() private chatCovers = false;
+
+  /**
+   * A phone on its side (utils/short-landscape.ts): the agent chat is a centred column and its
+   * chips are reachable without taking rows (claude-chat-view, terminal-chat-view `landscape`).
+   */
+  private readonly shortLandscape = new ShortLandscapeController(this);
+
+  /** The landscape chat layout: a phone on its side, in the compact phone layout only. */
+  private chatLandscape(): boolean {
+    return this.shortLandscape.value && usesCompactPhoneUi();
+  }
 
   /**
    * Phone chat mode with agent chat on: the agent's conversation (when the session runs one)
@@ -1631,6 +1644,7 @@ export class SessionView extends LitElement {
                 <claude-chat-view
                   style="position: absolute; inset: 0; z-index: 5;"
                   .sessionId=${this.session.id}
+                  .landscape=${this.chatLandscape()}
                   .getScreenTail=${() =>
                     this.terminalLifecycleManager.getTerminal()?.getScreenText(30) ?? ''}
                   @claude-chat-open-terminal=${() => this.handleToggleChatMode()}
@@ -1674,6 +1688,7 @@ export class SessionView extends LitElement {
             ? html`
           <terminal-chat-view
             composerOnly
+            .landscape=${this.chatLandscape()}
             .claudeSession=${this.session?.command?.some((part) => /(^|\/)claude$/.test(part)) ?? false}
             @composer-attach=${() => this.fileOperationsManager.pickImagesForComposer()}
             @composer-focus=${this.handleComposerFocus}
