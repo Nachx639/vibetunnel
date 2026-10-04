@@ -2737,3 +2737,32 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
     opacity: 0.35;
   }
 }
+
+/*
+ * Reduced motion (the system's Reduce Motion setting): sheets, transitions and view changes
+ * happen instantly. Indicators that something is in progress keep moving, slower; decorative
+ * loops stop.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+  .animate-spin,
+  .animate-pulse,
+  .reconnecting-dot {
+    animation-duration: 2.4s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
