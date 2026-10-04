@@ -3,13 +3,14 @@
  *
  * This simplified service provides:
  * - Basic subscription storage
- * - Simple notification sending without user tracking or preferences
+ * - Notification sending, filtered by the notification settings (no user tracking)
  */
 
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import type webpush from 'web-push';
+import type { NotificationPreferences } from '../../types/config.js';
 import { createLogger } from '../utils/logger.js';
 import type { VapidManager } from '../utils/vapid-manager.js';
 import type { BellNotificationPayload } from './bell-event-handler.js';
@@ -56,7 +57,31 @@ export interface SendNotificationResult {
   sent: number;
   failed: number;
   errors: string[];
+  /** Why nothing was sent, when it was skipped on purpose. */
+  skipped?: 'preferences' | 'no-subscriptions';
 }
+
+/** How long the push service keeps an undelivered notification (phone offline). */
+const PUSH_TTL_SECONDS = 60 * 60;
+/** Per-subscription network timeout for one push request. */
+const PUSH_TIMEOUT_MS = 10_000;
+
+/**
+ * Which Settings switch governs each push type. Types not listed (test pushes) are always
+ * sent.
+ */
+export const NOTIFICATION_PREFERENCE_FOR_TYPE: Record<string, keyof NotificationPreferences> = {
+  'session-start': 'sessionStart',
+  'session-exit': 'sessionExit',
+  // A non-zero exit is usually a session the user killed: same switch as a normal exit.
+  'session-error': 'sessionExit',
+  'command-finished': 'commandCompletion',
+  'command-error': 'commandError',
+  bell: 'bell',
+};
+
+/** At most one bell push per session in this window. */
+export const BELL_THROTTLE_MS = 60_000;
 
 /**
  * Simplified push notification service
@@ -65,11 +90,13 @@ export class PushNotificationService {
   private vapidManager: VapidManager;
   private subscriptions = new Map<string, PushSubscription>();
   private initialized = false;
+  private isTypeAllowed: (type: string) => boolean = () => true;
+  private lastBellAt = new Map<string, number>();
   private readonly subscriptionsFile: string;
 
-  constructor(vapidManager: VapidManager) {
+  constructor(vapidManager: VapidManager, storageDir?: string) {
     this.vapidManager = vapidManager;
-    const storageDir = path.join(os.homedir(), '.vibetunnel/notifications');
+    storageDir ??= path.join(os.homedir(), '.vibetunnel/notifications');
     this.subscriptionsFile = path.join(storageDir, 'subscriptions.json');
   }
 
@@ -136,22 +163,53 @@ export class PushNotificationService {
     return Array.from(this.subscriptions.values()).filter((sub) => sub.isActive);
   }
 
+  /** Drop push types the user switched off in Settings. */
+  setPreferenceFilter(filter: (type: string) => boolean): void {
+    this.isTypeAllowed = filter;
+  }
+
+  /**
+   * A terminal bell from a session. Programs ring it in bursts, so on its own it flooded the
+   * phone: at most one bell push per session per BELL_THROTTLE_MS. Returns false when this
+   * bell should not be pushed.
+   */
+  allowBell(sessionId: string): boolean {
+    const now = Date.now();
+    if (now - (this.lastBellAt.get(sessionId) ?? 0) < BELL_THROTTLE_MS) return false;
+    this.lastBellAt.set(sessionId, now);
+    if (this.lastBellAt.size > 1000) {
+      for (const [id, at] of this.lastBellAt) {
+        if (now - at >= BELL_THROTTLE_MS) this.lastBellAt.delete(id);
+      }
+    }
+    return true;
+  }
+
   /**
    * Send notification to all subscriptions
    */
   async sendNotification(payload: NotificationPayload): Promise<SendNotificationResult> {
+    // Say in the log why a push was not sent. Bells ring constantly: theirs stay at debug.
+    const skip = (
+      skipped: NonNullable<SendNotificationResult['skipped']>,
+      why: string
+    ): SendNotificationResult => {
+      const line = `push ${payload.type} not sent: ${why}`;
+      if (payload.type === 'bell') logger.debug(line);
+      else logger.log(line);
+      return { success: true, sent: 0, failed: 0, errors: [], skipped };
+    };
+    if (!this.isTypeAllowed(payload.type)) {
+      return skip('preferences', 'turned off in the notification settings');
+    }
+
     if (!this.vapidManager.isEnabled()) {
       throw new Error('VAPID not properly configured');
     }
 
     const activeSubscriptions = this.getSubscriptions();
     if (activeSubscriptions.length === 0) {
-      return {
-        success: true,
-        sent: 0,
-        failed: 0,
-        errors: [],
-      };
+      return skip('no-subscriptions', 'no phone or browser is subscribed');
     }
 
     let successful = 0;
@@ -173,41 +231,47 @@ export class PushNotificationService {
       },
     });
 
-    // Send to all subscriptions
-    for (const subscription of activeSubscriptions) {
-      try {
-        const webpushSubscription: webpush.PushSubscription = {
-          endpoint: subscription.endpoint,
-          keys: subscription.keys,
-        };
+    // Send to every subscription in parallel, each with its own timeout: one dead push
+    // endpoint used to hold POST /api/push/test (and every later alert) for minutes.
+    await Promise.all(
+      activeSubscriptions.map(async (subscription) => {
+        try {
+          const webpushSubscription: webpush.PushSubscription = {
+            endpoint: subscription.endpoint,
+            keys: subscription.keys,
+          };
 
-        await this.vapidManager.sendNotification(webpushSubscription, webPushPayload);
-        successful++;
+          await this.vapidManager.sendNotification(webpushSubscription, webPushPayload, {
+            TTL: PUSH_TTL_SECONDS,
+            timeout: PUSH_TIMEOUT_MS,
+          });
+          successful++;
 
-        logger.debug(`Notification sent to: ${subscription.id}`);
-      } catch (error) {
-        failed++;
-        const errorMsg = `Failed to send to ${subscription.id}: ${error}`;
-        errors.push(errorMsg);
-        logger.warn(errorMsg);
+          logger.debug(`Notification sent to: ${subscription.id}`);
+        } catch (error) {
+          failed++;
+          const errorMsg = `Failed to send to ${subscription.id}: ${error}`;
+          errors.push(errorMsg);
+          logger.warn(errorMsg);
 
-        // Remove expired/invalid subscriptions
-        const shouldRemove = this.shouldRemoveSubscription(error);
-        if (shouldRemove) {
-          this.subscriptions.delete(subscription.id);
-          const webPushError = error as Error & { statusCode?: number };
-          logger.log(
-            `Removed expired subscription: ${subscription.id} (status: ${webPushError.statusCode})`
-          );
-        } else {
-          // Debug log for unhandled errors
-          const webPushError = error as Error & { statusCode?: number };
-          logger.debug(
-            `Not removing subscription ${subscription.id}, error: ${error instanceof Error ? error.message : String(error)}, statusCode: ${webPushError.statusCode}`
-          );
+          // Remove expired/invalid subscriptions
+          const shouldRemove = this.shouldRemoveSubscription(error);
+          if (shouldRemove) {
+            this.subscriptions.delete(subscription.id);
+            const webPushError = error as Error & { statusCode?: number };
+            logger.log(
+              `Removed expired subscription: ${subscription.id} (status: ${webPushError.statusCode})`
+            );
+          } else {
+            // Debug log for unhandled errors
+            const webPushError = error as Error & { statusCode?: number };
+            logger.debug(
+              `Not removing subscription ${subscription.id}, error: ${error instanceof Error ? error.message : String(error)}, statusCode: ${webPushError.statusCode}`
+            );
+          }
         }
-      }
-    }
+      })
+    );
 
     // Save updated subscriptions
     await this.saveSubscriptions();
@@ -257,7 +321,16 @@ export class PushNotificationService {
     // Check for HTTP 410 Gone status (subscription expired)
     // WebPushError has a statusCode property
     const webPushError = error as Error & { statusCode?: number };
-    if (webPushError.statusCode === 410) {
+    // 404/410: the push service forgot it. Key errors are thrown by web-push before any
+    // request (e.g. a p256dh that isn't a P-256 point): that subscription can never work.
+    if (webPushError.statusCode === 410 || webPushError.statusCode === 404) {
+      return true;
+    }
+    if (
+      /subscription (p256dh|auth key|endpoint)|No user (public key|auth) provided|pass in a subscription/i.test(
+        error.message
+      )
+    ) {
       return true;
     }
 

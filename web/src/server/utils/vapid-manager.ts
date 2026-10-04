@@ -54,6 +54,47 @@ export interface VapidConfig {
  * await manager.rotateKeys('admin@example.com');
  * ```
  */
+/**
+ * Default VAPID contact. Never a .local/localhost address: Apple's push service rejects
+ * the JWT with 403 BadJwtToken, so with the old default (noreply@vibetunnel.local) no
+ * notification ever reached an iPhone.
+ */
+export const DEFAULT_VAPID_CONTACT = 'noreply@vibetunnel.sh';
+
+const RESERVED_HOST =
+  /(^|\.)(local|localhost|localdomain|internal|lan|home|test|invalid|example|arpa)$/i;
+
+/**
+ * The VAPID `sub` claim for a configured contact: `mailto:` on a public domain or an
+ * https:// URL. Anything Apple (or other push services) would reject — .local hosts,
+ * localhost, bare IPs, malformed values — falls back to DEFAULT_VAPID_CONTACT.
+ */
+export function vapidSubject(contact: string | undefined | null): string {
+  const fallback = `mailto:${DEFAULT_VAPID_CONTACT}`;
+  const value = (contact ?? '').trim();
+  if (!value) return fallback;
+  let host: string;
+  let subject: string;
+  if (/^https:\/\//i.test(value)) {
+    try {
+      host = new URL(value).hostname;
+    } catch {
+      return fallback;
+    }
+    subject = value;
+  } else {
+    const email = value.replace(/^mailto:/i, '');
+    const match = /^[^\s@]+@([^\s@]+\.[^\s@]+)$/.exec(email);
+    if (!match) return fallback;
+    host = match[1];
+    subject = `mailto:${email}`;
+  }
+  const bareHost = host.replace(/^\[|\]$/g, '');
+  if (!bareHost.includes('.') || RESERVED_HOST.test(bareHost)) return fallback;
+  if (/^[\d.]+$/.test(bareHost) || bareHost.includes(':')) return fallback;
+  return subject;
+}
+
 export class VapidManager {
   private config: VapidConfig | null = null;
   private readonly vapidDir: string;
@@ -80,7 +121,7 @@ export class VapidManager {
       logger.log('Using provided VAPID keys');
       this.config = {
         keyPair: { publicKey, privateKey },
-        contactEmail: contactEmail || 'noreply@vibetunnel.local',
+        contactEmail: contactEmail || DEFAULT_VAPID_CONTACT,
         enabled: true,
       };
       await this.saveKeys(this.config.keyPair);
@@ -94,7 +135,7 @@ export class VapidManager {
       logger.log('Using existing VAPID keys');
       this.config = {
         keyPair: existingKeys,
-        contactEmail: contactEmail || 'noreply@vibetunnel.local',
+        contactEmail: contactEmail || DEFAULT_VAPID_CONTACT,
         enabled: true,
       };
       this.configureWebPush();
@@ -107,7 +148,7 @@ export class VapidManager {
       const newKeys = this.generateKeys();
       this.config = {
         keyPair: newKeys,
-        contactEmail: contactEmail || 'noreply@vibetunnel.local',
+        contactEmail: contactEmail || DEFAULT_VAPID_CONTACT,
         enabled: true,
       };
       await this.saveKeys(this.config.keyPair);
@@ -119,7 +160,7 @@ export class VapidManager {
     logger.warn('No VAPID keys available and generation disabled');
     this.config = {
       keyPair: { publicKey: '', privateKey: '' },
-      contactEmail: contactEmail || 'noreply@vibetunnel.local',
+      contactEmail: contactEmail || DEFAULT_VAPID_CONTACT,
       enabled: false,
     };
     return this.config;
@@ -147,7 +188,7 @@ export class VapidManager {
     // Update config
     this.config = {
       keyPair: newKeys,
-      contactEmail: contactEmail || this.config?.contactEmail || 'noreply@vibetunnel.local',
+      contactEmail: contactEmail || this.config?.contactEmail || DEFAULT_VAPID_CONTACT,
       enabled: true,
     };
 
@@ -288,9 +329,16 @@ export class VapidManager {
       return;
     }
 
+    const subject = vapidSubject(this.config.contactEmail);
+    if (subject.replace(/^mailto:/, '') !== this.config.contactEmail.replace(/^mailto:/i, '')) {
+      logger.warn(
+        `VAPID contact "${this.config.contactEmail}" is not accepted by every push service (Apple rejects .local, localhost and IP addresses); signing with "${subject}" instead. Set --vapid-email or PUSH_CONTACT_EMAIL to a public address to choose your own.`
+      );
+    }
+
     try {
       webpush.setVapidDetails(
-        `mailto:${this.config.contactEmail}`,
+        subject,
         this.config.keyPair.publicKey,
         this.config.keyPair.privateKey
       );

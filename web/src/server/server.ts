@@ -39,14 +39,17 @@ import { GitStatusHub } from './services/git-status-hub.js';
 import { HQClient } from './services/hq-client.js';
 import { mdnsService } from './services/mdns-service.js';
 import { NgrokService } from './services/ngrok-service.js';
-import { PushNotificationService } from './services/push-notification-service.js';
+import {
+  NOTIFICATION_PREFERENCE_FOR_TYPE,
+  PushNotificationService,
+} from './services/push-notification-service.js';
 import { RemoteRegistry } from './services/remote-registry.js';
 import { SessionMonitor } from './services/session-monitor.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
 import { closeLogger, createLogger, initLogger, setDebugMode } from './utils/logger.js';
-import { VapidManager } from './utils/vapid-manager.js';
+import { DEFAULT_VAPID_CONTACT, VapidManager } from './utils/vapid-manager.js';
 import { getVersionInfo, printVersionBanner } from './version.js';
 import { controlUnixHandler } from './websocket/control-unix-handler.js';
 
@@ -649,7 +652,7 @@ export async function createApp(): Promise<AppInstance> {
       // Initialize VAPID manager with auto-generation
       vapidManager = new VapidManager();
       await vapidManager.initialize({
-        contactEmail: config.vapidEmail || 'noreply@vibetunnel.local',
+        contactEmail: config.vapidEmail || DEFAULT_VAPID_CONTACT,
         generateIfMissing: true, // Auto-generate keys if none exist
       });
 
@@ -657,6 +660,11 @@ export async function createApp(): Promise<AppInstance> {
 
       // Initialize push notification service
       pushNotificationService = new PushNotificationService(vapidManager);
+      // Every push goes through the Settings switches (the server used to ignore them).
+      pushNotificationService.setPreferenceFilter((type) => {
+        const key = NOTIFICATION_PREFERENCE_FOR_TYPE[type];
+        return key ? configService.getNotificationPreferences()[key] !== false : true;
+      });
       await pushNotificationService.initialize();
 
       logger.log(chalk.green('Push notification services initialized'));
@@ -682,21 +690,10 @@ export async function createApp(): Promise<AppInstance> {
 
         switch (event.type) {
           case ServerEventType.SessionStart:
-            pushPayload = {
-              type: 'session-start',
-              title: '🚀 Session Started',
-              body: event.sessionName || 'Terminal Session',
-            };
-            break;
-
           case ServerEventType.SessionExit:
-            pushPayload = {
-              type: 'session-exit',
-              title: '🏁 Session Ended',
-              body: event.sessionName || 'Terminal Session',
-              data: { exitCode: event.exitCode },
-            };
-            break;
+            // Already pushed by the control-dir watcher (start) and the ptyManager
+            // 'sessionExited' listener (end, with exit code); this sent a second copy.
+            return;
 
           case ServerEventType.CommandFinished:
             pushPayload = {
@@ -717,6 +714,8 @@ export async function createApp(): Promise<AppInstance> {
             break;
 
           case ServerEventType.Bell:
+            // At most one bell push per session per minute: programs ring it in bursts.
+            if (!event.sessionId || !pushNotificationService.allowBell(event.sessionId)) return;
             pushPayload = {
               type: 'bell',
               title: '🔔 Terminal Bell',
@@ -738,7 +737,11 @@ export async function createApp(): Promise<AppInstance> {
             ...pushPayload,
             icon: '/apple-touch-icon.png',
             badge: '/favicon-32.png',
-            tag: `vibetunnel-${pushPayload.type}`,
+            // Per session: a newer event replaces that session's older one, and two sessions
+            // finishing at once no longer overwrite each other.
+            tag: event.sessionId
+              ? `vibetunnel-${pushPayload.type}-${event.sessionId}`
+              : `vibetunnel-${pushPayload.type}`,
             requireInteraction: pushPayload.type === 'command-error',
             actions: [
               {

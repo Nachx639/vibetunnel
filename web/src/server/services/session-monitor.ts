@@ -11,6 +11,7 @@ import { ServerEventType } from '../../shared/types.js';
 import type { PtyManager } from '../pty/pty-manager.js';
 import { createLogger } from '../utils/logger.js';
 import type { SessionMonitorEvent } from '../websocket/control-protocol.js';
+import { BellDetector } from './bell-detector.js';
 
 const logger = createLogger('session-monitor');
 
@@ -42,6 +43,7 @@ export interface CommandFinishedEvent {
 
 export class SessionMonitor extends EventEmitter {
   private sessions = new Map<string, SessionState>();
+  private bellDetectors = new Map<string, BellDetector>();
   private commandThresholdMs = MIN_COMMAND_DURATION_MS;
 
   constructor(private ptyManager: PtyManager) {
@@ -76,8 +78,13 @@ export class SessionMonitor extends EventEmitter {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    // Detect bell character
-    if (data.includes('\x07')) {
+    // Detect a real bell (not the BEL that ends a title/OSC sequence)
+    let detector = this.bellDetectors.get(sessionId);
+    if (!detector) {
+      detector = new BellDetector();
+      this.bellDetectors.set(sessionId, detector);
+    }
+    if (detector.feed(data)) {
       this.emitNotificationEvent({
         type: 'bell',
         sessionId,
@@ -225,6 +232,7 @@ export class SessionMonitor extends EventEmitter {
     // Remove session after a delay to allow final events to process
     setTimeout(() => {
       this.sessions.delete(sessionId);
+      this.bellDetectors.delete(sessionId);
     }, 5000);
   }
 
