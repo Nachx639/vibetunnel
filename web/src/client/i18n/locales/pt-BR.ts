@@ -898,6 +898,9 @@ export const ptBR: Messages = {
   'settings.autoReload': 'Recarregar automaticamente após uma atualização',
   'settings.autoReload.description':
     'Quando o servidor tiver uma versão mais nova, recarrega na próxima vez que você voltar ao app em vez de mostrar um botão Recarregar. Nunca enquanto você digita.',
+  'settings.shellCache': 'Manter os arquivos do app neste dispositivo',
+  'settings.shellCache.description':
+    'Para inícios mais rápidos que também funcionam offline. Desligado: o app sempre carrega os arquivos do servidor.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'Ignorar a sessão na tela',

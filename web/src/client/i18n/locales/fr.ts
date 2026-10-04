@@ -909,6 +909,9 @@ export const fr: Messages = {
   'settings.autoReload': 'Recharger automatiquement après une mise à jour',
   'settings.autoReload.description':
     'Quand le serveur a une version plus récente, recharger la prochaine fois que vous revenez dans l’app au lieu d’afficher un bouton Recharger. Jamais pendant la saisie.',
+  'settings.shellCache': 'Garder les fichiers de l’app sur cet appareil',
+  'settings.shellCache.description':
+    'Pour des démarrages plus rapides qui fonctionnent aussi hors ligne. Désactivé : l’app charge toujours ses fichiers depuis le serveur.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'Ignorer la session à l’écran',

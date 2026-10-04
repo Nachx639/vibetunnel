@@ -861,6 +861,8 @@ export const zhCN: Messages = {
   'settings.autoReload': '更新后自动重新加载',
   'settings.autoReload.description':
     '服务器有新版本时，在你下次回到应用时自动重新加载，而不是显示“重新加载”按钮。输入时不会重新加载。',
+  'settings.shellCache': '在此设备上保留应用文件',
+  'settings.shellCache.description': '启动更快，离线也能打开。关闭后：应用始终从服务器加载文件。',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': '跳过屏幕上的会话',

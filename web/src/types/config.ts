@@ -35,6 +35,12 @@ export interface VibeTunnelConfig {
   version: number;
   quickStartCommands: QuickStartCommand[];
   repositoryBasePath?: string;
+  /**
+   * Let the service worker serve the client's files (one whole build at a time) from its own
+   * cache, so the installed app starts without waiting on the network. On when missing; false
+   * turns it off for every device (each device also has its own switch in Settings).
+   */
+  pwaShellCache?: boolean;
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

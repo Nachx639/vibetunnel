@@ -873,6 +873,9 @@ export const bn: Messages = {
   'settings.autoReload': 'আপডেটের পরে নিজে থেকে আবার লোড করুন',
   'settings.autoReload.description':
     'সার্ভারে নতুন সংস্করণ এলে, আবার লোড করুন বোতাম না দেখিয়ে পরের বার অ্যাপে ফিরলেই নিজে থেকে লোড হবে। টাইপ করার সময় কখনও নয়।',
+  'settings.shellCache': 'এই ডিভাইসে অ্যাপের ফাইল রাখুন',
+  'settings.shellCache.description':
+    'দ্রুত চালু হওয়ার জন্য, অফলাইনেও কাজ করে। বন্ধ থাকলে: অ্যাপ সবসময় সার্ভার থেকে ফাইল লোড করে।',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'স্ক্রিনে থাকা সেশন বাদ দিন',

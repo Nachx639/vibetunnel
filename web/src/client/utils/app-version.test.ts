@@ -153,3 +153,73 @@ describe('auto-reload preference', () => {
     });
   });
 });
+
+describe('a page the service worker served an older build (sw-shell.ts)', () => {
+  let stop: (() => void) | undefined;
+  let worker: EventTarget;
+  const workerSays = (type: string) =>
+    worker.dispatchEvent(new MessageEvent('message', { data: { type } }));
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 200, headers: { etag: '"v2"' } }))
+    );
+    worker = new EventTarget();
+    Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: worker });
+  });
+
+  afterEach(() => {
+    stop?.();
+    stop = undefined;
+    vi.unstubAllGlobals();
+    setVisibility('visible');
+    Reflect.deleteProperty(navigator, 'serviceWorker');
+  });
+
+  it('only offers a reload while "Reload automatically after an update" is off (the default)', async () => {
+    const reload = vi.fn();
+    const onStale = vi.fn();
+    stop = startVersionWatch({ reload, onStale, isBusy: () => false });
+    await flush();
+    workerSays('vt-shell-updated');
+    expect(reload).not.toHaveBeenCalled();
+    expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
+  it('with the switch on, reloads at once while nobody has touched it, once a minute at most', async () => {
+    const reload = vi.fn();
+    const onStale = vi.fn();
+    stop = startVersionWatch({ reload, onStale, autoReload: () => true, isBusy: () => false });
+    await flush();
+    workerSays('vt-shell-updated');
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    // The reloaded page is told the same (the worker got it wrong): no reload loop.
+    stop();
+    stop = startVersionWatch({ reload, onStale, autoReload: () => true, isBusy: () => false });
+    workerSays('vt-shell-updated');
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
+  it('with the switch on, offers a reload instead once the page is in use', async () => {
+    const reload = vi.fn();
+    const onStale = vi.fn();
+    stop = startVersionWatch({ reload, onStale, autoReload: () => true, isBusy: () => false });
+    window.dispatchEvent(new Event('pointerdown'));
+    workerSays('vt-shell-updated');
+    expect(reload).not.toHaveBeenCalled();
+    expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores the worker's other messages", async () => {
+    const reload = vi.fn();
+    const onStale = vi.fn();
+    stop = startVersionWatch({ reload, onStale, autoReload: () => true, isBusy: () => false });
+    workerSays('notification-action');
+    expect(reload).not.toHaveBeenCalled();
+    expect(onStale).not.toHaveBeenCalled();
+  });
+});

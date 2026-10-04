@@ -165,6 +165,19 @@ describe('Settings', () => {
     });
   });
 
+  describe("keep the app's files on this device", () => {
+    it('is on by default and the switch stores the choice', async () => {
+      const toggle = button('settings-shell-cache');
+      expect(toggle?.getAttribute('aria-checked')).toBe('true');
+      toggle?.click();
+      await component.updateComplete;
+      expect(toggle?.getAttribute('aria-checked')).toBe('false');
+      expect(JSON.parse(localStorage.getItem('vibetunnel_app_preferences') ?? '{}')).toMatchObject({
+        pwaShellCache: false,
+      });
+    });
+  });
+
   describe('appearance', () => {
     it('starts on the default color theme', () => {
       expect(button('settings-accent-emerald')?.getAttribute('aria-pressed')).toBe('true');

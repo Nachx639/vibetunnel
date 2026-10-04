@@ -871,6 +871,9 @@ export const ar: Messages = {
   'settings.autoReload': 'إعادة التحميل تلقائيًا بعد التحديث',
   'settings.autoReload.description':
     'عندما يتوفر إصدار أحدث على الخادم، يُعاد التحميل في المرة التالية التي تعود فيها إلى التطبيق بدلًا من عرض زر إعادة التحميل. لا يحدث ذلك أبدًا أثناء الكتابة.',
+  'settings.shellCache': 'الاحتفاظ بملفات التطبيق على هذا الجهاز',
+  'settings.shellCache.description':
+    'لبدء أسرع يعمل أيضًا دون اتصال. عند الإيقاف: يحمّل التطبيق ملفاته دائمًا من الخادم.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'تخطَّ الجلسة المعروضة على الشاشة',

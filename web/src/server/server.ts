@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocketServer } from 'ws';
-import { SHELL_VERSION_URL } from '../shared/shell-version.js';
+import { SHELL_CACHE_HEADER, SHELL_VERSION_URL } from '../shared/shell-version.js';
 import { ServerEventType } from '../shared/types.js';
 import { apiSocketServer } from './api-socket-server.js';
 import type { AuthenticatedRequest } from './middleware/auth.js';
@@ -942,6 +942,12 @@ export async function createApp(): Promise<AppInstance> {
       return;
     }
     res.setHeader('Cache-Control', 'no-cache');
+    // Whether the service worker may serve the shell from its cache (on unless config.json
+    // says "pwaShellCache": false; client/sw-shell.ts).
+    res.setHeader(
+      SHELL_CACHE_HEADER,
+      configService.getConfig().pwaShellCache === false ? 'off' : 'on'
+    );
     res.type('html').send(html);
   };
   app.get(['/', '/index.html'], (_req, res) => {

@@ -11,6 +11,19 @@ import {
   OFFLINE_PAGE_URL,
   respondToNavigation,
 } from './sw-offline.js';
+import {
+  SHELL_CACHE_PREFERENCE_MESSAGE,
+  SHELL_UPDATED_MESSAGE,
+  ShellCache,
+  ShellSetting,
+  shellRule,
+} from './sw-shell.js';
+
+/** The client's files, one shell version at a time (sw-shell.ts). */
+const shell = new ShellCache({ caches, fetch: (input, init) => fetch(input, init) });
+
+/** Whether the shell cache is on: Settings on this device and config.json, both on by default. */
+const shellSetting = new ShellSetting(caches, () => shell.clear());
 
 // Notification tag prefix for VibeTunnel notifications
 const NOTIFICATION_TAG_PREFIX = 'vibetunnel-';
@@ -92,11 +105,20 @@ interface PushNotificationPayload {
 }
 
 // Install event
-self.addEventListener('install', (_event: ExtendableEvent) => {
+self.addEventListener('install', (event: ExtendableEvent) => {
   console.log('[SW] Installing service worker');
 
   // Force activation of new service worker
   self.skipWaiting();
+  // With the shell cache on, the current shell version, so the next cold start doesn't wait
+  // on the network for it (sw-shell.ts). Best effort: a failure must not keep the new worker
+  // from installing.
+  event.waitUntil(
+    shellSetting
+      .read()
+      .then((on) => (on ? shell.precache() : undefined))
+      .catch(() => {})
+  );
 });
 
 // Activate event
@@ -110,6 +132,12 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
       // Page loads start on the network while the worker boots, so guarding them with a
       // fetch handler doesn't slow every launch down.
       self.registration.navigationPreload?.enable().catch(() => {}),
+      // Shell versions beyond the newest two, half-installed ones; everything while the shell
+      // cache is off (sw-shell.ts).
+      shellSetting
+        .read()
+        .then((on) => (on ? shell.prune() : shell.clear()))
+        .catch(() => {}),
     ])
   );
 });
@@ -117,6 +145,29 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
 // Failed page loads (server down or unreachable) get a retrying offline page instead of the
 // browser's error screen. Network first; nothing but that static page is ever cached.
 self.addEventListener('fetch', (event: FetchEvent) => {
+  // The client's files: one shell version at a time from the worker's cache (sw-shell.ts),
+  // only with the shell cache on; otherwise straight to the network.
+  const rule = shellSetting.known === false ? null : shellRule(event.request, self.location.origin);
+  if (rule) {
+    event.respondWith(
+      shellSetting.read().then((on) =>
+        on
+          ? shell.respond(new URL(event.request.url), rule, {
+              waitUntil: (work) => event.waitUntil(work),
+              notifyUpdated: () => notifyShellUpdated(event.clientId),
+            })
+          : fetch(event.request)
+      )
+    );
+    return;
+  }
+  // A page load: note whether the server has the shell cache on.
+  const loadPage = async () => {
+    const response =
+      ((await event.preloadResponse) as Response | undefined) ?? (await fetch(event.request));
+    event.waitUntil(shellSetting.note(response).catch(() => {}));
+    return response;
+  };
   if (!isGuardedNavigation(event.request, self.location.origin)) {
     // Other navigations (an /api/fs/raw file opened in a tab) go to the network as usual,
     // but through the preload already in flight so they aren't requested twice.
@@ -129,15 +180,19 @@ self.addEventListener('fetch', (event: FetchEvent) => {
     return;
   }
   event.respondWith(
-    respondToNavigation(
-      async () => ((await event.preloadResponse) as Response | undefined) ?? fetch(event.request),
-      async () => {
-        const cache = await caches.open(OFFLINE_CACHE);
-        return cache.match(OFFLINE_PAGE_URL);
-      }
-    )
+    respondToNavigation(loadPage, async () => {
+      const cache = await caches.open(OFFLINE_CACHE);
+      return cache.match(OFFLINE_PAGE_URL);
+    })
   );
 });
+
+/** The page that got an older shell version (or, unknown, every page) is told to reload. */
+async function notifyShellUpdated(clientId: string): Promise<void> {
+  const client = clientId ? await self.clients.get(clientId) : undefined;
+  const targets = client ? [client] : await self.clients.matchAll({ type: 'window' });
+  for (const target of targets) target.postMessage({ type: SHELL_UPDATED_MESSAGE });
+}
 
 // Push event - handle incoming push notifications
 self.addEventListener('push', (event: PushEvent) => {
@@ -290,6 +345,11 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     }
     case 'SKIP_WAITING': {
       self.skipWaiting();
+      break;
+    }
+    case SHELL_CACHE_PREFERENCE_MESSAGE: {
+      // Settings > "Keep the app's files on this device" (utils/shell-cache-preference.ts).
+      event.waitUntil(shellSetting.setDevice(data.on !== false).catch(() => {}));
       break;
     }
   }

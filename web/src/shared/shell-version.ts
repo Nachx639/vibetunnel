@@ -24,6 +24,12 @@ export const SHELL_PATHS = ['/bundle/client-bundle.js', '/bundle/styles.css'] as
 /** The server's description of the shell on disk now (no-cache). */
 export const SHELL_VERSION_URL = '/bundle/version.json';
 
+/**
+ * Response header on index.html: `on` when the service worker may serve the shell from its own
+ * cache, `off` when config.json has `"pwaShellCache": false` (client/sw-shell.ts).
+ */
+export const SHELL_CACHE_HEADER = 'X-VibeTunnel-Shell-Cache';
+
 /** Query parameter naming the shell version in index.html's asset URLs. */
 export const SHELL_VERSION_PARAM = 'v';
 

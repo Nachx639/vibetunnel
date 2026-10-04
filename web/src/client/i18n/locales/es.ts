@@ -900,6 +900,9 @@ export const es: Messages = {
   'settings.autoReload': 'Recargar automáticamente tras una actualización',
   'settings.autoReload.description':
     'Cuando el servidor tenga una versión más nueva, recarga la próxima vez que vuelvas a la app en lugar de mostrar un botón Recargar. Nunca mientras escribes.',
+  'settings.shellCache': 'Guardar los archivos de la app en este dispositivo',
+  'settings.shellCache.description':
+    'Para arranques más rápidos que también funcionan sin conexión. Desactivado: la app siempre carga sus archivos del servidor.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'Omitir la sesión en pantalla',

@@ -890,6 +890,9 @@ export const en = {
   'settings.autoReload': 'Reload automatically after an update',
   'settings.autoReload.description':
     'When the server has a newer version, reload the next time you come back to the app instead of showing a Reload button. Never while you are typing.',
+  'settings.shellCache': 'Keep the app’s files on this device',
+  'settings.shellCache.description':
+    'For faster starts that also work offline. Off: the app always loads its files from the server.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'Skip the session on screen',

@@ -21,6 +21,7 @@ import { createLogger } from './utils/logger.js';
 import { isIOS } from './utils/mobile-utils.js';
 import { installOfflinePage } from './utils/offline-page.js';
 import { type MediaQueryState, responsiveObserver } from './utils/responsive-utils.js';
+import { syncShellCachePreference } from './utils/shell-cache-preference.js';
 import { triggerTerminalResize } from './utils/terminal-utils.js';
 import { titleManager } from './utils/title-manager.js';
 
@@ -84,6 +85,7 @@ export class VibeTunnelApp extends LitElement {
   @state() private currentView: 'list' | 'session' | 'auth' | 'file-browser' = 'auth';
   @state() private selectedSessionId: string | null = null;
   private stopVersionWatch?: () => void;
+  private stopShellCacheSync?: () => void;
   private loadFailures = 0;
   @state() private reconnecting = false;
   @state() private hideExited = this.loadHideExitedState();
@@ -136,6 +138,8 @@ export class VibeTunnelApp extends LitElement {
     // Safari only announces live regions that existed before their text changed.
     ensureLiveRegion();
     // An installed app never reloads on its own: offer new builds (see app-version.ts).
+    // Tell the service worker this device's "Keep the app's files" choice (sw-shell.ts).
+    this.stopShellCacheSync ??= syncShellCachePreference();
     this.stopVersionWatch ??= startVersionWatch({
       isBusy: userIsTyping,
       autoReload: getAutoReloadOnUpdate,
@@ -216,6 +220,8 @@ export class VibeTunnelApp extends LitElement {
     super.disconnectedCallback();
     this.stopVersionWatch?.();
     this.stopVersionWatch = undefined;
+    this.stopShellCacheSync?.();
+    this.stopShellCacheSync = undefined;
     if (this.hotReloadWs) {
       this.hotReloadWs.close();
     }
