@@ -310,6 +310,24 @@ describe('SessionManager', () => {
       expect(fs.existsSync(sessionDir)).toBe(false);
     });
 
+    it('never removes anything outside a session directory', () => {
+      // DELETE /api/sessions/%2E%2E/cleanup decodes to "..": it removed the control dir's parent.
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vt-cleanup-'));
+      const control = path.join(root, 'control');
+      fs.mkdirSync(path.join(control, 'uploads'), { recursive: true });
+      fs.writeFileSync(path.join(control, 'uploads', 'photo.png'), 'x');
+      fs.writeFileSync(path.join(root, 'config.json'), '{}');
+      const manager = new SessionManager(control);
+      try {
+        expect(() => manager.cleanupSession('..')).toThrow(/Invalid session ID/);
+        expect(fs.existsSync(path.join(root, 'config.json'))).toBe(true);
+        manager.cleanupSession('uploads');
+        expect(fs.existsSync(path.join(control, 'uploads', 'photo.png'))).toBe(true);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+
     it('should handle non-existent session cleanup gracefully', () => {
       // Should not throw
       expect(() => sessionManager.cleanupSession('nonexistent')).not.toThrow();

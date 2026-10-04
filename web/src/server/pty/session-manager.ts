@@ -445,10 +445,21 @@ export class SessionManager {
       throw new PtyError('Session ID is required for cleanup', 'INVALID_SESSION_ID');
     }
 
+    // The id comes straight from the URL (DELETE /api/sessions/:id/cleanup): "%2E%2E" decodes
+    // to "..", which joined to the control dir removed its parent (~/.vibetunnel), and
+    // "uploads" removed the pasted-images folder.
+    this.validateSessionId(sessionId);
+
     try {
       const sessionDir = path.join(this.controlPath, sessionId);
 
-      if (fs.existsSync(sessionDir)) {
+      if (
+        fs.existsSync(sessionDir) &&
+        !fs.existsSync(path.join(sessionDir, 'session.json')) &&
+        !fs.existsSync(path.join(sessionDir, 'stdout'))
+      ) {
+        logger.warn(`Not removing ${sessionDir}: it is not a session directory`);
+      } else if (fs.existsSync(sessionDir)) {
         logger.debug(`Cleaning up session directory: ${sessionDir}`);
 
         // Log session info before cleanup for debugging

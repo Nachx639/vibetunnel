@@ -718,7 +718,9 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       res.json({ success: true, message: 'Session cleaned up' });
     } catch (error) {
       logger.error('error cleaning up session:', error);
-      if (error instanceof PtyError) {
+      if (error instanceof PtyError && error.code === 'INVALID_SESSION_ID') {
+        res.status(400).json({ error: 'Invalid session id' });
+      } else if (error instanceof PtyError) {
         res.status(500).json({ error: 'Failed to cleanup session', details: error.message });
       } else {
         res.status(500).json({ error: 'Failed to cleanup session' });

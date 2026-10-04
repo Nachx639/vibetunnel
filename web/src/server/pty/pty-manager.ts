@@ -702,13 +702,20 @@ export class PtyManager extends EventEmitter {
             );
         }
 
-        // Update session status
-        this.sessionManager.updateSessionStatus(
-          session.id,
-          'exited',
-          undefined,
-          exitCode || (signal ? 128 + (typeof signal === 'number' ? signal : 1) : 1)
-        );
+        // Update session status. Its files may be gone already ("cleanup" of a running
+        // session removes them before the process dies): that threw here and skipped
+        // everything below, so its timers ran (and logged) forever and no client heard
+        // that it exited.
+        try {
+          this.sessionManager.updateSessionStatus(
+            session.id,
+            'exited',
+            undefined,
+            exitCode || (signal ? 128 + (typeof signal === 'number' ? signal : 1) : 1)
+          );
+        } catch (error) {
+          logger.debug(`Could not record the exit of session ${session.id}: ${error}`);
+        }
 
         // Wait for stdout queue to drain if it exists
         if (session.stdoutQueue) {
