@@ -95,6 +95,8 @@ export interface SessionInfo {
    * Sessions with attachedViaVT=true are spawned from within an existing VibeTunnel session.
    */
   attachedViaVT?: boolean;
+  /** Current DEC private modes set by the app (e.g. mouse reporting), restored on replay. */
+  terminalModes?: Record<string, boolean>;
 }
 
 /**

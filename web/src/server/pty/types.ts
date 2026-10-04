@@ -108,6 +108,8 @@ export interface PtySession {
   processPollingInterval?: NodeJS.Timeout; // Interval for checking process state
   // Tmux attachment tracking
   isTmuxAttachment?: boolean; // True if this session is attached to tmux
+  /** End of the previous output chunk, re-scanned for split terminal mode sequences. */
+  modeScanTail?: string;
 }
 
 export class PtyError extends Error {

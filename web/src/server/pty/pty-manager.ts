@@ -31,6 +31,7 @@ import { ProcessTreeAnalyzer } from '../services/process-tree-analyzer.js';
 import type { SessionMonitor } from '../services/session-monitor.js';
 import { TitleSequenceFilter } from '../utils/ansi-title-filter.js';
 import { createLogger } from '../utils/logger.js';
+import { trackDecModes } from '../utils/terminal-modes.js';
 import {
   extractCdDirectory,
   generateTitleSequence,
@@ -651,6 +652,15 @@ export class PtyManager extends EventEmitter {
       // Track output activity for active/idle detection
       session.lastOutputTimestamp = Date.now();
 
+      // Remember mode changes (mouse reporting, bracketed paste…) for replays.
+      // Re-scan the end of the previous chunk too: a sequence can straddle two writes.
+      session.sessionInfo.terminalModes ??= {};
+      const modeText = (session.modeScanTail ?? '') + data;
+      session.modeScanTail = data.slice(-16);
+      if (trackDecModes(session.sessionInfo.terminalModes, modeText)) {
+        this.scheduleTerminalModesSave(session);
+      }
+
       // If title mode is not NONE, filter out any title sequences the process might
       // have written to the stream.
       if (session.titleMode !== undefined && session.titleMode !== TitleMode.NONE) {
@@ -692,6 +702,10 @@ export class PtyManager extends EventEmitter {
       try {
         // Mark session as exiting to prevent false bell notifications
         this.sessionExitTimes.set(session.id, Date.now());
+        // The app is gone: replaying an exited session must not turn its mouse
+        // reporting back on (the wheel would talk to a dead process).
+        session.sessionInfo.terminalModes = {};
+        this.scheduleTerminalModesSave(session);
         // Write exit event to asciinema
         if (asciinemaWriter?.isOpen()) {
           asciinemaWriter.writeRawJson(['exit', exitCode || 0, session.id]);
@@ -1300,6 +1314,22 @@ export class PtyManager extends EventEmitter {
         sessionId
       );
     }
+  }
+
+  private terminalModesSaveTimers = new Map<string, NodeJS.Timeout>();
+
+  /** Persist a session's terminal modes shortly after they change (they change in bursts). */
+  private scheduleTerminalModesSave(session: PtySession): void {
+    if (this.terminalModesSaveTimers.has(session.id)) return;
+    const timer = setTimeout(() => {
+      this.terminalModesSaveTimers.delete(session.id);
+      const info = this.sessionManager.loadSessionInfo(session.id);
+      if (!info) return;
+      info.terminalModes = { ...session.sessionInfo.terminalModes };
+      this.sessionManager.saveSessionInfo(session.id, info);
+    }, 250);
+    timer.unref?.();
+    this.terminalModesSaveTimers.set(session.id, timer);
   }
 
   /**

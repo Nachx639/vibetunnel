@@ -9,6 +9,7 @@ import {
   findLastPrunePoint,
   logPruningDetection,
 } from '../utils/pruning-detector.js';
+import { decModesToSequence } from '../utils/terminal-modes.js';
 
 const logger = createLogger('cast-output-hub');
 
@@ -380,9 +381,12 @@ export class CastOutputHub {
         let startIndex = 0;
         if (lastClearIndex >= 0) {
           startIndex = lastClearIndex + 1;
-          if (sessionInfo) {
-            sessionInfo.lastClearOffset = lastClearOffset;
-            this.sessionManager.saveSessionInfo(sessionId, sessionInfo);
+          // Reload before saving: the stream read may be long and other fields (terminal
+          // modes) may have been saved meanwhile.
+          const latestInfo = this.sessionManager.loadSessionInfo(sessionId);
+          if (latestInfo) {
+            latestInfo.lastClearOffset = lastClearOffset;
+            this.sessionManager.saveSessionInfo(sessionId, latestInfo);
           }
         }
 
@@ -395,6 +399,10 @@ export class CastOutputHub {
           }
           listener({ kind: 'header', header: headerToSend });
         }
+
+        // Restore modes the app set before the replayed range (mouse reporting etc.).
+        const modes = decModesToSequence(sessionInfo?.terminalModes);
+        if (modes) listener({ kind: 'output', data: modes, historical: true });
 
         let exitFound = false;
         for (let i = startIndex; i < events.length; i++) {
