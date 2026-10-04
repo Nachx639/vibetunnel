@@ -870,4 +870,9 @@ export const hi: Messages = {
   'settings.autoReload': 'अपडेट के बाद अपने-आप फिर से लोड करें',
   'settings.autoReload.description':
     'जब सर्वर पर नया संस्करण हो, तो फिर से लोड करें बटन दिखाने के बजाय अगली बार ऐप पर लौटने पर अपने-आप लोड करें। टाइप करते समय कभी नहीं।',
+
+  // Notifications: skip the session on screen
+  'settings.notify.skipWhenViewing': 'स्क्रीन पर खुले सत्र को छोड़ें',
+  'settings.notify.skipWhenViewing.description':
+    'जिस सत्र को आप अभी किसी ब्राउज़र में देख रहे हैं, उसके लिए घंटी या कमांड की सूचनाएँ नहीं',
 };

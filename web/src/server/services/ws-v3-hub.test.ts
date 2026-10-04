@@ -8,6 +8,8 @@ import {
   encodeWsV3Frame,
   encodeWsV3ResizePayload,
   encodeWsV3SubscribePayload,
+  VIEWING_REFRESH_MS,
+  VIEWING_STALE_MS,
   WsV3MessageType,
   WsV3SubscribeFlags,
 } from '../../shared/ws-v3.js';
@@ -384,5 +386,67 @@ describe('WsV3Hub', () => {
       kind: 'git-status-update',
       gitBranch: 'main',
     });
+  });
+
+  it('tracks which session each client is viewing and forgets it when the socket goes', async () => {
+    const phone = new FakeWebSocket();
+    const laptop = new FakeWebSocket();
+    for (const ws of [phone, laptop]) {
+      hub.handleClientConnection(ws as unknown as WebSocket, {} as unknown as WebSocketRequestV3);
+    }
+    const viewing = (ws: FakeWebSocket, sessionId: string) =>
+      sendBinaryFrame(ws, encodeWsV3Frame({ type: WsV3MessageType.VIEWING, sessionId }));
+
+    expect(hub.isSessionBeingViewed('s1')).toBe(false);
+    viewing(phone, 's1');
+    viewing(laptop, 's1');
+    await flush();
+    expect(hub.isSessionBeingViewed('s1')).toBe(true);
+    expect(hub.isSessionBeingViewed('s2')).toBe(false);
+    expect(hub.isSessionBeingViewed('')).toBe(false);
+
+    // Phone locked (page hidden): it reports nothing; the laptop still shows s1.
+    viewing(phone, '');
+    await flush();
+    expect(hub.isSessionBeingViewed('s1')).toBe(true);
+
+    // Laptop closes its socket: nobody is looking at s1 any more.
+    laptop.close();
+    expect(hub.isSessionBeingViewed('s1')).toBe(false);
+  });
+
+  it('stops counting a viewer that does not repeat VIEWING within the stale window', async () => {
+    vi.useFakeTimers();
+    try {
+      // A page left open on a locked computer: connected, never saying more.
+      const idle = new FakeWebSocket();
+      const phone = new FakeWebSocket();
+      for (const ws of [idle, phone]) {
+        hub.handleClientConnection(ws as unknown as WebSocket, {} as unknown as WebSocketRequestV3);
+      }
+      const viewing = (ws: FakeWebSocket, sessionId: string) =>
+        sendBinaryFrame(ws, encodeWsV3Frame({ type: WsV3MessageType.VIEWING, sessionId }));
+
+      viewing(idle, 's1');
+      viewing(phone, 's2');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(hub.isSessionBeingViewed('s1')).toBe(true);
+
+      // The phone keeps looking and repeats it; the idle page says nothing more.
+      for (let t = 0; t < VIEWING_STALE_MS; t += VIEWING_REFRESH_MS) {
+        await vi.advanceTimersByTimeAsync(VIEWING_REFRESH_MS);
+        viewing(phone, 's2');
+      }
+      await vi.advanceTimersByTimeAsync(1);
+      expect(hub.isSessionBeingViewed('s1')).toBe(false);
+      expect(hub.isSessionBeingViewed('s2')).toBe(true);
+
+      // Looking again (a new VIEWING) counts again at once.
+      viewing(idle, 's1');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(hub.isSessionBeingViewed('s1')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

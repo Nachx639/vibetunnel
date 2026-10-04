@@ -23,6 +23,7 @@ import './worktree-manager.js';
 import './terminal-chat-view.js';
 import { authClient } from '../services/auth-client.js';
 import { GitService } from '../services/git-service.js';
+import { terminalSocketClient } from '../services/terminal-socket-client.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
 import { TERMINAL_IDS } from '../utils/terminal-constants.js';
@@ -424,6 +425,7 @@ export class SessionView extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    if (this.session) terminalSocketClient.clearViewingSession(this.session.id);
 
     // Remove orientation listeners
     if (this.boundHandleOrientationChange) {
@@ -521,6 +523,12 @@ export class SessionView extends LitElement {
         if (this.terminalLifecycleManager) {
           this.terminalLifecycleManager.cleanup();
         }
+      }
+
+      // "Skip notifications for the session on screen": the server learns which one it is.
+      if (sessionChanged) {
+        if (oldSession) terminalSocketClient.clearViewingSession(oldSession.id);
+        if (this.session) terminalSocketClient.setViewingSession(this.session.id);
       }
 
       // Update managers with new session

@@ -58,7 +58,7 @@ export interface SendNotificationResult {
   failed: number;
   errors: string[];
   /** Why nothing was sent, when it was skipped on purpose. */
-  skipped?: 'preferences' | 'no-subscriptions';
+  skipped?: 'preferences' | 'on-screen' | 'no-subscriptions';
 }
 
 /** How long the push service keeps an undelivered notification (phone offline). */
@@ -80,6 +80,13 @@ export const NOTIFICATION_PREFERENCE_FOR_TYPE: Record<string, keyof Notification
   bell: 'bell',
 };
 
+/**
+ * Push types skipped while the user is viewing the session they are about (only when
+ * "Skip notifications for the session on screen" is on). Session start/exit and tests
+ * always go out.
+ */
+const VIEWED_SUPPRESSIBLE_TYPE = /^(command-|bell$)/;
+
 /** At most one bell push per session in this window. */
 export const BELL_THROTTLE_MS = 60_000;
 
@@ -91,6 +98,7 @@ export class PushNotificationService {
   private subscriptions = new Map<string, PushSubscription>();
   private initialized = false;
   private isTypeAllowed: (type: string) => boolean = () => true;
+  private isSessionViewed: (sessionId: string) => boolean = () => false;
   private lastBellAt = new Map<string, number>();
   private readonly subscriptionsFile: string;
 
@@ -169,6 +177,14 @@ export class PushNotificationService {
   }
 
   /**
+   * Skip bell and command pushes about a session the user is looking at right now on some
+   * device: the screen already shows it.
+   */
+  setViewedFilter(isSessionViewed: (sessionId: string) => boolean): void {
+    this.isSessionViewed = isSessionViewed;
+  }
+
+  /**
    * A terminal bell from a session. Programs ring it in bursts, so on its own it flooded the
    * phone: at most one bell push per session per BELL_THROTTLE_MS. Returns false when this
    * bell should not be pushed.
@@ -201,6 +217,14 @@ export class PushNotificationService {
     };
     if (!this.isTypeAllowed(payload.type)) {
       return skip('preferences', 'turned off in the notification settings');
+    }
+    const sessionId = payload.data?.sessionId;
+    if (
+      typeof sessionId === 'string' &&
+      VIEWED_SUPPRESSIBLE_TYPE.test(payload.type) &&
+      this.isSessionViewed(sessionId)
+    ) {
+      return skip('on-screen', `session ${sessionId} is on screen in some client`);
     }
 
     if (!this.vapidManager.isEnabled()) {

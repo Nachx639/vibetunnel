@@ -4,6 +4,7 @@ import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_CONFIG,
+  DEFAULT_NOTIFICATION_PREFERENCES,
   type QuickStartCommand,
   type VibeTunnelConfig,
 } from '../../types/config.js';
@@ -434,6 +435,27 @@ describe('ConfigService', () => {
         soundEnabled: true,
         vibrationEnabled: false,
       });
+    });
+
+    it('keeps "skip notifications for the session on screen" from config.json', () => {
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === mockConfigDir || p === mockConfigPath
+      );
+      const config: VibeTunnelConfig = {
+        version: 1,
+        quickStartCommands: [{ command: 'custom' }],
+        preferences: {
+          updateChannel: 'stable',
+          showInDock: false,
+          preventSleepWhenRunning: true,
+          notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, skipWhenViewing: true },
+        },
+      };
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(config));
+
+      expect(new ConfigService().getNotificationPreferences().skipWhenViewing).toBe(true);
+      // Off unless set.
+      expect(configService.getNotificationPreferences().skipWhenViewing).toBeUndefined();
     });
 
     it('should update notification preferences', () => {

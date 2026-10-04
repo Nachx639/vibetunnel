@@ -51,6 +51,27 @@ describe('PushNotificationService', () => {
     expect(sent.sent).toBe(1);
   });
 
+  it('skips bell and command pushes about a session on screen, not the others', async () => {
+    const sendNotification = vi.fn().mockResolvedValue(undefined);
+    const { service, add } = makeService(sendNotification);
+    add('sub1');
+    service.setViewedFilter((id) => id === 'on-screen');
+    const push = (type: string, sessionId: string) =>
+      service.sendNotification({ type, title: 't', body: 'b', data: { sessionId } });
+
+    for (const type of ['bell', 'command-finished', 'command-error']) {
+      expect((await push(type, 'on-screen')).skipped, type).toBe('on-screen');
+    }
+    expect(sendNotification).not.toHaveBeenCalled();
+
+    // Another session, a test push and session start/exit still go out.
+    await push('command-error', 'elsewhere');
+    await push('test', 'on-screen');
+    await push('session-exit', 'on-screen');
+    await push('session-start', 'on-screen');
+    expect(sendNotification).toHaveBeenCalledTimes(4);
+  });
+
   it('sends with a timeout and does not wait on one stuck endpoint before the others', async () => {
     const started: string[] = [];
     // VapidManager's parameters, so the options it is called with are typed below.

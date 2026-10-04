@@ -873,4 +873,9 @@ export const bn: Messages = {
   'settings.autoReload': 'আপডেটের পরে নিজে থেকে আবার লোড করুন',
   'settings.autoReload.description':
     'সার্ভারে নতুন সংস্করণ এলে, আবার লোড করুন বোতাম না দেখিয়ে পরের বার অ্যাপে ফিরলেই নিজে থেকে লোড হবে। টাইপ করার সময় কখনও নয়।',
+
+  // Notifications: skip the session on screen
+  'settings.notify.skipWhenViewing': 'স্ক্রিনে থাকা সেশন বাদ দিন',
+  'settings.notify.skipWhenViewing.description':
+    'যে সেশন আপনি এখন কোনো ব্রাউজারে দেখছেন, তার জন্য বেল বা কমান্ডের বিজ্ঞপ্তি নয়',
 };

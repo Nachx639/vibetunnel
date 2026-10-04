@@ -644,6 +644,7 @@ export class Settings extends LitElement {
                         <div class="space-y-2 bg-bg rounded-lg p-3">
                           ${this.renderNotificationToggle('soundEnabled', t('settings.notify.sound'), t('settings.notify.sound.description'))}
                           ${this.renderNotificationToggle('vibrationEnabled', t('settings.notify.vibration'), t('settings.notify.vibration.description'))}
+                          ${this.renderNotificationToggle('skipWhenViewing', t('settings.notify.skipWhenViewing'), t('settings.notify.skipWhenViewing.description'))}
                         </div>
                       </div>
                     </div>
@@ -732,7 +733,7 @@ export class Settings extends LitElement {
         </div>
         <button
           role="switch"
-          aria-checked="${this.notificationPreferences[key]}"
+          aria-checked="${this.notificationPreferences[key] === true}"
           @click=${() => this.handleNotificationPreferenceChange(key, !this.notificationPreferences[key])}
           class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-base ${
             this.notificationPreferences[key] ? 'bg-primary' : 'bg-border'

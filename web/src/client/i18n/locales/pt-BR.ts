@@ -898,4 +898,9 @@ export const ptBR: Messages = {
   'settings.autoReload': 'Recarregar automaticamente após uma atualização',
   'settings.autoReload.description':
     'Quando o servidor tiver uma versão mais nova, recarrega na próxima vez que você voltar ao app em vez de mostrar um botão Recarregar. Nunca enquanto você digita.',
+
+  // Notifications: skip the session on screen
+  'settings.notify.skipWhenViewing': 'Ignorar a sessão na tela',
+  'settings.notify.skipWhenViewing.description':
+    'Sem notificações de sino ou de comandos sobre uma sessão que você está vendo agora em algum navegador',
 };

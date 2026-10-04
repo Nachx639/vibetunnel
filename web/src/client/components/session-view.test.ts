@@ -22,6 +22,8 @@ const terminalSocketClientMock = vi.hoisted(() => ({
   sendInputKey: vi.fn().mockReturnValue(true),
   sendResize: vi.fn().mockReturnValue(true),
   sendResetSize: vi.fn().mockReturnValue(true),
+  setViewingSession: vi.fn(),
+  clearViewingSession: vi.fn(),
 }));
 
 vi.mock('../services/terminal-socket-client.js', () => ({
@@ -370,6 +372,24 @@ describe('SessionView', () => {
       expect(secondTerminal).toBeTruthy();
       expect(secondTerminal).not.toBe(firstTerminal);
       expect(secondTerminal.sessionId).toBe('second-session');
+    });
+
+    it('reports the session on screen so its pushes are held back', async () => {
+      terminalSocketClientMock.setViewingSession.mockClear();
+      terminalSocketClientMock.clearViewingSession.mockClear();
+      element.session = createMockSession({ id: 'first-session' });
+      await element.updateComplete;
+      expect(terminalSocketClientMock.setViewingSession).toHaveBeenLastCalledWith('first-session');
+
+      element.session = createMockSession({ id: 'second-session' });
+      await element.updateComplete;
+      expect(terminalSocketClientMock.clearViewingSession).toHaveBeenCalledWith('first-session');
+      expect(terminalSocketClientMock.setViewingSession).toHaveBeenLastCalledWith('second-session');
+
+      element.remove();
+      expect(terminalSocketClientMock.clearViewingSession).toHaveBeenLastCalledWith(
+        'second-session'
+      );
     });
 
     it('should show loading state while connecting', async () => {

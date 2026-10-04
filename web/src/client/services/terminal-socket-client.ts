@@ -3,6 +3,7 @@ import {
   encodeWsV3Frame,
   encodeWsV3ResizePayload,
   encodeWsV3SubscribePayload,
+  VIEWING_REFRESH_MS,
   WsV3MessageType,
   WsV3SubscribeFlags,
 } from '../../shared/ws-v3.js';
@@ -11,6 +12,13 @@ import { TerminalRenderer } from '../utils/terminal-renderer.js';
 import { authClient } from './auth-client.js';
 
 const logger = createLogger('terminal-socket-client');
+
+/**
+ * Without a tap, key, scroll or wheel for this long the page is not being looked at: a
+ * session left open on an unattended screen must not hold back notifications.
+ */
+export const VIEWING_IDLE_MS = 120_000;
+const INTERACTION_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'wheel'] as const;
 
 export interface BufferCell {
   char: string;
@@ -61,6 +69,19 @@ export class TerminalSocketClient {
   private noAuthMode: boolean | null = null;
 
   private sessions = new Map<string, SessionSubs>();
+  /**
+   * Session the session view shows; reported to the server (VIEWING) only while someone is
+   * looking at the page, for "Skip notifications for the session on screen".
+   */
+  private viewingSessionId: string | null = null;
+  private pageHidden = false;
+  /** What the current socket was last told about the viewed session. */
+  private sentViewing: string | null = null;
+  /** Last tap, key, scroll or wheel (or coming back to the page). */
+  private lastInteractionAt = 0;
+  /** Repeats the VIEWING frame while a session is shown: the server forgets it otherwise. */
+  private viewingTimer: number | null = null;
+  private viewingListeners = false;
   private messageQueue: Uint8Array[] = [];
   private encoder = new TextEncoder();
 
@@ -118,6 +139,8 @@ export class TerminalSocketClient {
         this.reconnectAttempts = 0;
         this.setConnected(true);
         this.startPingPong();
+        this.sentViewing = null; // a new socket starts with nothing viewed
+        this.sendViewing();
 
         // Flush queued frames
         while (this.messageQueue.length > 0) {
@@ -217,6 +240,104 @@ export class TerminalSocketClient {
 
   private sendFrame(buffer: Uint8Array) {
     this.safeSend(buffer);
+  }
+
+  /**
+   * Tell the server which session this page shows (null: none), so it can hold back
+   * notifications about it while someone is looking, when the user turned that on. Re-sent on
+   * every new socket and every VIEWING_REFRESH_MS while looked at; never queued.
+   */
+  setViewingSession(sessionId: string | null): void {
+    this.viewingSessionId = sessionId || null;
+    this.listenForViewing();
+    // Opening a session is looking at it.
+    if (this.viewingSessionId) this.lastInteractionAt = Date.now();
+    if (this.viewingSessionId && this.viewingTimer === null) {
+      this.viewingTimer = window.setInterval(() => this.sendViewing(true), VIEWING_REFRESH_MS);
+    } else if (!this.viewingSessionId && this.viewingTimer !== null) {
+      clearInterval(this.viewingTimer);
+      this.viewingTimer = null;
+    }
+    this.sendViewing();
+  }
+
+  /** Clear the viewed session if it is still `sessionId` (a newer view may own it). */
+  clearViewingSession(sessionId: string): void {
+    if (this.viewingSessionId === sessionId) this.setViewingSession(null);
+  }
+
+  private listenForViewing() {
+    if (this.viewingListeners || typeof window === 'undefined') return;
+    this.viewingListeners = true;
+    // Locking the phone or switching apps hides the page: stop claiming to watch.
+    document.addEventListener('visibilitychange', this.handleViewingVisibility);
+    // iOS may skip visibilitychange when Safari is closed or the tab discarded.
+    window.addEventListener('pagehide', this.handlePageHide);
+    window.addEventListener('pageshow', this.handlePageShow);
+    // A frozen page (Chrome's lifecycle) runs nothing, so it can't keep saying it is viewed.
+    document.addEventListener('freeze', this.handlePageHide);
+    document.addEventListener('resume', this.handlePageShow);
+    // Another window or app in front: nobody is looking at this page.
+    window.addEventListener('blur', this.handleBlur);
+    window.addEventListener('focus', this.handleLookingAgain);
+    for (const type of INTERACTION_EVENTS) {
+      window.addEventListener(type, this.handleInteraction, { capture: true, passive: true });
+    }
+  }
+
+  private readonly handleViewingVisibility = () => {
+    if (document.visibilityState === 'visible') this.lastInteractionAt = Date.now();
+    this.sendViewing();
+  };
+
+  private readonly handlePageHide = () => {
+    this.pageHidden = true;
+    this.sendViewing();
+  };
+
+  private readonly handlePageShow = () => {
+    this.pageHidden = false;
+    this.lastInteractionAt = Date.now();
+    this.sendViewing();
+  };
+
+  private readonly handleBlur = () => {
+    this.sendViewing();
+  };
+
+  private readonly handleLookingAgain = () => {
+    this.lastInteractionAt = Date.now();
+    this.sendViewing();
+  };
+
+  private readonly handleInteraction = () => {
+    this.lastInteractionAt = Date.now();
+    // Only says something when this ends an idle spell (or nothing was claimed yet).
+    this.sendViewing();
+  };
+
+  /**
+   * Someone is looking at this page: visible, focused, and touched, typed in or scrolled
+   * within VIEWING_IDLE_MS. A page left open on a locked computer or behind another window
+   * is not.
+   */
+  private isLookedAt(): boolean {
+    return (
+      !this.pageHidden &&
+      document.visibilityState === 'visible' &&
+      document.hasFocus() &&
+      Date.now() - this.lastInteractionAt < VIEWING_IDLE_MS
+    );
+  }
+
+  /** Report what is viewed when it changed; `refresh` repeats a viewed session anyway. */
+  private sendViewing(refresh = false) {
+    const socket = this.ws;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    const viewing = this.isLookedAt() ? this.viewingSessionId : null;
+    if (viewing === this.sentViewing && !(refresh && viewing)) return;
+    this.sentViewing = viewing;
+    this.safeSend(encodeWsV3Frame({ type: WsV3MessageType.VIEWING, sessionId: viewing ?? '' }));
   }
 
   subscribe(

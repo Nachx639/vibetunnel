@@ -16,6 +16,11 @@ export interface NotificationPreferences {
   commandCompletion: boolean;
   commandError: boolean;
   bell: boolean;
+  /**
+   * Skip bell and command notifications about a session that is on screen in some browser
+   * right now (looked at within the last minutes). Missing = off.
+   */
+  skipWhenViewing?: boolean;
   // UI preferences
   soundEnabled: boolean;
   vibrationEnabled: boolean;

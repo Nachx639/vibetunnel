@@ -805,6 +805,12 @@ export async function createApp(): Promise<AppInstance> {
     remoteRegistry,
     isHQMode: config.isHQMode,
   });
+  // "Skip notifications for the session on screen" (Settings, off unless turned on).
+  pushNotificationService?.setViewedFilter(
+    (sessionId) =>
+      configService.getNotificationPreferences().skipWhenViewing === true &&
+      wsV3Hub.isSessionBeingViewed(sessionId)
+  );
   logger.debug('Initialized WebSocket v3 hub');
 
   // Set up authentication

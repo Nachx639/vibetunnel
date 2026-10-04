@@ -8,6 +8,7 @@ import {
   encodeWsV3Frame,
   encodeWsV3ResizePayload,
   encodeWsV3SubscribePayload,
+  VIEWING_STALE_MS,
   WsV3MessageType,
   WsV3SubscribeFlags,
 } from '../../shared/ws-v3.js';
@@ -40,6 +41,10 @@ type ClientSessionSub = {
 
 type ClientState = {
   subs: Map<string, ClientSessionSub>;
+  /** Session shown on this client's page while someone looks at it (VIEWING frame). */
+  viewing: string | null;
+  /** When that VIEWING frame came: it counts for VIEWING_STALE_MS unless repeated. */
+  viewingAt: number;
 };
 
 type RemoteConn = {
@@ -77,7 +82,7 @@ export class WsV3Hub {
   }
 
   handleClientConnection(ws: WebSocket, req: WebSocketRequestV3) {
-    const clientState: ClientState = { subs: new Map() };
+    const clientState: ClientState = { subs: new Map(), viewing: null, viewingAt: 0 };
     this.clients.set(ws, clientState);
     this.clientSockets.add(ws);
 
@@ -139,6 +144,15 @@ export class WsV3Hub {
         return;
       }
 
+      case WsV3MessageType.VIEWING: {
+        const state = this.getClientState(ws);
+        if (state) {
+          state.viewing = sessionId || null;
+          state.viewingAt = Date.now();
+        }
+        return;
+      }
+
       case WsV3MessageType.SUBSCRIBE: {
         const sub = decodeWsV3SubscribePayload(payload);
         if (!sub) throw new Error('Invalid SUBSCRIBE payload');
@@ -189,6 +203,23 @@ export class WsV3Hub {
       default:
         return;
     }
+  }
+
+  /**
+   * True while some connected client says it is showing this session to someone, and said
+   * so again within VIEWING_STALE_MS. A client that vanished stops counting when its socket
+   * closes; one that stays connected but stops repeating it (a page left open on a locked
+   * computer) once it goes stale.
+   */
+  isSessionBeingViewed(sessionId: string): boolean {
+    if (!sessionId) return false;
+    const now = Date.now();
+    for (const ws of this.clientSockets) {
+      if (ws.readyState !== WebSocket.OPEN) continue;
+      const state = this.getClientState(ws);
+      if (state?.viewing === sessionId && now - state.viewingAt <= VIEWING_STALE_MS) return true;
+    }
+    return false;
   }
 
   private getClientState(ws: WebSocket): ClientState | null {
@@ -390,6 +421,7 @@ export class WsV3Hub {
   private cleanupClient(ws: WebSocket) {
     const state = this.getClientState(ws);
     if (!state) return;
+    state.viewing = null;
 
     for (const sessionId of state.subs.keys()) {
       this.unsubscribe(ws, sessionId);

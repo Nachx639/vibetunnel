@@ -34,7 +34,23 @@ export enum WsV3MessageType {
 
   PING = 40,
   PONG = 41,
+
+  /**
+   * Client → server: the session this client is showing on a page someone is looking at
+   * (frame sessionId), or none (empty sessionId). Used only when the user turned on
+   * "Skip notifications for the session on screen". Re-sent every VIEWING_REFRESH_MS while
+   * someone is really looking; the server forgets it VIEWING_STALE_MS after the last one.
+   */
+  VIEWING = 50,
 }
+
+/** How often a client repeats its VIEWING frame while the page is really being looked at. */
+export const VIEWING_REFRESH_MS = 20_000;
+/**
+ * A VIEWING frame not repeated within this long no longer counts (three refreshes missed):
+ * a page left open on an unattended screen must not hold back pushes for ever.
+ */
+export const VIEWING_STALE_MS = 60_000;
 
 export type WsV3DecodedFrame = {
   type: WsV3MessageType;

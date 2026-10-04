@@ -909,4 +909,9 @@ export const fr: Messages = {
   'settings.autoReload': 'Recharger automatiquement après une mise à jour',
   'settings.autoReload.description':
     'Quand le serveur a une version plus récente, recharger la prochaine fois que vous revenez dans l’app au lieu d’afficher un bouton Recharger. Jamais pendant la saisie.',
+
+  // Notifications: skip the session on screen
+  'settings.notify.skipWhenViewing': 'Ignorer la session à l’écran',
+  'settings.notify.skipWhenViewing.description':
+    'Pas de notifications de cloche ni de commande pour une session que vous regardez en ce moment dans un navigateur',
 };

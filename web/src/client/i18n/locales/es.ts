@@ -900,4 +900,9 @@ export const es: Messages = {
   'settings.autoReload': 'Recargar automáticamente tras una actualización',
   'settings.autoReload.description':
     'Cuando el servidor tenga una versión más nueva, recarga la próxima vez que vuelvas a la app en lugar de mostrar un botón Recargar. Nunca mientras escribes.',
+
+  // Notifications: skip the session on screen
+  'settings.notify.skipWhenViewing': 'Omitir la sesión en pantalla',
+  'settings.notify.skipWhenViewing.description':
+    'Sin notificaciones de campana ni de comandos sobre una sesión que estás mirando ahora mismo en algún navegador',
 };

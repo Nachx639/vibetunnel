@@ -890,6 +890,11 @@ export const en = {
   'settings.autoReload': 'Reload automatically after an update',
   'settings.autoReload.description':
     'When the server has a newer version, reload the next time you come back to the app instead of showing a Reload button. Never while you are typing.',
+
+  // Notifications: skip the session on screen
+  'settings.notify.skipWhenViewing': 'Skip the session on screen',
+  'settings.notify.skipWhenViewing.description':
+    'No bell or command notifications about a session you are looking at in some browser right now',
 };
 
 export type MessageKey = keyof typeof en;

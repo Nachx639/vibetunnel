@@ -871,4 +871,9 @@ export const ar: Messages = {
   'settings.autoReload': 'إعادة التحميل تلقائيًا بعد التحديث',
   'settings.autoReload.description':
     'عندما يتوفر إصدار أحدث على الخادم، يُعاد التحميل في المرة التالية التي تعود فيها إلى التطبيق بدلًا من عرض زر إعادة التحميل. لا يحدث ذلك أبدًا أثناء الكتابة.',
+
+  // Notifications: skip the session on screen
+  'settings.notify.skipWhenViewing': 'تخطَّ الجلسة المعروضة على الشاشة',
+  'settings.notify.skipWhenViewing.description':
+    'لا إشعارات جرس أو أوامر لجلسة تشاهدها الآن في أي متصفح',
 };

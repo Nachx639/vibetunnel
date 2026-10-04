@@ -56,6 +56,7 @@ const ConfigSchema = z.object({
           commandCompletion: z.boolean(),
           commandError: z.boolean(),
           bell: z.boolean(),
+          skipWhenViewing: z.boolean().optional(),
           soundEnabled: z.boolean(),
           vibrationEnabled: z.boolean(),
         })
@@ -305,6 +306,7 @@ export class ConfigService {
           commandCompletion: z.boolean(),
           commandError: z.boolean(),
           bell: z.boolean(),
+          skipWhenViewing: z.boolean().optional(),
           soundEnabled: z.boolean(),
           vibrationEnabled: z.boolean(),
         })
