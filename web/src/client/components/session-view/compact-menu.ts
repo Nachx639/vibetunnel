@@ -5,8 +5,9 @@
  * Used on mobile devices and desktop when the header doesn't have enough space for individual buttons.
  * Includes file browser, width settings, image upload, theme toggle, and other controls.
  */
-import { html, LitElement, nothing } from 'lit';
+import { html, LitElement, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import type { MacModeRequest } from '../../../shared/mac-sessions.js';
 import type { Session } from '../../../shared/types.js';
 import { LocaleController, t } from '../../i18n/index.js';
 import {
@@ -17,6 +18,7 @@ import {
   syncThemeColorMeta,
 } from '../../utils/accent-themes.js';
 import { Z_INDEX } from '../../utils/constants.js';
+import { attachedTmux } from '../../utils/mac-attach-mode.js';
 import { isTmuxAttachment } from '../../utils/tmux-attachment.js';
 import type { Theme } from '../theme-toggle-icon.js';
 
@@ -60,6 +62,71 @@ export class CompactMenu extends LitElement {
     if (!this.showMenu) {
       this.focusedIndex = -1;
     }
+  }
+
+  /** The session view asks tmux for the change (POST …/attached/:id/mode). */
+  private changeAttach(change: MacModeRequest) {
+    this.handleAction(() =>
+      this.dispatchEvent(
+        new CustomEvent<MacModeRequest>('attach-mode-change', {
+          detail: change,
+          bubbles: true,
+          composed: true,
+        })
+      )
+    );
+  }
+
+  /**
+   * A tmux session opened from "On this computer": watch it or type into it, and while typing,
+   * which screen sets the window's size.
+   */
+  private renderAttachItems(nextIndex: () => number) {
+    const tmux = this.session?.status === 'running' ? attachedTmux(this.session) : null;
+    if (!tmux) return nothing;
+    const item = (
+      testId: string,
+      icon: TemplateResult,
+      label: TemplateResult | string,
+      change: MacModeRequest
+    ) => {
+      const index = nextIndex();
+      return html`
+        <button
+          class="w-full text-left px-4 py-3 text-sm font-mono text-primary hover:bg-surface-hover hover:text-primary flex items-center gap-3 ${this.focusedIndex === index ? 'bg-surface-hover text-primary' : ''}"
+          @click=${() => this.changeAttach(change)}
+          data-testid=${testId}
+          tabindex="${this.showMenu ? '0' : '-1'}"
+        >
+          ${icon}
+          ${label}
+        </button>
+      `;
+    };
+    const eye = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg>`;
+    if (tmux.mode === 'watch') {
+      const keys = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" /></svg>`;
+      return item('compact-attach-control', keys, t('macSessions.watch.takeControl'), {
+        mode: 'control',
+      });
+    }
+    const fit = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>`;
+    return html`
+      ${item('compact-attach-watch', eye, t('macSessions.action.watch'), { mode: 'watch' })}
+      ${
+        tmux.sizing === 'here'
+          ? item('compact-attach-fit', fit, t('macSessions.fit.others'), { sizing: 'others' })
+          : item(
+              'compact-attach-fit',
+              fit,
+              html`<span class="flex-1 flex flex-col">
+                <span>${t('macSessions.fit.here')}</span>
+                <span class="text-xs text-text-muted">${t('macSessions.fit.hereHint')}</span>
+              </span>`,
+              { sizing: 'here' }
+            )
+      }
+    `;
   }
 
   private handleAction(callback?: () => void) {
@@ -413,6 +480,7 @@ export class CompactMenu extends LitElement {
           <div class="border-t border-border my-1"></div>
           
           <!-- Session Actions -->
+          ${this.renderAttachItems(() => menuItemIndex++)}
           ${
             this.session.status === 'running'
               ? html`

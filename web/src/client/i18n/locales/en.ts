@@ -1101,6 +1101,25 @@ export const en = {
   // tmux attachments: ending one only detaches
   'sessions.row.disconnect': 'Disconnect',
   'sessions.row.disconnectConfirm': 'Disconnect from “{name}”? It keeps running in tmux.',
+  // On this computer (mac-session-row.ts, mac-session-view.ts, settings.ts)
+  'chat.readOnlyEmpty': 'No messages yet.',
+  'chat.readOnlyQuestion': 'It’s waiting for an answer where it runs.',
+  'macSessions.action.watch': 'Watch only',
+  'macSessions.error.clientNotFound':
+    'This session is no longer attached to tmux. Open it again from the list.',
+  'macSessions.error.disabled': 'Showing sessions from this computer is turned off.',
+  'macSessions.error.gone': 'That session is no longer running.',
+  'macSessions.error.modeFailed': 'Couldn’t switch: {error}',
+  'macSessions.error.notOpenable': 'Only tmux sessions can be opened from here.',
+  'macSessions.error.openFailed': 'Couldn’t open it: {error}',
+  'macSessions.error.tmuxTooOld': 'Opening tmux sessions needs tmux {version} or newer.',
+  'macSessions.error.watching': 'Watch only: take control to type here.',
+  'macSessions.fit.here': 'Fit to this screen',
+  'macSessions.fit.hereHint':
+    'Other terminals showing this session switch to this size while you use it here.',
+  'macSessions.fit.others': 'Use the other terminal’s size',
+  'macSessions.watch.banner': 'Watching: what you type isn’t sent.',
+  'macSessions.watch.takeControl': 'Take control',
 };
 
 export type MessageKey = keyof typeof en;

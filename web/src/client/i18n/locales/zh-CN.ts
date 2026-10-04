@@ -1069,4 +1069,21 @@ export const zhCN: Messages = {
   // tmux attachments: ending one only detaches
   'sessions.row.disconnect': '断开连接',
   'sessions.row.disconnectConfirm': '断开与“{name}”的连接？它会继续在 tmux 中运行。',
+  // On this computer (mac-session-row.ts, mac-session-view.ts, settings.ts)
+  'chat.readOnlyEmpty': '还没有消息。',
+  'chat.readOnlyQuestion': '它正在等待回答，请在它运行的地方作答。',
+  'macSessions.action.watch': '仅观看',
+  'macSessions.error.clientNotFound': '此会话已不再连接到 tmux。请从列表中重新打开。',
+  'macSessions.error.disabled': '已关闭显示这台电脑上的会话。',
+  'macSessions.error.gone': '该会话已不在运行。',
+  'macSessions.error.modeFailed': '无法切换：{error}',
+  'macSessions.error.notOpenable': '这里只能打开 tmux 会话。',
+  'macSessions.error.openFailed': '无法打开：{error}',
+  'macSessions.error.tmuxTooOld': '打开 tmux 会话需要 tmux {version} 或更高版本。',
+  'macSessions.error.watching': '仅观看：接管控制后才能在这里输入。',
+  'macSessions.fit.here': '适应此屏幕',
+  'macSessions.fit.hereHint': '你在这里使用时，显示此会话的其他终端会切换到这个尺寸。',
+  'macSessions.fit.others': '使用其他终端的尺寸',
+  'macSessions.watch.banner': '仅观看：你输入的内容不会发送。',
+  'macSessions.watch.takeControl': '接管控制',
 };

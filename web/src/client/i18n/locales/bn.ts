@@ -1082,4 +1082,21 @@ export const bn: Messages = {
   // tmux attachments: ending one only detaches
   'sessions.row.disconnect': 'বিচ্ছিন্ন করুন',
   'sessions.row.disconnectConfirm': '“{name}” থেকে বিচ্ছিন্ন হবেন? এটি tmux-এ চলতে থাকবে।',
+  // On this computer (mac-session-row.ts, mac-session-view.ts, settings.ts)
+  'chat.readOnlyEmpty': 'এখনও কোনো মেসেজ নেই।',
+  'chat.readOnlyQuestion': 'যেখানে চলছে, সেখানে উত্তরের অপেক্ষা করছে।',
+  'macSessions.action.watch': 'শুধু দেখুন',
+  'macSessions.error.clientNotFound': 'এই সেশন আর tmux-এ যুক্ত নেই। তালিকা থেকে আবার খুলুন।',
+  'macSessions.error.disabled': 'এই কম্পিউটারের সেশন দেখানো বন্ধ আছে।',
+  'macSessions.error.gone': 'সেই সেশনটি আর চলছে না।',
+  'macSessions.error.modeFailed': 'বদলানো যায়নি: {error}',
+  'macSessions.error.notOpenable': 'এখান থেকে শুধু tmux সেশন খোলা যায়।',
+  'macSessions.error.openFailed': 'খোলা যায়নি: {error}',
+  'macSessions.error.tmuxTooOld': 'tmux সেশন খুলতে tmux {version} বা তার নতুন সংস্করণ দরকার।',
+  'macSessions.error.watching': 'শুধু দেখা হচ্ছে: এখানে লিখতে নিয়ন্ত্রণ নিন।',
+  'macSessions.fit.here': 'এই স্ক্রিনে মানিয়ে নিন',
+  'macSessions.fit.hereHint': 'আপনি এখানে ব্যবহার করার সময় এই সেশন দেখানো অন্য টার্মিনালগুলো এই মাপে বদলে যায়।',
+  'macSessions.fit.others': 'অন্য টার্মিনালের মাপ ব্যবহার করুন',
+  'macSessions.watch.banner': 'শুধু দেখা হচ্ছে: আপনি যা লেখেন তা পাঠানো হয় না।',
+  'macSessions.watch.takeControl': 'নিয়ন্ত্রণ নিন',
 };

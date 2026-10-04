@@ -1079,4 +1079,22 @@ export const ar: Messages = {
   // tmux attachments: ending one only detaches
   'sessions.row.disconnect': 'قطع الاتصال',
   'sessions.row.disconnectConfirm': 'قطع الاتصال بـ «{name}»؟ ستستمر في العمل داخل tmux.',
+  // On this computer (mac-session-row.ts, mac-session-view.ts, settings.ts)
+  'chat.readOnlyEmpty': 'لا توجد رسائل بعد.',
+  'chat.readOnlyQuestion': 'ينتظر إجابة حيث يعمل.',
+  'macSessions.action.watch': 'مشاهدة فقط',
+  'macSessions.error.clientNotFound': 'لم تعد هذه الجلسة متصلة بـ tmux. افتحها مجددًا من القائمة.',
+  'macSessions.error.disabled': 'عرض جلسات هذا الكمبيوتر متوقف.',
+  'macSessions.error.gone': 'لم تعد تلك الجلسة قيد التشغيل.',
+  'macSessions.error.modeFailed': 'تعذّر التبديل: {error}',
+  'macSessions.error.notOpenable': 'يمكن فتح جلسات tmux فقط من هنا.',
+  'macSessions.error.openFailed': 'تعذّر فتحها: {error}',
+  'macSessions.error.tmuxTooOld': 'يتطلب فتح جلسات tmux الإصدار {version} من tmux أو أحدث.',
+  'macSessions.error.watching': 'مشاهدة فقط: تولَّ التحكم لتكتب هنا.',
+  'macSessions.fit.here': 'ملاءمة هذه الشاشة',
+  'macSessions.fit.hereHint':
+    'تنتقل الطرفيات الأخرى التي تعرض هذه الجلسة إلى هذا الحجم ما دمت تستخدمها هنا.',
+  'macSessions.fit.others': 'استخدام حجم الطرفية الأخرى',
+  'macSessions.watch.banner': 'مشاهدة فقط: ما تكتبه لا يُرسَل.',
+  'macSessions.watch.takeControl': 'تولّي التحكم',
 };

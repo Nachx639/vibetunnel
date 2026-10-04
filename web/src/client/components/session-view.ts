@@ -13,9 +13,10 @@
  * @listens file-selected - From file browser when file is selected
  * @listens browser-cancel - From file browser when cancelled
  */
-import { html, LitElement, type PropertyValues } from 'lit';
+import { html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { ScreenLayout } from '../../shared/claude-screen.js';
+import type { MacModeRequest } from '../../shared/mac-sessions.js';
 import type { Session } from '../../shared/types.js';
 import { LocaleController, t } from '../i18n/index.js';
 import './clickable-path.js';
@@ -27,6 +28,7 @@ import { GitService } from '../services/git-service.js';
 import { agentChatEnabled } from '../utils/agent-chat.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
+import { attachedTmux, changeAttachMode } from '../utils/mac-attach-mode.js';
 import { TERMINAL_IDS } from '../utils/terminal-constants.js';
 import type { TerminalThemeId } from '../utils/terminal-themes.js';
 // Manager imports
@@ -203,6 +205,61 @@ export class SessionView extends LitElement {
   @state() private chatCovers = false;
   /** The chat view shows a question with its options; the composer then shows none. */
   @state() private chatAsking = false;
+  /** A change of how an opened tmux session is attached, shown while tmux makes it. */
+  @state() private attachPending: MacModeRequest | null = null;
+
+  /**
+   * Watching a tmux session opened from "On this computer": tmux drops what this client types,
+   * so nothing here offers to type (composer, action bar, quick keys, keyboard, chat answers).
+   */
+  private get watching(): boolean {
+    const tmux = attachedTmux(this.session);
+    return tmux !== null && (this.attachPending?.mode ?? tmux.mode) === 'watch';
+  }
+
+  /** Take control, watch only, or fit: shown at once, put back with a toast if tmux refuses. */
+  private handleAttachChange = async (change: MacModeRequest) => {
+    const session = this.session;
+    const tmux = attachedTmux(session);
+    if (!session || !tmux || this.attachPending) return;
+    this.attachPending = change;
+    try {
+      const result = await changeAttachMode(session.id, change, authClient.getAuthHeader());
+      // What tmux reports now, until the next poll brings the same from the server.
+      session.multiplexer = { ...tmux, ...result };
+    } catch (error) {
+      this.dispatchEvent(
+        new CustomEvent('error', {
+          detail: error instanceof Error ? error.message : String(error),
+          bubbles: true,
+          composed: true,
+        })
+      );
+    } finally {
+      this.attachPending = null;
+    }
+  };
+
+  /** Watching: say so, with the way to type instead (the chat and keys are hidden). */
+  private renderWatchBanner() {
+    if (!this.watching || this.session?.status !== 'running') return nothing;
+    return html`
+      <div
+        class="flex items-center gap-3 border-b border-border bg-status-warning/10 text-text text-xs ps-3 pe-1"
+        role="status"
+        data-testid="watch-banner"
+      >
+        <span class="flex-1 min-w-0"><span aria-hidden="true">👁 </span>${t('macSessions.watch.banner')}</span>
+        <button
+          class="flex-shrink-0 min-h-[44px] px-3 font-semibold text-primary"
+          data-testid="watch-take-control"
+          @click=${() => this.handleAttachChange({ mode: 'control' })}
+        >
+          ${t('macSessions.watch.takeControl')}
+        </button>
+      </div>
+    `;
+  }
 
   /**
    * Phone chat mode with agent chat on: the agent's conversation (when the session runs one)
@@ -587,6 +644,8 @@ export class SessionView extends LitElement {
         }
       }
 
+      if (sessionChanged) this.attachPending = null;
+
       // Update managers with new session
       if (this.inputManager) {
         this.inputManager.setSession(this.session);
@@ -629,7 +688,17 @@ export class SessionView extends LitElement {
       this.uiStateManager.setKeyboardCaptureActive(this.keyboardCaptureActive);
       logger.log(`Keyboard capture state updated to: ${this.keyboardCaptureActive}`);
     }
+
+    // Watching from now on: a keyboard still up would type into nothing.
+    const watching = this.watching;
+    if (watching && !this.wasWatching && this.uiStateManager.getState().isMobile) {
+      this.directKeyboardManager?.blurHiddenInput();
+      this.uiStateManager.setShowQuickKeys(false);
+    }
+    this.wasWatching = watching;
   }
+
+  private wasWatching = false;
 
   /**
    * Ensures terminal is properly initialized with current session data.
@@ -865,6 +934,8 @@ export class SessionView extends LitElement {
     this.uiStateManager.toggleChatMode(this.agentChat);
   }
   private handleKeyboardButtonClick() {
+    // Watching: tmux drops what this client types.
+    if (this.watching) return;
     // Show quick keys immediately for visual feedback
     this.uiStateManager.setShowQuickKeys(true);
 
@@ -1569,8 +1640,10 @@ export class SessionView extends LitElement {
             }}
             .hasGitRepo=${!!this.session?.gitRepoPath}
             .viewMode=${uiState.viewMode}
+            @attach-mode-change=${(e: CustomEvent<MacModeRequest>) => this.handleAttachChange(e.detail)}
           >
           </session-header>
+          ${this.renderWatchBanner()}
         </div>
 
         <!-- Content Area (Terminal or Worktree) -->
@@ -1644,6 +1717,7 @@ export class SessionView extends LitElement {
                 <claude-chat-view
                   style="position: absolute; inset: 0; z-index: 5;"
                   .sessionId=${this.session.id}
+                  .readOnly=${this.watching}
                   .getScreenTail=${() =>
                     this.terminalLifecycleManager.getTerminal()?.getScreenText(30) ?? ''}
                   @claude-chat-open-terminal=${() => this.handleToggleChatMode()}
@@ -1689,7 +1763,7 @@ export class SessionView extends LitElement {
         <!-- Phone agent chat: a native composer (autocorrect, predictions, dictation, photos)
              under the live terminal. -->
         ${
-          phoneChat && uiState.viewMode === 'terminal'
+          phoneChat && uiState.viewMode === 'terminal' && !this.watching
             ? html`
           <terminal-chat-view
             composerOnly
@@ -1723,7 +1797,7 @@ export class SessionView extends LitElement {
           uiState.isMobile
             ? html`
           <mobile-action-bar
-            .visible=${!uiState.showQuickKeys && !phoneChat}
+            .visible=${!uiState.showQuickKeys && !phoneChat && !this.watching}
             .session=${this.session}
             .keyboardVisible=${uiState.keyboardHeight > 0}
             .keyboardHeight=${uiState.keyboardHeight}
@@ -1834,14 +1908,14 @@ export class SessionView extends LitElement {
       <!-- Terminal Quick Keys (for direct keyboard mode, hidden in chat mode) -->
       <terminal-quick-keys
         style="position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; z-index: ${Z_INDEX.TERMINAL_QUICK_KEYS} !important;"
-        .visible=${uiState.isMobile && uiState.useDirectKeyboard && uiState.showQuickKeys && !uiState.chatMode}
+        .visible=${uiState.isMobile && uiState.useDirectKeyboard && uiState.showQuickKeys && !uiState.chatMode && !this.watching}
         .onKeyPress=${(key: string) => this.directKeyboardManager.handleQuickKeyPress(key)}
         @quick-keys-layout-change=${() => this.updateTerminalTransform()}
       ></terminal-quick-keys>
 
       <!-- Mobile Input Controls (only show when direct keyboard is disabled) -->
       ${
-        uiState.isMobile && !uiState.showMobileInput && !uiState.useDirectKeyboard
+        uiState.isMobile && !uiState.showMobileInput && !uiState.useDirectKeyboard && !this.watching
           ? html`
             <div class="p-4 bg-bg-secondary" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: ${Z_INDEX.TERMINAL_QUICK_KEYS};">
             <!-- First row: Arrow keys -->

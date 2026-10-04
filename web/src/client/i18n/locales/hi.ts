@@ -1080,4 +1080,22 @@ export const hi: Messages = {
   // tmux attachments: ending one only detaches
   'sessions.row.disconnect': 'डिस्कनेक्ट करें',
   'sessions.row.disconnectConfirm': '“{name}” से डिस्कनेक्ट करें? यह tmux में चलता रहेगा।',
+  // On this computer (mac-session-row.ts, mac-session-view.ts, settings.ts)
+  'chat.readOnlyEmpty': 'अभी तक कोई मैसेज नहीं।',
+  'chat.readOnlyQuestion': 'यह वहीं जवाब का इंतज़ार कर रहा है जहाँ यह चल रहा है।',
+  'macSessions.action.watch': 'केवल देखें',
+  'macSessions.error.clientNotFound': 'यह सेशन अब tmux से जुड़ा नहीं है। सूची से इसे फिर से खोलें।',
+  'macSessions.error.disabled': 'इस कंप्यूटर के सेशन दिखाना बंद है।',
+  'macSessions.error.gone': 'वह सेशन अब नहीं चल रहा।',
+  'macSessions.error.modeFailed': 'बदला नहीं जा सका: {error}',
+  'macSessions.error.notOpenable': 'यहाँ से केवल tmux सेशन खोले जा सकते हैं।',
+  'macSessions.error.openFailed': 'खोला नहीं जा सका: {error}',
+  'macSessions.error.tmuxTooOld': 'tmux सेशन खोलने के लिए tmux {version} या उससे नया संस्करण चाहिए।',
+  'macSessions.error.watching': 'केवल देख रहे हैं: यहाँ लिखने के लिए नियंत्रण लें।',
+  'macSessions.fit.here': 'इस स्क्रीन के अनुसार करें',
+  'macSessions.fit.hereHint':
+    'जब तक आप इसे यहाँ इस्तेमाल करते हैं, इस सेशन को दिखाने वाले दूसरे टर्मिनल इसी आकार में बदल जाते हैं।',
+  'macSessions.fit.others': 'दूसरे टर्मिनल का आकार इस्तेमाल करें',
+  'macSessions.watch.banner': 'केवल देख रहे हैं: आप जो लिखते हैं, वह नहीं भेजा जाता।',
+  'macSessions.watch.takeControl': 'नियंत्रण लें',
 };

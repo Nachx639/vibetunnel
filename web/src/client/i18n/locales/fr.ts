@@ -1120,4 +1120,24 @@ export const fr: Messages = {
   'sessions.row.disconnect': 'Déconnecter',
   'sessions.row.disconnectConfirm':
     'Se déconnecter de « {name} » ? Elle continue de tourner dans tmux.',
+  // On this computer (mac-session-row.ts, mac-session-view.ts, settings.ts)
+  'chat.readOnlyEmpty': 'Aucun message pour l’instant.',
+  'chat.readOnlyQuestion': 'Il attend une réponse là où il s’exécute.',
+  'macSessions.action.watch': 'Observer seulement',
+  'macSessions.error.clientNotFound':
+    'Cette session n’est plus rattachée à tmux. Rouvrez-la depuis la liste.',
+  'macSessions.error.disabled': 'L’affichage des sessions de cet ordinateur est désactivé.',
+  'macSessions.error.gone': 'Cette session n’est plus en cours.',
+  'macSessions.error.modeFailed': 'Impossible de changer : {error}',
+  'macSessions.error.notOpenable': 'Seules les sessions tmux peuvent être ouvertes d’ici.',
+  'macSessions.error.openFailed': 'Impossible de l’ouvrir : {error}',
+  'macSessions.error.tmuxTooOld':
+    'Ouvrir des sessions tmux nécessite tmux {version} ou plus récent.',
+  'macSessions.error.watching': 'En observation : prenez le contrôle pour écrire ici.',
+  'macSessions.fit.here': 'Adapter à cet écran',
+  'macSessions.fit.hereHint':
+    'Les autres terminaux qui affichent cette session passent à cette taille tant que vous l’utilisez ici.',
+  'macSessions.fit.others': 'Utiliser la taille de l’autre terminal',
+  'macSessions.watch.banner': 'En observation : ce que vous écrivez n’est pas envoyé.',
+  'macSessions.watch.takeControl': 'Prendre le contrôle',
 };

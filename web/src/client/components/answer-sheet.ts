@@ -98,6 +98,8 @@ export function openAnswerSheet(options: AnswerSheetOptions): void {
   let choices: PromptChoices | null = options.choices ?? null;
   let detail = claudeWaitingLabel(options.detail) ?? '';
   let failed = false;
+  /** Refused because the session was opened to watch only: its prompt still waits. */
+  let watching = false;
   let draft = '';
 
   const api = (path: string, init?: RequestInit) =>
@@ -137,6 +139,7 @@ export function openAnswerSheet(options: AnswerSheetOptions): void {
     if (phase !== 'ready') return;
     phase = 'sending';
     failed = false;
+    watching = false;
     paint();
     try {
       const same = await stillTheSame();
@@ -152,7 +155,10 @@ export function openAnswerSheet(options: AnswerSheetOptions): void {
         response.status === 409
           ? ((await response.json().catch(() => ({}))) as { error?: string }).error
           : undefined;
-      if (error !== 'busy' && (response.status === 409 || response.status === 404)) {
+      if (error === 'read-only') {
+        failed = true;
+        watching = true;
+      } else if (error !== 'busy' && (response.status === 409 || response.status === 404)) {
         phase = 'gone';
       } else failed = true;
     } catch {
@@ -297,7 +303,7 @@ export function openAnswerSheet(options: AnswerSheetOptions): void {
                     ${
                       failed
                         ? html`<p class="ans-error" role="alert">
-                            ${t('answerSheet.failed')}
+                            ${watching ? t('macSessions.error.watching') : t('answerSheet.failed')}
                           </p>`
                         : nothing
                     }

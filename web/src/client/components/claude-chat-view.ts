@@ -5,6 +5,9 @@
  * own transcript (served by /api/sessions/:id/claude-chat) as messaging-app bubbles. The
  * terminal only holds Claude Code's visible screen, so it cannot be the source.
  * Sets the `unavailable` attribute (and hides) when the session is not running Claude Code.
+ *
+ * `readOnly` follows a conversation that can't be typed into from here (an agent running
+ * outside VibeTunnel, a tmux session opened to watch): no answers, Stop or mode.
  */
 import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
@@ -1315,6 +1318,19 @@ export class ClaudeChatView extends LitElement {
       font-weight: 600;
       font-size: 13px;
     }
+    .read-only-note {
+      padding: 2px 4px;
+      font-size: 13px;
+      color: var(--chat-muted);
+    }
+    .waiting.read-only {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+    .waiting.read-only .read-only-note {
+      padding: 0;
+    }
     .offline {
       flex-shrink: 0;
       padding: 6px 12px;
@@ -1334,6 +1350,13 @@ export class ClaudeChatView extends LitElement {
   `;
 
   @property({ type: String }) sessionId = '';
+  /** Where the conversation is read; empty means GET /api/sessions/:sessionId/claude-chat. */
+  @property({ type: String }) chatUrl = '';
+  /**
+   * Nothing is sent from here: questions show without their options, and there is no Stop,
+   * mode chip or "Open terminal".
+   */
+  @property({ type: Boolean, reflect: true }) readOnly = false;
   @property({ type: Boolean, reflect: true }) unavailable = false;
   /** Last lines of the terminal screen, where Claude Code shows its mode. */
   @property({ attribute: false }) getScreenTail?: () => string;
@@ -1489,7 +1512,9 @@ export class ClaudeChatView extends LitElement {
   }
 
   updated(changed: PropertyValues) {
-    if (changed.has('sessionId') && changed.get('sessionId') !== undefined) {
+    const switched = (key: 'sessionId' | 'chatUrl') =>
+      changed.has(key) && changed.get(key) !== undefined;
+    if (switched('sessionId') || switched('chatUrl')) {
       // A different conversation: forget everything shown for the previous one.
       this.messages = [];
       this.signature = '';
@@ -1630,8 +1655,8 @@ export class ClaudeChatView extends LitElement {
     // The messages already shown: the server leaves them out of its answer if still current
     // (a long conversation was ~50 KB compressed every 1.5 s while the agent worked).
     const have = this.messagesVersion;
-    const url = `/api/sessions/${sessionId}/claude-chat`;
-    const query = have ? `?have=${encodeURIComponent(have)}` : '';
+    const url = this.chatUrl || `/api/sessions/${sessionId}/claude-chat`;
+    const query = have ? `${url.includes('?') ? '&' : '?'}have=${encodeURIComponent(have)}` : '';
     try {
       const response = await fetch(`${url}${query}`, {
         headers: authClient.getAuthHeader(),
@@ -1791,7 +1816,7 @@ export class ClaudeChatView extends LitElement {
    * it is still the same menu before pressing any key.
    */
   private async answer(optionIndex: number) {
-    if (this.answering) return;
+    if (this.answering || this.readOnly) return;
     const choices = this.pendingQuestion ? null : this.screenChoices;
     if (!choices) {
       this.waitingFor = null;
@@ -1874,6 +1899,7 @@ export class ClaudeChatView extends LitElement {
 
   /** Pick Claude Code's permission mode from a sheet; it presses Shift+Tab until it shows. */
   private openModePicker = () => {
+    if (this.readOnly) return;
     const sessionId = this.sessionId;
     openClaudeModePicker({
       sessionId,
@@ -1898,6 +1924,7 @@ export class ClaudeChatView extends LitElement {
 
   /** Interrupt Claude Code (Esc), like the stop button of a chat app. */
   private stop = () => {
+    if (this.readOnly) return;
     this.dispatchEvent(
       new CustomEvent('claude-chat-input', { detail: '\x1b', bubbles: true, composed: true })
     );
@@ -2497,14 +2524,24 @@ export class ClaudeChatView extends LitElement {
     );
   };
 
-  /** A question read from the conversation, with its options, or what Claude waits for. */
+  /** Read-only: what is asked shows, but it can only be answered where the agent runs. */
+  private renderReadOnlyNote() {
+    return html`<div class="read-only-note" data-testid="read-only-question">${t('chat.readOnlyQuestion')}</div>`;
+  }
+
+  /** A question with its options, a menu on screen, or what the agent waits for. */
   private renderAsking() {
     if (this.pendingQuestion) {
       return html`<div class="question">
         <div class="question-text">${this.pendingQuestion.text}</div>
-        ${this.pendingQuestion.options.map(
-          (option, index) => html`<button @click=${() => this.answer(index)}>${option}</button>`
-        )}
+        ${
+          this.readOnly
+            ? this.renderReadOnlyNote()
+            : this.pendingQuestion.options.map(
+                (option, index) =>
+                  html`<button @click=${() => this.answer(index)}>${option}</button>`
+              )
+        }
       </div>`;
     }
     if (this.waitingFor && this.screenChoices && !this.justAnswered()) {
@@ -2520,23 +2557,31 @@ export class ClaudeChatView extends LitElement {
         }
         <div class="question-text">${this.screenChoices.question}</div>
         ${
-          this.answerNote
-            ? html`<div class="question-note" role="alert">${this.answerNote}</div>`
-            : nothing
+          this.readOnly
+            ? this.renderReadOnlyNote()
+            : html`${
+                this.answerNote
+                  ? html`<div class="question-note" role="alert">${this.answerNote}</div>`
+                  : nothing
+              }
+              ${this.screenChoices.options.map(
+                (option, index) =>
+                  html`<button ?disabled=${this.answering} @click=${() => this.answer(index)}>
+                    ${option}
+                  </button>`
+              )}
+              <button class="link" @click=${this.openTerminal}>${t('chat.openTerminal')}</button>`
         }
-        ${this.screenChoices.options.map(
-          (option, index) =>
-            html`<button ?disabled=${this.answering} @click=${() => this.answer(index)}>
-              ${option}
-            </button>`
-        )}
-        <button class="link" @click=${this.openTerminal}>${t('chat.openTerminal')}</button>
       </div>`;
     }
     if (this.waitingFor) {
-      return html`<div class="waiting" role="status">
+      return html`<div class="waiting ${this.readOnly ? 'read-only' : ''}" role="status">
         <span>${t('chat.waiting', { reason: this.waitingFor })}</span>
-        <button @click=${this.openTerminal}>${t('chat.openTerminal')}</button>
+        ${
+          this.readOnly
+            ? this.renderReadOnlyNote()
+            : html`<button @click=${this.openTerminal}>${t('chat.openTerminal')}</button>`
+        }
       </div>`;
     }
     return nothing;
@@ -2628,7 +2673,10 @@ export class ClaudeChatView extends LitElement {
             : this.messages.length === 0
               ? this.pendingSent.length
                 ? nothing
-                : html`<div class="empty">${t(AGENT_TEXT[this.agent].empty)}</div>`
+                : html`<div class="empty">${
+                    // "Send Claude a message below": there is no "below" when nothing is sent.
+                    this.readOnly ? t('chat.readOnlyEmpty') : t(AGENT_TEXT[this.agent].empty)
+                  }</div>`
               : this.renderMessages()
         }
         ${this.renderAsking()}
@@ -2648,7 +2696,11 @@ export class ClaudeChatView extends LitElement {
                       >`
                     : nothing
                 }
-                <button class="stop" @click=${this.stop} aria-label=${t(AGENT_TEXT[this.agent].stop)}>■ ${t('chat.stop')}</button>
+                ${
+                  this.readOnly
+                    ? nothing
+                    : html`<button class="stop" @click=${this.stop} aria-label=${t(AGENT_TEXT[this.agent].stop)}>■ ${t('chat.stop')}</button>`
+                }
               </div>`
             : this.backgroundWait
               ? html`<div class="background-row" role="status" data-testid="chat-background">
@@ -2671,7 +2723,7 @@ export class ClaudeChatView extends LitElement {
       }
       </div>
       ${
-        this.mode
+        this.mode && !this.readOnly
           ? html`<div class="mode-row">
               <button
                 class="mode"

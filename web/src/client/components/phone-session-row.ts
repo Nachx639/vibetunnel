@@ -186,7 +186,11 @@ export class PhoneSessionRow extends LitElement {
   @state() private killing = false;
   /** The quick answer on its way (its option number), until the next poll replaces the prompt. */
   @state() private answering: number | null = null;
-  @state() private answerFailed: false | 'busy' | 'changed' = false;
+  /**
+   * Why the last quick answer did nothing: another answer was on its way, the prompt changed, or
+   * the session was opened to watch only (its tmux client is read-only).
+   */
+  @state() private answerFailed: false | 'busy' | 'changed' | 'watching' = false;
   private answerTimer: ReturnType<typeof setTimeout> | null = null;
   protected readonly i18n = new LocaleController(this);
 
@@ -511,7 +515,8 @@ export class PhoneSessionRow extends LitElement {
           response.status === 409
             ? ((await response.json().catch(() => ({}))) as { error?: string }).error
             : undefined;
-        this.answerFailed = error === 'busy' ? 'busy' : 'changed';
+        this.answerFailed =
+          error === 'busy' ? 'busy' : error === 'read-only' ? 'watching' : 'changed';
       }
     } catch {
       this.answerFailed = 'changed';
@@ -543,7 +548,13 @@ export class PhoneSessionRow extends LitElement {
         ${
           this.answerFailed
             ? html`<div class="psr-choices-error">
-                ${t(this.answerFailed === 'busy' ? 'screenMenu.sending' : 'sessions.row.promptChanged')}
+                ${t(
+                  this.answerFailed === 'busy'
+                    ? 'screenMenu.sending'
+                    : this.answerFailed === 'watching'
+                      ? 'macSessions.error.watching'
+                      : 'sessions.row.promptChanged'
+                )}
               </div>`
             : nothing
         }

@@ -1106,4 +1106,23 @@ export const ptBR: Messages = {
   // tmux attachments: ending one only detaches
   'sessions.row.disconnect': 'Desconectar',
   'sessions.row.disconnectConfirm': 'Desconectar de “{name}”? Ela continua rodando no tmux.',
+  // On this computer (mac-session-row.ts, mac-session-view.ts, settings.ts)
+  'chat.readOnlyEmpty': 'Nenhuma mensagem ainda.',
+  'chat.readOnlyQuestion': 'Está esperando uma resposta onde está rodando.',
+  'macSessions.action.watch': 'Apenas observar',
+  'macSessions.error.clientNotFound':
+    'Esta sessão não está mais conectada ao tmux. Abra-a de novo pela lista.',
+  'macSessions.error.disabled': 'A exibição das sessões deste computador está desativada.',
+  'macSessions.error.gone': 'Essa sessão não está mais em execução.',
+  'macSessions.error.modeFailed': 'Não foi possível trocar: {error}',
+  'macSessions.error.notOpenable': 'Daqui só é possível abrir sessões do tmux.',
+  'macSessions.error.openFailed': 'Não foi possível abrir: {error}',
+  'macSessions.error.tmuxTooOld': 'Abrir sessões do tmux requer o tmux {version} ou mais recente.',
+  'macSessions.error.watching': 'Apenas observando: assuma o controle para digitar aqui.',
+  'macSessions.fit.here': 'Ajustar a esta tela',
+  'macSessions.fit.hereHint':
+    'Os outros terminais que mostram esta sessão mudam para este tamanho enquanto você a usa aqui.',
+  'macSessions.fit.others': 'Usar o tamanho do outro terminal',
+  'macSessions.watch.banner': 'Observando: o que você digita não é enviado.',
+  'macSessions.watch.takeControl': 'Assumir o controle',
 };
