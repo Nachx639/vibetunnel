@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import type { ServerEvent } from '../../shared/types.js';
 import { ServerEventType } from '../../shared/types.js';
@@ -16,7 +16,12 @@ import type { CastOutputHub, CastOutputHubListener } from './cast-output-hub.js'
 import type { GitStatusHub, GitStatusHubListener } from './git-status-hub.js';
 import type { SessionMonitor } from './session-monitor.js';
 import type { TerminalManager } from './terminal-manager.js';
-import { type WebSocketRequestV3, WsV3Hub } from './ws-v3-hub.js';
+import {
+  CLIENT_HEARTBEAT_INTERVAL_MS,
+  MAX_CLIENT_BUFFERED_BYTES,
+  type WebSocketRequestV3,
+  WsV3Hub,
+} from './ws-v3-hub.js';
 
 vi.mock('../utils/logger.js', () => ({
   createLogger: () => ({
@@ -31,6 +36,7 @@ vi.mock('../utils/logger.js', () => ({
 class FakeWebSocket extends EventEmitter {
   readyState = WebSocket.OPEN;
   sent: Uint8Array[] = [];
+  bufferedAmount = 0;
   send = vi.fn((data: Uint8Array) => {
     this.sent.push(new Uint8Array(data));
   });
@@ -38,6 +44,11 @@ class FakeWebSocket extends EventEmitter {
     this.readyState = WebSocket.CLOSED;
     this.emit('close');
   });
+  terminate = vi.fn(() => {
+    this.readyState = WebSocket.CLOSED;
+    this.emit('close');
+  });
+  ping = vi.fn();
 }
 
 function decodeLastFrame(ws: FakeWebSocket) {
@@ -67,6 +78,7 @@ describe('WsV3Hub', () => {
   let hub: WsV3Hub;
 
   let castListener: CastOutputHubListener | undefined;
+  let castUnsubscribe: Mock<() => void> | undefined;
   let snapshotListener: BufferChangeListener | undefined;
   let gitListener: GitStatusHubListener | undefined;
 
@@ -103,7 +115,8 @@ describe('WsV3Hub', () => {
     castOutputHub = {
       subscribe: vi.fn<CastSubscribeFn>((_sessionId, listener) => {
         castListener = listener;
-        return vi.fn();
+        castUnsubscribe = vi.fn<() => void>();
+        return castUnsubscribe;
       }),
     } as unknown as CastOutputHub;
 
@@ -226,6 +239,73 @@ describe('WsV3Hub', () => {
     expect(err.type).toBe(WsV3MessageType.ERROR);
     expect(err.sessionId).toBe('s1');
     expect(JSON.parse(new TextDecoder().decode(err.payload))).toEqual({ message: 'boom' });
+  });
+
+  it('drops a client that stopped reading instead of buffering its output forever', async () => {
+    const ws = new FakeWebSocket();
+    hub.handleClientConnection(ws as unknown as WebSocket, {} as unknown as WebSocketRequestV3);
+    sendBinaryFrame(
+      ws,
+      encodeWsV3Frame({
+        type: WsV3MessageType.SUBSCRIBE,
+        sessionId: 's1',
+        payload: encodeWsV3SubscribePayload({ flags: WsV3SubscribeFlags.Stdout }),
+      })
+    );
+    await flush();
+    if (!castListener) throw new Error('expected cast listener');
+
+    // The phone's link stalls while `yes` runs: unsent bytes pile up in the socket.
+    ws.bufferedAmount = MAX_CLIENT_BUFFERED_BYTES + 1;
+    const sentBefore = ws.sent.length;
+    castListener({ kind: 'output', data: 'y\n'.repeat(1000), historical: false });
+    await flush();
+
+    expect(ws.terminate).toHaveBeenCalled();
+    expect(ws.sent.length).toBe(sentBefore);
+    expect(castUnsubscribe).toHaveBeenCalled();
+  });
+
+  it('unsubscribes a client that vanished without closing, but keeps one that answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const gone = new FakeWebSocket();
+      const answersPings = new FakeWebSocket();
+      answersPings.ping = vi.fn(() => answersPings.emit('pong'));
+      const pingsItself = new FakeWebSocket();
+      for (const ws of [gone, answersPings, pingsItself]) {
+        hub.handleClientConnection(ws as unknown as WebSocket, {} as unknown as WebSocketRequestV3);
+      }
+      sendBinaryFrame(
+        gone,
+        encodeWsV3Frame({
+          type: WsV3MessageType.SUBSCRIBE,
+          sessionId: 's1',
+          payload: encodeWsV3SubscribePayload({ flags: WsV3SubscribeFlags.Stdout }),
+        })
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      const goneUnsubscribe = castUnsubscribe;
+
+      // The phone leaves Wi-Fi: no FIN, no frames, no pongs. The client's own 20 s PING
+      // frames keep the other socket alive even without protocol pongs.
+      for (let t = 0; t < 60_000; t += 20_000) {
+        await vi.advanceTimersByTimeAsync(20_000);
+        sendBinaryFrame(
+          pingsItself,
+          encodeWsV3Frame({ type: WsV3MessageType.PING, payload: new Uint8Array() })
+        );
+      }
+
+      expect(gone.terminate).toHaveBeenCalled();
+      expect(goneUnsubscribe).toHaveBeenCalled();
+      expect(answersPings.terminate).not.toHaveBeenCalled();
+      expect(pingsItself.terminate).not.toHaveBeenCalled();
+      expect(2 * CLIENT_HEARTBEAT_INTERVAL_MS).toBeLessThanOrEqual(60_000);
+    } finally {
+      hub.dispose();
+      vi.useRealTimers();
+    }
   });
 
   it('forwards VT snapshots when subscribed', async () => {

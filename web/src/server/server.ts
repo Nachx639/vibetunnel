@@ -1375,6 +1375,8 @@ export async function createApp(): Promise<AppInstance> {
     });
   });
 
+  wss.on('close', () => wsV3Hub.dispose());
+
   // WebSocket connection router
   wss.on('connection', (ws, req) => {
     const wsReq = req as WebSocketRequest;

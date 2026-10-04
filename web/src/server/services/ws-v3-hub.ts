@@ -20,6 +20,15 @@ import type { SessionMonitor } from './session-monitor.js';
 import type { TerminalManager } from './terminal-manager.js';
 
 const logger = createLogger('ws-v3-hub');
+
+/** Unsent bytes a client may fall behind by before it is disconnected. */
+export const MAX_CLIENT_BUFFERED_BYTES = 16 * 1024 * 1024;
+/**
+ * How often the server checks that each client is still there. A client that sent nothing
+ * (no frame, not even its own 20 s PING) and answered no protocol ping for two intervals
+ * is terminated, so a phone that vanished is unsubscribed within ~50 s.
+ */
+export const CLIENT_HEARTBEAT_INTERVAL_MS = 25_000;
 const utf8Decoder = new TextDecoder();
 const utf8Encoder = new TextEncoder();
 
@@ -40,6 +49,8 @@ type ClientSessionSub = {
 
 type ClientState = {
   subs: Map<string, ClientSessionSub>;
+  /** Heard from since the last heartbeat tick (any frame or a pong). */
+  alive: boolean;
 };
 
 type RemoteConn = {
@@ -61,6 +72,7 @@ export class WsV3Hub {
 
   private remoteConnections: Map<string, RemoteConn> = new Map();
   private remoteSessionSubscribers: Map<string, Set<WebSocket>> = new Map();
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private config: {
@@ -76,10 +88,48 @@ export class WsV3Hub {
     this.attachSessionMonitor();
   }
 
+  /** Stop the heartbeat (server shutdown). */
+  dispose() {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+  }
+
+  private startHeartbeat() {
+    if (this.heartbeatTimer) return;
+    // Nothing on the server noticed a client that vanished without a FIN (a phone that left
+    // Wi-Fi, a tab iOS froze): its subscriptions and queued frames stayed until the OS TCP
+    // keepalive gave up, hours later. Ping and drop clients that stop answering.
+    this.heartbeatTimer = setInterval(() => this.heartbeat(), CLIENT_HEARTBEAT_INTERVAL_MS);
+    this.heartbeatTimer.unref?.();
+  }
+
+  private heartbeat() {
+    for (const ws of this.clientSockets) {
+      const state = this.getClientState(ws);
+      if (!state) continue;
+      if (!state.alive) {
+        logger.warn('dropping v3 client: no answer to heartbeat');
+        ws.terminate();
+        continue;
+      }
+      state.alive = false;
+      try {
+        ws.ping();
+      } catch {
+        // closing; the close handler cleans up
+      }
+    }
+    if (this.clientSockets.size === 0) this.dispose();
+  }
+
   handleClientConnection(ws: WebSocket, req: WebSocketRequestV3) {
-    const clientState: ClientState = { subs: new Map() };
+    const clientState: ClientState = { subs: new Map(), alive: true };
     this.clients.set(ws, clientState);
     this.clientSockets.add(ws);
+    this.startHeartbeat();
+    ws.on('pong', () => {
+      clientState.alive = true;
+    });
 
     logger.log(
       `v3 client connected (user=${req.userId || 'unknown'}, auth=${req.authMethod || 'unknown'})`
@@ -95,6 +145,7 @@ export class WsV3Hub {
     );
 
     ws.on('message', async (message: Buffer, isBinary: boolean) => {
+      clientState.alive = true;
       if (!isBinary) return;
 
       const frame = decodeWsV3Frame(message);
@@ -659,6 +710,14 @@ export class WsV3Hub {
 
   private safeSend(ws: WebSocket, data: Uint8Array) {
     if (ws.readyState !== WebSocket.OPEN) return;
+    if (ws.bufferedAmount > MAX_CLIENT_BUFFERED_BYTES) {
+      // A phone on a stalled link (or a frozen tab) kept every frame of a fast
+      // session queued here, growing server memory ~10 MB/s. Drop it: when it reconnects it
+      // re-subscribes and gets a fresh replay, which is all it could still use anyway.
+      logger.warn(`dropping v3 client: ${ws.bufferedAmount} bytes unsent`);
+      ws.terminate();
+      return;
+    }
     try {
       ws.send(data);
     } catch (error) {
