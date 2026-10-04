@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  detectedPagePath,
   detectPreviewPorts,
   isPreviewId,
   MAX_PREVIEWS,
@@ -102,6 +103,23 @@ describe('dev-server port detection', () => {
     registry.trackOutput('s2', '  ➜  Local:   http://localhost:5173/\r\n');
     expect(vet).toHaveBeenCalledTimes(2);
     expect(registry.forSession('s2').map((entry) => entry.port)).toEqual([5173]);
+  });
+
+  it('a detected API or data URL never becomes the page a preview opens', () => {
+    expect(detectedPagePath('/api/calendario')).toBeUndefined();
+    expect(detectedPagePath('/feed.ics?x=1')).toBeUndefined();
+    expect(detectedPagePath('/_next/static/app.js')).toBeUndefined();
+    expect(detectedPagePath('/graphql')).toBeUndefined();
+    expect(detectedPagePath('/apis-overview')).toBe('/apis-overview');
+    expect(detectedPagePath('/about?tab=1')).toBe('/about?tab=1');
+    expect(detectedPagePath('/index.html')).toBe('/index.html');
+    const registry = new PreviewRegistry();
+    registry.trackOutput('s1', '  ➜  Local:   http://localhost:5173/settings\r\n');
+    // A URL alone on its line counts as announced, an API one included.
+    registry.trackOutput('s1', '  http://localhost:5173/api/items\r\n');
+    registry.trackOutput('s2', '  ⎿  https://localhost:5174/api/feed.ics\r\n');
+    expect(registry.byPort(5173)?.path).toBe('/settings');
+    expect(registry.byPort(5174)?.path).toBe('/');
   });
 
   it('records announced ports across split writes, once per port', () => {

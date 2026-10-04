@@ -87,6 +87,20 @@ export function detectPreviewPorts(text: string): Array<{ port: number; url: str
   return found;
 }
 
+/**
+ * A local URL in terminal output names a page only some of the time: an agent running
+ * `curl localhost:3000/api/items` or printing a `/feed.ics` link would make the preview open
+ * raw data. Such paths are not taken; the preview keeps its page (or `/`).
+ */
+export function detectedPagePath(target: string | undefined): string | undefined {
+  if (!target) return undefined;
+  const pathname = target.split(/[?#]/)[0] ?? '';
+  if (/^\/(api|graphql|trpc|rpc|_next|__)(\/|$)/i.test(pathname)) return undefined;
+  const extension = /\.([a-z0-9]+)$/i.exec(pathname)?.[1]?.toLowerCase();
+  if (extension && !['html', 'htm', 'php'].includes(extension)) return undefined;
+  return target;
+}
+
 /** `vt preview` argument: "5173", ":5173", "localhost:5173/x", "http://127.0.0.1:5173/x". */
 export function parseOpenTarget(value: string): { port: number; path: string } | null {
   const text = value.trim();
@@ -481,7 +495,7 @@ export class PreviewRegistry extends EventEmitter {
     if (!/localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]/.test(text)) return;
     for (const { port, url } of detectPreviewPorts(text)) {
       if (this.portError(port) || this.isDismissed(port, sessionId)) continue;
-      const path = parseOpenTarget(url)?.path;
+      const path = detectedPagePath(parseOpenTarget(url)?.path);
       const register = () => {
         if (!this.portError(port)) this.upsert(port, { sessionId, source: 'detected', path });
       };
