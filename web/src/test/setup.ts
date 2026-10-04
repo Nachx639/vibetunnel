@@ -1,7 +1,7 @@
 // Global test setup for Vitest
 
 import { mkdtempSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { webcrypto } from 'crypto';
 import { vi } from 'vitest';
@@ -18,10 +18,10 @@ vi.mock('ghostty-web', () => ({
 // config, control dir) would otherwise write into the developer's ~/.vibetunnel, which a
 // running VibeTunnel server reads. Set VIBETUNNEL_TEST_REAL_HOME=1 to opt out.
 if (typeof window === 'undefined' && !process.env.VIBETUNNEL_TEST_REAL_HOME) {
-  const realHome = homedir();
   if (!process.env.HOME?.startsWith(tmpdir())) {
-    process.env.VIBETUNNEL_TEST_ORIGINAL_HOME ??= realHome;
-    process.env.HOME = mkdtempSync(join(tmpdir(), 'vt-test-home-'));
+    // Inside the run's directory (global-setup.ts), removed when the run ends.
+    const parent = process.env.VIBETUNNEL_TEST_RUN_DIR ?? tmpdir();
+    process.env.HOME = mkdtempSync(join(parent, 'home-'));
   }
   // These move the agents' data out of HOME: set in the developer's shell, tests would read
   // (and could write) their real Claude, Codex and Gemini folders.
@@ -240,7 +240,8 @@ if (typeof window !== 'undefined') {
 // stubbed (the API socket's git-event relay, for one) would otherwise POST to the default
 // port 4020, or 4021 (`pnpm dev:mobile`), of the developer's own server. Tests that need HTTP
 // start their own server on port 0 or stub fetch. Add more ports with
-// VIBETUNNEL_TEST_BLOCK_PORTS=4100,4101.
+// VIBETUNNEL_TEST_BLOCK_PORTS=4100,4101. Only `fetch` to the loopback names below is guarded:
+// http.request (supertest) and 0.0.0.0 or a LAN address are not.
 if (typeof window === 'undefined' && typeof globalThis.fetch === 'function') {
   const realFetch = globalThis.fetch.bind(globalThis);
   const blockedPorts = new Set([

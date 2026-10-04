@@ -1,14 +1,19 @@
-import { mkdtempSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-export default function globalSetup(): void {
+export default function globalSetup(): () => void {
+  // One temporary directory per run holds the fake tailscale below and every worker's HOME
+  // (setup.ts); the teardown returned here removes it, so runs leave nothing in $TMPDIR.
+  const runDir = mkdtempSync(join(tmpdir(), 'vibetunnel-test-run-'));
+  process.env.VIBETUNNEL_TEST_RUN_DIR = runDir;
+
   // A unit test that leaves the Serve service marked running makes its afterEach stop() run a
   // real `tailscale serve reset`, which wipes every Tailscale Serve route on the developer's
   // machine, other apps' included. Workers inherit this env, so every test talks to a fake
   // binary unless live Tailscale tests are requested with ENABLE_TAILSCALE_TESTS=1.
   if (!process.env.ENABLE_TAILSCALE_TESTS) {
-    const fake = join(mkdtempSync(join(tmpdir(), 'vibetunnel-fake-tailscale-')), 'tailscale');
+    const fake = join(runDir, 'tailscale');
     writeFileSync(fake, '#!/bin/sh\necho "$@" >> "$0.calls"\nexit 0\n', { mode: 0o755 });
     process.env.VIBETUNNEL_TAILSCALE_BIN = fake;
   }
@@ -27,4 +32,6 @@ export default function globalSetup(): void {
   // servers left by a crashed run, but test servers listen on port 0, so it only ever hit
   // unrelated apps the developer had running on those ports. Tests stop only the processes
   // they started; a port clash fails the test that hit it.
+
+  return () => rmSync(runDir, { recursive: true, force: true });
 }

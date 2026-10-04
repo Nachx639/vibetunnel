@@ -4,13 +4,15 @@ import { homedir, tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 // src/test/setup.ts keeps server tests off a VibeTunnel server running on this machine.
+// HEAD on a path no server has: should the guard ever regress, this test changes nothing on
+// the developer's server it then reaches.
 describe('tests and a local VibeTunnel server', () => {
   it.each([
-    'http://localhost:4020/api/git/event',
-    'http://127.0.0.1:4021/',
-    'http://[::1]:4020/',
+    'http://localhost:4020/__vt-test-guard',
+    'http://127.0.0.1:4021/__vt-test-guard',
+    'http://[::1]:4020/__vt-test-guard',
   ])('refuses %s', async (url) => {
-    await expect(fetch(url, { method: 'POST' })).rejects.toThrow(/local VibeTunnel server/);
+    await expect(fetch(url, { method: 'HEAD' })).rejects.toThrow(/local VibeTunnel server/);
   });
 
   it("still reaches a test's own server", async () => {
@@ -26,9 +28,10 @@ describe('tests and a local VibeTunnel server', () => {
 });
 
 describe("tests and the developer's home", () => {
-  it('run with a temporary HOME', () => {
+  it("run with a temporary HOME inside the run's directory, removed when the run ends", () => {
     expect(process.env.HOME?.startsWith(tmpdir())).toBe(true);
     expect(homedir().startsWith(tmpdir())).toBe(true);
+    expect(process.env.HOME?.startsWith(`${process.env.VIBETUNNEL_TEST_RUN_DIR}/`)).toBe(true);
   });
 
   it("ignore the shell's Claude, Codex and Gemini folder overrides", () => {
@@ -38,7 +41,9 @@ describe("tests and the developer's home", () => {
   });
 
   it('talk to a fake tailscale binary', () => {
-    expect(process.env.VIBETUNNEL_TAILSCALE_BIN).toMatch(/vibetunnel-fake-tailscale-/);
+    expect(process.env.VIBETUNNEL_TAILSCALE_BIN).toBe(
+      `${process.env.VIBETUNNEL_TEST_RUN_DIR}/tailscale`
+    );
   });
 });
 
