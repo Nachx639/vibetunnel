@@ -13,6 +13,133 @@ import { ClaudeStatusNotifier } from './claude-status-notifier.js';
 const fixture = (name: string) =>
   readFileSync(path.join(__dirname, '__fixtures__/claude-waiting', name), 'utf8');
 
+/**
+ * Claude Code's permission menu drawn for a 53-column PTY: it cut the path mid-word itself
+ * ("/home/userwithl" + "ongname") and moved "handles" to the next row whole, indenting both
+ * continuations.
+ */
+const RULE_53 = '─'.repeat(53);
+const DASHES_53 = '╌'.repeat(53);
+const PTY_53_DIALOG = [
+  RULE_53,
+  ' Bash command',
+  ' Tip: auto mode handles these prompts for you —',
+  ' choose "switch to auto mode" below',
+  ' Create empty file notes.txt',
+  DASHES_53,
+  ' touch notes.txt && ls -l notes.txt',
+  DASHES_53,
+  ' Do you want to proceed?',
+  ' ❯ 1. Yes',
+];
+const MID_WORD_OPTION = [
+  '   2. Yes, and always allow access to /home/userwithl',
+  '      ongname/projects/acme/demo-repo-qa1 from this',
+  '      project',
+];
+const SPACED_OPTION = [
+  '   3. Yes, and switch to auto mode · auto mode',
+  '      handles these prompts for you',
+];
+const PTY_53_FOOT = ['   4. No', '', ' Esc to cancel · Tab to amend'];
+const MID_WORD_LABEL =
+  'Yes, and always allow access to /home/userwithlongname/projects/acme/demo-repo-qa1 from this project';
+const SPACED_LABEL = 'Yes, and switch to auto mode · auto mode handles these prompts for you';
+
+/** The screen as the server's terminal (at the PTY's width) has it: no row soft-wrapped. */
+function ptyScreen(options: string[][]) {
+  const lines = [...PTY_53_DIALOG, ...options.flat(), ...PTY_53_FOOT];
+  return { text: lines.join('\n'), wrappedRows: lines.map(() => false) };
+}
+
+describe('a menu Claude wrapped itself, read on the server and on the phone', () => {
+  it('reads the mid-word and the spaced continuation the same on both, in either order', () => {
+    const orders: Array<[string[][], string[]]> = [
+      [
+        [MID_WORD_OPTION, SPACED_OPTION],
+        ['Yes', MID_WORD_LABEL, SPACED_LABEL, 'No'],
+      ],
+      [
+        [
+          [SPACED_OPTION[0].replace('3.', '2.'), SPACED_OPTION[1]],
+          [MID_WORD_OPTION[0].replace('2.', '3.'), ...MID_WORD_OPTION.slice(1)],
+        ],
+        ['Yes', SPACED_LABEL, MID_WORD_LABEL, 'No'],
+      ],
+    ];
+    for (const [options, labels] of orders) {
+      const { text, wrappedRows } = ptyScreen(options);
+      // The server reads its own terminal, at the PTY's 53 columns.
+      const server = parseScreenChoices(text, { cols: 53, wrappedRows, visibleRows: 56 });
+      expect(server?.options).toEqual(labels);
+      // A phone whose terminal has the PTY's width holds the same rows.
+      const sameWidth = parseScreenChoices(text, {
+        cols: 53,
+        wrappedRows,
+        visibleRows: 56,
+        ptyCols: 53,
+      });
+      // A wider phone (the PTY sized by a narrower client) holds them too, with room to
+      // spare on the right: read at the PTY's width, "/home/userwithl" still fills its row.
+      const wider = parseScreenChoices(text, {
+        cols: 60,
+        wrappedRows,
+        visibleRows: 56,
+        ptyCols: 53,
+      });
+      for (const phone of [sameWidth, wider]) {
+        expect(phone?.options).toEqual(server?.options);
+        expect(phone?.key).toBe(server?.key);
+      }
+    }
+  });
+
+  it('reads no menu off a copy narrower than the PTY, whose rows lost their tails', () => {
+    // The phone's terminal stayed at 45 columns while another client had the PTY at 53: each
+    // longer row spilled onto the next one, which Claude's next row overwrote.
+    const RULE_45 = '─'.repeat(45);
+    const DASHES_45 = '╌'.repeat(45);
+    const rows: Array<[boolean, string]> = [
+      [false, RULE_45],
+      [true, ' Bash command'],
+      [false, ' Tip: auto mode handles these prompts for you'],
+      [true, ' choose "switch to auto mode" below'],
+      [false, ' Create empty file notes.txt'],
+      [false, DASHES_45],
+      [true, ' touch notes.txt && ls -l notes.txt'],
+      [false, DASHES_45],
+      [true, ' Do you want to proceed?'],
+      [false, ' ❯ 1. Yes'],
+      [false, '   2. Yes, and always allow access to /home/u'],
+      [true, '      ongname/projects/acme/demo-repo-qa1 fro'],
+      [true, '      project'],
+      [false, '   3. Yes, and switch to auto mode · auto mod'],
+      [true, '      handles these prompts for you'],
+      [false, '   4. No'],
+      [false, ''],
+      [false, ' Esc to cancel · Tab to amend'],
+    ];
+    const text = rows.map(([, line]) => line).join('\n');
+    const wrappedRows = rows.map(([wrapped]) => wrapped);
+    const layout = { cols: 45, wrappedRows, visibleRows: 56 };
+    // Read as if the app drew for this width: labels with text missing, and a key the server
+    // refuses on every answer.
+    const misread = parseScreenChoices(text, layout);
+    expect(misread?.options.slice(1, 3)).toEqual([
+      'Yes, and always allow access to /home/uongname/projects/acme/demo-repo-qa1 froproject',
+      'Yes, and switch to auto mode · auto modhandles these prompts for you',
+    ]);
+    const server = parseScreenChoices(ptyScreen([MID_WORD_OPTION, SPACED_OPTION]).text, {
+      cols: 53,
+      visibleRows: 56,
+      wrappedRows: ptyScreen([MID_WORD_OPTION, SPACED_OPTION]).wrappedRows,
+    });
+    expect(sameMenuKey(misread?.key, server?.key)).toBe(false);
+    // Knowing the PTY's width, the phone shows no menu rather than a wrong one.
+    expect(parseScreenChoices(text, { ...layout, ptyCols: 53 })).toBeNull();
+  });
+});
+
 describe("Claude's waiting screens", () => {
   it('keeps the space where Claude word-wrapped an option to a full 60-column line', () => {
     const line2 = '  2. Yes, and always allow access to /private/tmp/vtqa-perm';

@@ -930,12 +930,20 @@ export class SessionView extends LitElement {
     this.scheduleMobileHardwareFocus();
   }
 
-  /** How the terminal laid out its last lines, for reading Claude's menus off them. */
+  /**
+   * How the terminal laid out its last lines, for reading Claude's menus off them, and the
+   * width Claude drew them for (the PTY's), which another client may have changed.
+   */
   private screenLayout(lines: number): ScreenLayout | undefined {
     const terminal = this.terminalLifecycleManager.getTerminal();
     if (!terminal) return undefined;
     const { cols, rows } = terminal.getTerminalSize();
-    return { cols, visibleRows: rows, wrappedRows: terminal.getScreenWrapped(lines) };
+    return {
+      cols,
+      visibleRows: rows,
+      wrappedRows: terminal.getScreenWrapped(lines),
+      ptyCols: this.connectionManager?.getPtySize()?.cols,
+    };
   }
 
   private scheduleMobileHardwareFocus() {

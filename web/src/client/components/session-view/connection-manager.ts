@@ -26,6 +26,8 @@ export class ConnectionManager {
   private outputBuffer: string[] = [];
   private batchTimeout: number | null = null;
   private onTerminalOutput: ((data: string) => void) | null = null;
+  private ptySize: { cols: number; rows: number } | null = null;
+  private onPtySize: ((size: { cols: number; rows: number }) => void) | null = null;
 
   constructor(
     private onSessionExit: (sessionId: string) => void,
@@ -34,6 +36,30 @@ export class ConnectionManager {
 
   setOnTerminalOutput(callback: ((data: string) => void) | null): void {
     this.onTerminalOutput = callback;
+  }
+
+  /**
+   * Called with the PTY's size whenever the stream says it (its header, then each resize, from
+   * this client or another one).
+   */
+  setOnPtySize(callback: ((size: { cols: number; rows: number }) => void) | null): void {
+    this.onPtySize = callback;
+  }
+
+  /**
+   * The size the session's PTY has, which the app draws for: another client may have resized
+   * it to a size this terminal does not have (say 53 columns drawn into a phone's 45, whose
+   * copy of Claude's menu then lost text). Null until the stream has said.
+   */
+  getPtySize(): { cols: number; rows: number } | null {
+    return this.ptySize;
+  }
+
+  private notePtySize(cols: unknown, rows: unknown): void {
+    if (typeof cols !== 'number' || typeof rows !== 'number') return;
+    if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols <= 0 || rows <= 0) return;
+    this.ptySize = { cols, rows };
+    this.onPtySize?.(this.ptySize);
   }
 
   setTerminal(terminal: Terminal | null): void {
@@ -63,6 +89,7 @@ export class ConnectionManager {
     logger.log(`Connecting to v3 stream for session ${this.session.id}`);
 
     this.cleanupStreamConnection();
+    this.ptySize = null;
 
     const flush = () => {
       if (!this.terminal) return;
@@ -109,11 +136,20 @@ export class ConnectionManager {
           } & Record<string, unknown>;
 
           if (e.kind === 'header') {
+            const header = e.header as { width?: unknown; height?: unknown } | undefined;
+            this.notePtySize(header?.width, header?.height);
             // A reconnect (say, after the phone slept) showed the whole scrollback twice.
             if (!shownOutput) return;
             this.outputBuffer = [];
             this.stdoutDecoder = new TextDecoder();
             enqueue(RESET_TERMINAL);
+            return;
+          }
+
+          // Not applied to the terminal (its size is this client's), only remembered.
+          if (e.kind === 'resize' && typeof e.dimensions === 'string') {
+            const match = e.dimensions.match(/^(\d+)x(\d+)$/);
+            if (match) this.notePtySize(Number(match[1]), Number(match[2]));
             return;
           }
 

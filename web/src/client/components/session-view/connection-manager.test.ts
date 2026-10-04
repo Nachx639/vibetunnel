@@ -71,3 +71,27 @@ describe('ConnectionManager replay after reconnect', () => {
     expect(written.join('')).toBe('hi');
   });
 });
+
+describe("ConnectionManager and the PTY's size", () => {
+  it('remembers the size the stream reports, from its header and each resize', () => {
+    subscriptions.length = 0;
+    const manager = new ConnectionManager(vi.fn(), vi.fn());
+    const sizes = vi.fn();
+    manager.setOnPtySize(sizes);
+    manager.setTerminal({ write: vi.fn() } as unknown as Terminal);
+    manager.setSession({ id: 's1' } as Session);
+    manager.setConnected(true);
+    manager.connectToStream();
+    const sub = subscriptions[0];
+    expect(manager.getPtySize()).toBeNull();
+
+    sub.onEvent?.({ kind: 'header', header: { width: 120, height: 30 } });
+    expect(manager.getPtySize()).toEqual({ cols: 120, rows: 30 });
+    // Another client resized the PTY (to 53 columns, under a phone's 45).
+    sub.onEvent?.({ kind: 'resize', dimensions: '53x56' });
+    expect(manager.getPtySize()).toEqual({ cols: 53, rows: 56 });
+    sub.onEvent?.({ kind: 'resize', dimensions: 'garbage' });
+    expect(manager.getPtySize()).toEqual({ cols: 53, rows: 56 });
+    expect(sizes.mock.calls).toEqual([[{ cols: 120, rows: 30 }], [{ cols: 53, rows: 56 }]]);
+  });
+});

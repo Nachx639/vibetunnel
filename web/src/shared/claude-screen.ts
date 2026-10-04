@@ -80,6 +80,20 @@ export interface ScreenLayout {
   /** Per line: it goes on from the line above, which the terminal soft-wrapped into it. */
   wrappedRows?: boolean[];
   visibleRows?: number;
+  /**
+   * The width the app drew for: the PTY's, when the text is a client's copy of the screen at
+   * a width of its own. Wider than that copy, its rows lost their tails (see
+   * parseScreenChoices); narrower, the app's rows fit and are read at this width.
+   */
+  ptyCols?: number;
+}
+
+/**
+ * The screen's copy is narrower than the PTY the app drew for: its longer rows lost their
+ * tails, so no menu is read off it (see parseScreenChoices).
+ */
+export function narrowerThanPty(layout: ScreenLayout | undefined): boolean {
+  return layout?.ptyCols !== undefined && layout.cols !== undefined && layout.ptyCols > layout.cols;
 }
 
 export function parseScreenChoices(
@@ -91,7 +105,15 @@ export function parseScreenChoices(
    */
   layout?: number | ScreenLayout
 ): ScreenChoices | null {
-  const cols = typeof layout === 'number' ? layout : layout?.cols;
+  const ptyCols = typeof layout === 'object' ? layout.ptyCols : undefined;
+  const localCols = typeof layout === 'number' ? layout : layout?.cols;
+  // A copy narrower than the PTY cannot be read: when a client's terminal stays narrower than
+  // the PTY (another client resized it), each of the app's longer rows spills its tail onto the
+  // next row, which the app's next row then overwrites. The labels lose text, the menu's key no
+  // longer matches the server's, and every answer is refused as a changed question. No menu
+  // then, until the client's width is the PTY's again.
+  if (typeof layout === 'object' && narrowerThanPty(layout)) return null;
+  const cols = ptyCols ?? localCols;
   const wrappedRows = typeof layout === 'object' ? layout.wrappedRows : undefined;
   const visibleRows = typeof layout === 'object' ? layout.visibleRows : undefined;
   const raw = screenText.split('\n');
