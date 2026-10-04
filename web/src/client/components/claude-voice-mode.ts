@@ -123,7 +123,7 @@ export class ClaudeVoiceMode extends LitElement {
     .orb[data-phase='transcribing'],
     .orb[data-phase='thinking'] {
       background: var(--color-bg-elevated, #1c1c22);
-      color: var(--color-primary, #6aa8ff);
+      color: var(--color-primary-text, var(--color-primary, #6aa8ff));
       border: 2px solid var(--color-border, #333);
     }
     .orb[data-phase='speaking'] {
@@ -240,10 +240,10 @@ export class ClaudeVoiceMode extends LitElement {
       color: var(--color-bg, #0b0b0f);
     }
     footer button.danger {
-      color: var(--color-status-error, #f85149);
+      color: var(--color-status-error-text, var(--color-status-error, #f85149));
     }
     button:focus-visible {
-      outline: 2px solid var(--color-primary, #6aa8ff);
+      outline: 2px solid var(--color-focus-ring, var(--color-primary, #6aa8ff));
       outline-offset: 2px;
     }
   `,
