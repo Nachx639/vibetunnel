@@ -59,6 +59,7 @@ describe('Config Routes', () => {
         repositoryBasePath: '/home/user/repos',
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
+        gitShip: false,
       });
 
       expect(mockConfigService.getConfig).toHaveBeenCalledOnce();
@@ -77,6 +78,7 @@ describe('Config Routes', () => {
         repositoryBasePath: '~/Documents',
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
+        gitShip: false,
       });
     });
 
@@ -91,6 +93,23 @@ describe('Config Routes', () => {
       expect(response.body).toEqual({
         error: 'Failed to get app config',
       });
+    });
+  });
+
+  describe('gitShip', () => {
+    it('is off unless config.json turns it on', async () => {
+      expect((await request(app).get('/api/config')).body.gitShip).toBe(false);
+      mockConfigService.getConfig = vi.fn(() => ({ ...defaultConfig, gitShip: true }));
+      expect((await request(app).get('/api/config')).body.gitShip).toBe(true);
+    });
+
+    it('cannot be turned on from the web UI', async () => {
+      const response = await request(app)
+        .put('/api/config')
+        .send({ gitShip: true, repositoryBasePath: '/x' });
+      expect(response.status).toBe(200);
+      const written = vi.mocked(mockConfigService.updateConfig).mock.calls.map((c) => c[0]);
+      for (const config of written) expect(config).not.toHaveProperty('gitShip', true);
     });
   });
 
@@ -319,6 +338,7 @@ describe('Config Routes', () => {
           serverConfigured: true,
           quickStartCommands: defaultConfig.quickStartCommands,
           notificationPreferences,
+          gitShip: false,
         });
       });
 

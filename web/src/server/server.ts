@@ -21,6 +21,7 @@ import { createConfigRoutes } from './routes/config.js';
 import { createFileRoutes } from './routes/files.js';
 import { createFilesystemRoutes } from './routes/filesystem.js';
 import { createGitRoutes } from './routes/git.js';
+import { createGitShipRoutes } from './routes/git-ship.js';
 import { createLogRoutes } from './routes/logs.js';
 import { createMultiplexerRoutes } from './routes/multiplexer.js';
 import { createPushRoutes } from './routes/push.js';
@@ -1201,6 +1202,16 @@ export async function createApp(): Promise<AppInstance> {
   // Mount Git routes
   app.use('/api', createGitRoutes());
   logger.debug('Mounted Git routes');
+
+  // Commit, push and pull requests from the Changes sheet: refused (403) unless config.json
+  // has "gitShip": true. Read on every request, so the switch applies without a restart.
+  app.use(
+    '/api',
+    createGitShipRoutes({
+      ptyManager,
+      isEnabled: () => configService.getConfig().gitShip === true,
+    })
+  );
 
   // Mount worktree routes
   app.use('/api', createWorktreeRoutes());

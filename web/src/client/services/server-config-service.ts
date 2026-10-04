@@ -19,6 +19,8 @@ export interface ServerConfig {
   serverConfigured?: boolean;
   quickStartCommands?: QuickStartCommand[];
   notificationPreferences?: NotificationPreferences;
+  /** Commit, Push and Create PR allowed from the Changes sheet (config.json `gitShip`). */
+  gitShip?: boolean;
 }
 
 export class ServerConfigService {

@@ -25,6 +25,11 @@ export interface VibeTunnelConfig {
   version: number;
   quickStartCommands: QuickStartCommand[];
   repositoryBasePath?: string;
+  /**
+   * Allow Commit, Push and Create PR from the web UI's Changes sheet. Off when missing; the
+   * read-only Changes view does not need it.
+   */
+  gitShip?: boolean;
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

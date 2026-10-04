@@ -14,6 +14,7 @@ import { authClient } from '../../services/auth-client.js';
 import { Z_INDEX } from '../../utils/constants.js';
 import { swallowNextClick } from '../../utils/ghost-click.js';
 import { holdSheetFocus } from '../../utils/sheet-a11y.js';
+import { closeShipSheet, isShipSheetOpen, openShipSheet, type ShipMode } from './ship-sheet.js';
 
 /** The click that finishes the gesture that opened the sheet must not hit its buttons. */
 const OPEN_GUARD_MS = 500;
@@ -114,6 +115,7 @@ let releaseFocus: (() => void) | null = null;
 let abort: AbortController | null = null;
 
 export function closeChangesSheet(): void {
+  closeShipSheet();
   if (!openHost) return;
   abort?.abort();
   abort = null;
@@ -128,8 +130,24 @@ export function isChangesSheetOpen(): boolean {
   return openHost !== null;
 }
 
-/** Opens the Changes sheet for the git repository containing `dir`. */
-export function openChangesSheet(dir: string): void {
+/**
+ * Whether the server allows Commit, Push and Create PR (`gitShip` in config.json, off unless
+ * set). The server refuses those routes either way; this only decides whether to offer them.
+ */
+async function loadShipEnabled(signal: AbortSignal): Promise<boolean> {
+  try {
+    const config = await getJson<{ gitShip?: boolean }>('/api/config', signal);
+    return config.gitShip === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Opens the Changes sheet for the git repository containing `dir`. With `options.sessionId`
+ * and `gitShip` on, the list offers Commit, Push and Create PR for that session's repository.
+ */
+export function openChangesSheet(dir: string, options: { sessionId?: string } = {}): void {
   closeChangesSheet();
   const active = document.activeElement;
   if (active instanceof HTMLElement && active.matches('input, textarea, [contenteditable]')) {
@@ -152,6 +170,7 @@ export function openChangesSheet(dir: string): void {
   let listScroll = 0;
   let listSeq = 0;
   let diffSeq = 0;
+  let shipEnabled = false;
 
   // Touch acts on pointerup: on iOS the first tap on freshly shown buttons is often taken
   // as a hover and produces no click. The click that may still follow is ignored; mouse and
@@ -247,6 +266,37 @@ export function openChangesSheet(dir: string): void {
     else void loadList();
   });
   const close = act(closeChangesSheet);
+  const ship = (mode: ShipMode) =>
+    act(() => {
+      if (options.sessionId)
+        openShipSheet(options.sessionId, mode, { onDone: () => void loadList() });
+    });
+  const shipCommit = ship('commit');
+  const shipPush = ship('push');
+  const shipPr = ship('pr');
+
+  /** Commit / Push / PR, for a session's repository (needs the session to run git there). */
+  const renderShipBar = () => {
+    if (!shipEnabled || !options.sessionId || selected || !list?.isGitRepo) return nothing;
+    return html`<div class="vt-chg-ship" data-testid="changes-ship">
+      <button
+        data-testid="changes-commit"
+        ?disabled=${list.files.length === 0}
+        @pointerdown=${shipCommit}
+        @pointerup=${shipCommit}
+        @click=${shipCommit}
+      >
+        ${t('ship.commit')}
+      </button>
+      <button data-testid="changes-push" @pointerdown=${shipPush} @pointerup=${shipPush} @click=${shipPush}>
+        ${t('ship.push')}
+      </button>
+      <button data-testid="changes-pr" @pointerdown=${shipPr} @pointerup=${shipPr} @click=${shipPr}>
+        ${t('ship.pr')}
+      </button>
+    </div>`;
+  };
+
   const renderPath = (p: string) => {
     const [dirPart, base] = splitPath(p);
     return html`<span class="vt-chg-dir">${dirPart}</span><span class="vt-chg-base">${base}</span>`;
@@ -533,6 +583,26 @@ export function openChangesSheet(dir: string): void {
           }
           .vt-dl-add .vt-dl-sign { color: var(--vt-chg-add-text); }
           .vt-dl-del .vt-dl-sign { color: var(--vt-chg-del-text); }
+          .vt-chg-ship {
+            display: flex;
+            gap: 8px;
+            padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+            border-top: 1px solid var(--color-border);
+            background: var(--color-bg-secondary);
+          }
+          .vt-chg-ship button {
+            flex: 1;
+            min-height: 44px;
+            border-radius: 8px;
+            font-size: 15px;
+            border: 1px solid var(--color-border);
+            color: var(--color-text);
+            background: var(--color-bg-tertiary);
+            touch-action: manipulation;
+          }
+          .vt-chg-ship button:disabled {
+            opacity: 0.45;
+          }
           .vt-dl-text {
             flex: 1;
             min-width: 0;
@@ -583,6 +653,7 @@ export function openChangesSheet(dir: string): void {
             </button>
           </div>
           <div class="vt-chg-body">${selected ? renderDiff(selected) : renderList()}</div>
+          ${renderShipBar()}
         </div>
       `,
       host
@@ -592,8 +663,15 @@ export function openChangesSheet(dir: string): void {
   draw();
   // Escape steps back from a diff to the list, then closes.
   releaseFocus = holdSheetFocus(host.querySelector<HTMLElement>('.vt-chg'), () => {
+    if (isShipSheetOpen()) return; // Escape belongs to the ship sheet on top
     if (selected) goBack();
     else closeChangesSheet();
   });
   void loadList();
+  if (options.sessionId) {
+    void loadShipEnabled(controller.signal).then((enabled) => {
+      shipEnabled = enabled;
+      draw();
+    });
+  }
 }

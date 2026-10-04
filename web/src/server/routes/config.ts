@@ -35,6 +35,8 @@ export interface AppConfig {
   repositoryBasePath: string;
   serverConfigured?: boolean;
   quickStartCommands?: QuickStartCommand[];
+  /** Commit, Push and Create PR allowed from the Changes sheet (config.json `gitShip`). */
+  gitShip: boolean;
   notificationPreferences?: NotificationPreferences;
 }
 
@@ -63,6 +65,7 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         repositoryBasePath: repositoryBasePath,
         serverConfigured: true, // Always configured when server is running
         quickStartCommands: vibeTunnelConfig.quickStartCommands,
+        gitShip: vibeTunnelConfig.gitShip === true,
         notificationPreferences: configService.getNotificationPreferences(),
       };
 
