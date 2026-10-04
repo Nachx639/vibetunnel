@@ -1,5 +1,5 @@
 import { type MessageKey, t } from '../i18n/index.js';
-import { getPhoneUi, PHONE_UI_CHANGED_EVENT } from './phone-ui.js';
+import { PHONE_UI_CHANGED_EVENT, usesCompactPhoneUi } from './phone-ui.js';
 
 interface QuickKeyAttributes {
   key: string;
@@ -147,15 +147,11 @@ export const QUICK_KEYS_PRESETS = [
 ] as const;
 
 /**
- * The layout used while nothing is saved: the phone layout on phones (shortest screen side
- * under 600 px) when the compact phone layout is on, else the default layout.
+ * The layout used while nothing is saved: the phone layout when the compact phone layout
+ * applies (chosen, on a phone-sized screen), else the default layout.
  */
 export function getDefaultQuickKeysLayout(): QuickKeysLayout {
-  if (typeof window === 'undefined' || getPhoneUi() !== 'compact') {
-    return DEFAULT_QUICK_KEYS_LAYOUT;
-  }
-  const shortestSide = Math.min(window.screen.width, window.screen.height);
-  return shortestSide < 600 ? PHONE_QUICK_KEYS_LAYOUT : DEFAULT_QUICK_KEYS_LAYOUT;
+  return usesCompactPhoneUi() ? PHONE_QUICK_KEYS_LAYOUT : DEFAULT_QUICK_KEYS_LAYOUT;
 }
 
 export const QUICK_KEYS_STORAGE_KEY = 'vibetunnel.quickKeys.v1';

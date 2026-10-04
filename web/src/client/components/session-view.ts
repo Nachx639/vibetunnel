@@ -25,7 +25,12 @@ import { authClient } from '../services/auth-client.js';
 import { GitService } from '../services/git-service.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
-import { getPhoneUi, type PhoneUi, subscribeToPhoneUi } from '../utils/phone-ui.js';
+import {
+  getPhoneUi,
+  type PhoneUi,
+  subscribeToPhoneUi,
+  usesCompactPhoneUi,
+} from '../utils/phone-ui.js';
 import { TERMINAL_IDS } from '../utils/terminal-constants.js';
 import type { TerminalThemeId } from '../utils/terminal-themes.js';
 // Manager imports
@@ -188,7 +193,7 @@ export class SessionView extends LitElement {
 
   /** A phone in the compact phone layout: docked action bar and quick keys, pinned layout. */
   private get compactPhone(): boolean {
-    return this.uiStateManager.getState().isMobile && this.phoneUi === 'compact';
+    return this.uiStateManager.getState().isMobile && usesCompactPhoneUi(this.phoneUi);
   }
 
   connectedCallback() {

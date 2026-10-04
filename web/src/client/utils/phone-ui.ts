@@ -6,7 +6,7 @@
  * - `compact`: the session view is pinned to the visible viewport with the action bar and
  *   quick keys docked under the terminal, two-row quick keys tuned for coding agents,
  *   sticky Ctrl/⌥ and swipe-to-move-cursor on the quick keys.
- * Only phones are affected; desktop and tablet layouts ignore it.
+ * Only phones are affected (see isPhoneSizedScreen); desktop and tablet layouts ignore it.
  */
 export type PhoneUi = 'classic' | 'compact';
 
@@ -25,6 +25,27 @@ function readPreferences(): Record<string, unknown> {
 
 export function getPhoneUi(): PhoneUi {
   return readPreferences().phoneUi === 'compact' ? 'compact' : 'classic';
+}
+
+/**
+ * Shortest screen side, in CSS px, up to which a screen counts as a phone. Phones top out
+ * around 440 (the largest iPhones); the smallest iPad is 744 and Android tablets start near 600.
+ */
+export const PHONE_SCREEN_MAX_SHORT_SIDE = 500;
+
+/** True on a phone-sized screen. `screen` doesn't change on rotation, so this is stable. */
+export function isPhoneSizedScreen(): boolean {
+  if (typeof window === 'undefined' || !window.screen) return false;
+  const shortSide = Math.min(window.screen.width, window.screen.height);
+  return shortSide > 0 && shortSide <= PHONE_SCREEN_MAX_SHORT_SIDE;
+}
+
+/**
+ * The compact phone layout applies: it is chosen and the screen is phone-sized. A tablet
+ * (an iPad reports itself as mobile too) keeps the classic layout whatever is chosen.
+ */
+export function usesCompactPhoneUi(phoneUi: PhoneUi = getPhoneUi()): boolean {
+  return phoneUi === 'compact' && isPhoneSizedScreen();
 }
 
 export function setPhoneUi(value: PhoneUi): void {

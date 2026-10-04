@@ -4,8 +4,10 @@ import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/com
 import {
   APP_PREFERENCES_STORAGE_KEY,
   getPhoneUi,
+  isPhoneSizedScreen,
   setPhoneUi,
   subscribeToPhoneUi,
+  usesCompactPhoneUi,
 } from './phone-ui.js';
 
 describe('phone layout preference', () => {
@@ -34,5 +36,45 @@ describe('phone layout preference', () => {
     });
     expect(listener).toHaveBeenCalledWith('compact');
     unsubscribe();
+  });
+
+  describe('only on phone-sized screens', () => {
+    afterEach(() => vi.restoreAllMocks());
+    const screenSize = (width: number, height: number) => {
+      vi.spyOn(window.screen, 'width', 'get').mockReturnValue(width);
+      vi.spyOn(window.screen, 'height', 'get').mockReturnValue(height);
+    };
+
+    it('applies Compact on a phone, in portrait and landscape', () => {
+      setPhoneUi('compact');
+      screenSize(390, 844);
+      expect(isPhoneSizedScreen()).toBe(true);
+      expect(usesCompactPhoneUi()).toBe(true);
+      vi.restoreAllMocks();
+      screenSize(932, 430);
+      expect(usesCompactPhoneUi()).toBe(true);
+    });
+
+    it('keeps an iPad or a desktop on Classic even with Compact chosen', () => {
+      setPhoneUi('compact');
+      for (const [width, height] of [
+        [820, 1180],
+        [744, 1133],
+        [1024, 1366],
+        [1920, 1080],
+      ]) {
+        vi.restoreAllMocks();
+        screenSize(width, height);
+        expect(isPhoneSizedScreen()).toBe(false);
+        expect(usesCompactPhoneUi()).toBe(false);
+      }
+    });
+
+    it('Classic unchanged: a phone with Classic chosen (or nothing saved) stays classic', () => {
+      screenSize(390, 844);
+      expect(usesCompactPhoneUi()).toBe(false);
+      setPhoneUi('classic');
+      expect(usesCompactPhoneUi()).toBe(false);
+    });
   });
 });

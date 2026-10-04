@@ -709,7 +709,13 @@ describe('SessionView', () => {
       expect(element.querySelector('terminal-quick-keys')).toBeTruthy();
     });
 
+    const screenSize = (width: number, height: number) => [
+      vi.spyOn(window.screen, 'width', 'get').mockReturnValue(width),
+      vi.spyOn(window.screen, 'height', 'get').mockReturnValue(height),
+    ];
+
     it('docks the quick keys and action bar in the compact phone layout', async () => {
+      const spies = screenSize(390, 844);
       setPhoneUi('compact');
       try {
         (
@@ -733,6 +739,31 @@ describe('SessionView', () => {
         expect(element.querySelector('.mobile-keyboard-button')).toBeNull();
       } finally {
         setPhoneUi('classic');
+        for (const spy of spies) spy.mockRestore();
+      }
+    });
+
+    it('keeps an iPad on the classic layout when the compact phone layout is chosen', async () => {
+      // An iPad reports itself as mobile; its shortest side (820 here, 744 for a mini) is no phone's.
+      const spies = screenSize(820, 1180);
+      setPhoneUi('compact');
+      try {
+        (
+          element as unknown as { uiStateManager: { setShowQuickKeys(value: boolean): void } }
+        ).uiStateManager.setShowQuickKeys(true);
+        await element.updateComplete;
+
+        const grid = element.querySelector<HTMLElement>('.session-view-grid');
+        expect(grid?.dataset.mobile).toBe('true');
+        expect(grid?.dataset.phoneUi).toBe('classic');
+        expect((element.querySelector('mobile-action-bar') as { docked?: boolean }).docked).toBe(
+          false
+        );
+        expect(grid?.querySelector('terminal-quick-keys')).toBeNull();
+        expect(element.querySelector('.mobile-keyboard-button')).toBeTruthy();
+      } finally {
+        setPhoneUi('classic');
+        for (const spy of spies) spy.mockRestore();
       }
     });
   });

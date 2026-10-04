@@ -10,7 +10,7 @@ import { clearCharacterWidthCache } from '../../utils/cursor-position.js';
 import { consumeEvent } from '../../utils/event-utils.js';
 import { isIMEAllowedKey } from '../../utils/ime-constants.js';
 import { createLogger } from '../../utils/logger.js';
-import { getPhoneUi } from '../../utils/phone-ui.js';
+import { usesCompactPhoneUi } from '../../utils/phone-ui.js';
 import { type LifecycleEventManagerCallbacks, ManagerEventEmitter } from './interfaces.js';
 
 // Extend Window interface to include our custom property
@@ -108,7 +108,7 @@ export class LifecycleEventManager extends ManagerEventEmitter {
       // Update app height. The compact phone layout is pinned to it: there the home-screen
       // app's missing status-bar height is added back (else a blank band shows under the
       // action bar), and --vv-top follows iOS panning the visual viewport for the keyboard.
-      const compact = getPhoneUi() === 'compact';
+      const compact = usesCompactPhoneUi();
       const shortfall = compact ? iosStandaloneShortfall(ih) : 0;
       const height = `${(vv ? vv.height : ih) + shortfall}px`;
       document.documentElement.style.setProperty('--app-height', height);
