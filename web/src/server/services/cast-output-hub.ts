@@ -60,15 +60,15 @@ interface WatcherInfo {
   streamPath: string;
   clients: Set<CastOutputHubListener>;
   watcher?: fs.FSWatcher;
-  lastOffset: number;
-  lastSize: number;
-  lastMtime: number;
   /**
-   * Bytes after the last complete line. Kept as bytes: decoding each read on its
-   * own turned a UTF-8 character split across two reads into U+FFFD in the live line, and
-   * made the replay end (lastOffset minus this length) land a few bytes off.
+   * End of the last complete line handed to the clients: live follow reads on from here, a
+   * new subscriber's replay ends here. A trailing partial line is read again once it ends, so
+   * a UTF-8 character split across two writes stays whole.
    */
-  lineBuffer: Buffer;
+  lastOffset: number;
+  /** A read is running; `readAgain` asks it for one more pass when it is done. */
+  reading: boolean;
+  readAgain: boolean;
   retryTimer?: NodeJS.Timeout;
 }
 
@@ -100,18 +100,14 @@ export class CastOutputHub {
         streamPath,
         clients: new Set(),
         lastOffset: 0,
-        lastSize: 0,
-        lastMtime: 0,
-        lineBuffer: Buffer.alloc(0),
+        reading: false,
+        readAgain: false,
       };
       this.activeWatchers.set(sessionId, watcherInfo);
 
       // Live follow starts after the last complete line; a half-written one is read live.
       if (fs.existsSync(streamPath)) {
-        const stats = fs.statSync(streamPath);
-        watcherInfo.lastOffset = findLineStart(streamPath, stats.size);
-        watcherInfo.lastSize = stats.size;
-        watcherInfo.lastMtime = stats.mtimeMs;
+        watcherInfo.lastOffset = findLineStart(streamPath, fs.statSync(streamPath).size);
       }
 
       // Start watching (or retry until file exists).
@@ -122,7 +118,7 @@ export class CastOutputHub {
     // already delivered to the same listener, so a session writing while a phone
     // (re)subscribed showed new output before the history and lines from both paths
     // twice. Replay stops where live follow starts and live events wait for it.
-    const replayEnd = watcherInfo.lastOffset - watcherInfo.lineBuffer.length;
+    const replayEnd = watcherInfo.lastOffset;
     let pending: CastOutputHubEvent[] | null = [];
     let active = true;
     const replayListener: CastOutputHubListener = (event) => {
@@ -180,36 +176,7 @@ export class CastOutputHub {
 
   private startWatching(sessionId: string, watcherInfo: WatcherInfo): void {
     watcherInfo.watcher = fs.watch(watcherInfo.streamPath, { persistent: true }, (eventType) => {
-      if (eventType !== 'change') return;
-
-      try {
-        const stats = fs.statSync(watcherInfo.streamPath);
-        if (!(stats.size > watcherInfo.lastSize || stats.mtimeMs > watcherInfo.lastMtime)) return;
-
-        watcherInfo.lastSize = stats.size;
-        watcherInfo.lastMtime = stats.mtimeMs;
-
-        if (stats.size <= watcherInfo.lastOffset) return;
-
-        const fd = fs.openSync(watcherInfo.streamPath, 'r');
-        const buffer = Buffer.alloc(stats.size - watcherInfo.lastOffset);
-        fs.readSync(fd, buffer, 0, buffer.length, watcherInfo.lastOffset);
-        fs.closeSync(fd);
-
-        watcherInfo.lastOffset = stats.size;
-
-        let pending = Buffer.concat([watcherInfo.lineBuffer, buffer]);
-        let newline = pending.indexOf(0x0a);
-        while (newline !== -1) {
-          const line = pending.toString('utf8', 0, newline);
-          pending = pending.subarray(newline + 1);
-          if (line.trim()) this.broadcastLine(sessionId, line, watcherInfo);
-          newline = pending.indexOf(0x0a);
-        }
-        watcherInfo.lineBuffer = Buffer.from(pending);
-      } catch (error) {
-        logger.error(`failed to read file changes for session ${sessionId}:`, error);
-      }
+      if (eventType === 'change') void this.readNewOutput(sessionId, watcherInfo);
     });
 
     watcherInfo.watcher.on('error', (error) => {
@@ -217,6 +184,54 @@ export class CastOutputHub {
     });
 
     logger.debug(chalk.green(`watching cast file for session ${sessionId}`));
+  }
+
+  /**
+   * Hand the complete lines written since lastOffset to the clients, in order and once each.
+   * This used to read all new bytes in one buffer and decoded them in one go, so a burst
+   * of hundreds of MB was held whole in memory, and one past V8's string limit threw and lost
+   * every line in it. Lines now stream in 256 KB chunks (forEachCastLine), the next chunk read
+   * only after this one's lines went out, so sockets drain in between (a client that falls
+   * MAX_CLIENT_BUFFERED_BYTES behind is dropped by the WebSocket hub). A follower more than
+   * replayMaxBytes behind skips to the end like a new subscriber's replay, and says so.
+   */
+  private async readNewOutput(sessionId: string, watcherInfo: WatcherInfo): Promise<void> {
+    if (watcherInfo.reading) {
+      watcherInfo.readAgain = true;
+      return;
+    }
+    watcherInfo.reading = true;
+    try {
+      do {
+        watcherInfo.readAgain = false;
+        if (this.activeWatchers.get(sessionId) !== watcherInfo) return;
+        const streamPath = watcherInfo.streamPath;
+        const size = (await fs.promises.stat(streamPath)).size;
+        const behind = size - watcherInfo.lastOffset;
+        if (behind <= 0) continue;
+        if (behind > this.replayMaxBytes) {
+          const { start } = await castReplayStart(
+            streamPath,
+            watcherInfo.lastOffset,
+            size,
+            this.replayMaxBytes
+          );
+          logger.warn(
+            `skipped ${Math.round((start - watcherInfo.lastOffset) / 1024)} KB of output of ${sessionId}: its live stream fell more than ${Math.round(this.replayMaxBytes / 1024)} KB behind`
+          );
+          watcherInfo.lastOffset = start;
+        }
+        await forEachCastLine(streamPath, watcherInfo.lastOffset, size, (line, lineEnd) => {
+          // Moved line by line: a subscriber joining mid-read replays exactly up to here.
+          watcherInfo.lastOffset = lineEnd;
+          if (line.trim()) this.broadcastLine(sessionId, line, watcherInfo);
+        });
+      } while (watcherInfo.readAgain);
+    } catch (error) {
+      logger.error(`failed to read file changes for session ${sessionId}:`, error);
+    } finally {
+      watcherInfo.reading = false;
+    }
   }
 
   private parseAsciinemaLine(line: string): AsciinemaEvent | AsciinemaHeader | null {

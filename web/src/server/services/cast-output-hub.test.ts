@@ -100,6 +100,61 @@ describe('CastOutputHub live follow', () => {
       unsubscribe();
     }
   });
+
+  it('follows a session that fell far behind from a whole event near the end', async () => {
+    // The live read took all new bytes at once: a 540 MB burst (a sparse hole of NUL bytes
+    // here, no disk used) was one buffer and one string past V8's limit, so it threw and
+    // every line in it, the last frames too, was lost.
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cast-hub-'));
+    const stdoutPath = path.join(tmpDir, 'stdout');
+    fs.writeFileSync(stdoutPath, `${HEADER}\n`);
+    const sessionManager = {
+      getSessionPaths: () => ({ stdoutPath }),
+      loadSessionInfo: () => ({ lastClearOffset: 0 }),
+      saveSessionInfo: vi.fn(),
+    } as unknown as SessionManager;
+    const replayMaxBytes = 64 * 1024;
+    const live: string[] = [];
+    const errors: CastOutputHubEvent[] = [];
+    const unsubscribe = new CastOutputHub(sessionManager, { replayMaxBytes }).subscribe(
+      's1',
+      (event) => {
+        if (event.kind === 'output' && !event.historical) live.push(event.data);
+        if (event.kind === 'error') errors.push(event);
+      }
+    );
+    try {
+      const fd = fs.openSync(stdoutPath, 'r+');
+      await vi.waitFor(
+        () => {
+          if (live.length === 0) {
+            fs.writeSync(fd, `${JSON.stringify([0.1, 'o', 'ready'])}\n`, fs.fstatSync(fd).size);
+          }
+          expect(live.length).toBeGreaterThan(0);
+        },
+        { timeout: 3000, interval: 100 }
+      );
+      live.length = 0;
+
+      const frames: string[] = [];
+      for (let n = 1; n <= 2000; n++) frames.push(`\x1b[H<frame ${n} ─ é>${'x'.repeat(60)}\x1b[K`);
+      const data = Buffer.from(
+        `\n${frames.map((frame, i) => JSON.stringify([1 + i, 'o', frame])).join('\n')}\n`
+      );
+      expect(data.length).toBeGreaterThan(2 * replayMaxBytes);
+      // One write past the end: the hole and the frames arrive together.
+      fs.writeSync(fd, data, 0, data.length, fs.fstatSync(fd).size + 540 * 1024 * 1024);
+      fs.closeSync(fd);
+
+      await vi.waitFor(() => expect(live.at(-1)).toBe(frames.at(-1)), { timeout: 5000 });
+      // Whole events only, in order, ending with the last one, no more than the window.
+      expect(frames.slice(-live.length)).toEqual(live);
+      expect(Buffer.byteLength(live.join(''))).toBeLessThanOrEqual(replayMaxBytes);
+      expect(errors).toEqual([]);
+    } finally {
+      unsubscribe();
+    }
+  });
 });
 
 describe('CastOutputHub subscribe while the session is writing', () => {
