@@ -4,6 +4,7 @@ import type { TmuxPane, TmuxSession, TmuxWindow } from '../../shared/tmux-types.
 import { type SessionCreateOptions, TitleMode } from '../../shared/types.js';
 import type { PtyManager } from '../pty/pty-manager.js';
 import { createLogger } from '../utils/logger.js';
+import { terminalSessionEnv } from '../utils/session-env.js';
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger('TmuxManager');
@@ -207,7 +208,10 @@ export class TmuxManager {
         args.push(...command);
       }
 
-      await execFileAsync('tmux', args);
+      // This may start the tmux server, and the server and every pane in it keep the
+      // environment it starts with: give it a session's environment, not the server's (no
+      // VIBETUNNEL_PASSWORD, JWT_SECRET or launching Claude Code identity).
+      await execFileAsync('tmux', args, { env: terminalSessionEnv(process.env, {}) });
       logger.info('Created tmux session', { name, command });
     } catch (error) {
       logger.error('Failed to create tmux session', { name, error });

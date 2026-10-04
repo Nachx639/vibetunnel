@@ -197,12 +197,11 @@ main|1|1||vim|5678|vim|80|24|/Users/test/docs`;
 
       await tmuxManager.createSession('new-session');
 
-      expect(mockExecFileAsync).toHaveBeenCalledWith('tmux', [
-        'new-session',
-        '-d',
-        '-s',
-        'new-session',
-      ]);
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'tmux',
+        ['new-session', '-d', '-s', 'new-session'],
+        expect.anything()
+      );
     });
 
     it('should create a session with initial command', async () => {
@@ -210,15 +209,30 @@ main|1|1||vim|5678|vim|80|24|/Users/test/docs`;
 
       await tmuxManager.createSession('dev-session', ['npm', 'run', 'dev']);
 
-      expect(mockExecFileAsync).toHaveBeenCalledWith('tmux', [
-        'new-session',
-        '-d',
-        '-s',
-        'dev-session',
-        'npm',
-        'run',
-        'dev',
-      ]);
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'tmux',
+        ['new-session', '-d', '-s', 'dev-session', 'npm', 'run', 'dev'],
+        expect.anything()
+      );
+    });
+
+    it('starts tmux with a session environment, without the server secrets', async () => {
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+      vi.stubEnv('VIBETUNNEL_PASSWORD', 'hunter2');
+      vi.stubEnv('JWT_SECRET', 'f00d');
+      vi.stubEnv('CLAUDECODE', '1');
+      try {
+        await tmuxManager.createSession('dev-session');
+      } finally {
+        vi.unstubAllEnvs();
+      }
+
+      const options = mockExecFileAsync.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
+      expect(options?.env).toBeDefined();
+      expect(options.env?.PATH).toBe(process.env.PATH);
+      expect(options.env).not.toHaveProperty('VIBETUNNEL_PASSWORD');
+      expect(options.env).not.toHaveProperty('JWT_SECRET');
+      expect(options.env).not.toHaveProperty('CLAUDECODE');
     });
   });
 
