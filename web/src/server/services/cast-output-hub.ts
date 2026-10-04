@@ -79,7 +79,12 @@ interface WatcherInfo {
   lastOffset: number;
   lastSize: number;
   lastMtime: number;
-  lineBuffer: string;
+  /**
+   * Bytes after the last complete line. Kept as bytes: decoding each read on its
+   * own turned a UTF-8 character split across two reads into U+FFFD in the live line, and
+   * made the replay end (lastOffset minus this length) land a few bytes off.
+   */
+  lineBuffer: Buffer;
   retryTimer?: NodeJS.Timeout;
 }
 
@@ -107,7 +112,7 @@ export class CastOutputHub {
         lastOffset: 0,
         lastSize: 0,
         lastMtime: 0,
-        lineBuffer: '',
+        lineBuffer: Buffer.alloc(0),
       };
       this.activeWatchers.set(sessionId, watcherInfo);
 
@@ -127,7 +132,7 @@ export class CastOutputHub {
     // already delivered to the same listener, so a session writing while a phone
     // (re)subscribed showed new output before the history and lines from both paths
     // twice. Replay stops where live follow starts and live events wait for it.
-    const replayEnd = watcherInfo.lastOffset - Buffer.byteLength(watcherInfo.lineBuffer, 'utf8');
+    const replayEnd = watcherInfo.lastOffset - watcherInfo.lineBuffer.length;
     let pending: CastOutputHubEvent[] | null = [];
     let active = true;
     const replayListener: CastOutputHubListener = (event) => {
@@ -203,14 +208,15 @@ export class CastOutputHub {
 
         watcherInfo.lastOffset = stats.size;
 
-        watcherInfo.lineBuffer += buffer.toString('utf8');
-        const lines = watcherInfo.lineBuffer.split('\n');
-        watcherInfo.lineBuffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          this.broadcastLine(sessionId, line, watcherInfo);
+        let pending = Buffer.concat([watcherInfo.lineBuffer, buffer]);
+        let newline = pending.indexOf(0x0a);
+        while (newline !== -1) {
+          const line = pending.toString('utf8', 0, newline);
+          pending = pending.subarray(newline + 1);
+          if (line.trim()) this.broadcastLine(sessionId, line, watcherInfo);
+          newline = pending.indexOf(0x0a);
         }
+        watcherInfo.lineBuffer = Buffer.from(pending);
       } catch (error) {
         logger.error(`failed to read file changes for session ${sessionId}:`, error);
       }

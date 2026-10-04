@@ -54,6 +54,54 @@ describe('CastOutputHub replay', () => {
   });
 });
 
+describe('CastOutputHub live follow', () => {
+  let tmpDir: string | null = null;
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    tmpDir = null;
+  });
+
+  it('keeps a UTF-8 character that one read splits in two', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cast-hub-'));
+    const stdoutPath = path.join(tmpDir, 'stdout');
+    fs.writeFileSync(stdoutPath, `${HEADER}\n`);
+    const sessionManager = {
+      getSessionPaths: () => ({ stdoutPath }),
+      loadSessionInfo: () => ({ lastClearOffset: 0 }),
+      saveSessionInfo: vi.fn(),
+    } as unknown as SessionManager;
+    const live: string[] = [];
+    const unsubscribe = new CastOutputHub(sessionManager).subscribe('s1', (event) => {
+      if (event.kind === 'output' && !event.historical) live.push(event.data);
+    });
+    try {
+      const fd = fs.openSync(stdoutPath, 'a');
+      // Once a line arrives live, the watcher is armed (its very first change can be missed).
+      await vi.waitFor(
+        () => {
+          if (live.length === 0) fs.writeSync(fd, `${JSON.stringify([0.1, 'o', 'ready'])}\n`);
+          expect(live.length).toBeGreaterThan(0);
+        },
+        { timeout: 3000, interval: 100 }
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      live.length = 0;
+
+      const line = Buffer.from(`${JSON.stringify([0.5, 'o', '╭─ résumé ─╮'])}\n`);
+      const split = line.indexOf(Buffer.from('╭')) + 1; // inside the 3-byte box character
+      fs.writeSync(fd, line.subarray(0, split));
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      fs.writeSync(fd, line.subarray(split));
+      fs.closeSync(fd);
+
+      await vi.waitFor(() => expect(live).toEqual(['╭─ résumé ─╮']), { timeout: 3000 });
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
 describe('CastOutputHub subscribe while the session is writing', () => {
   let tmpDir: string | null = null;
 
