@@ -579,6 +579,11 @@ export async function createApp(): Promise<AppInstance> {
   );
   logger.debug('Configured compression middleware');
 
+  // CSP violation reports come from browsers without credentials: before the auth middleware,
+  // and before the global JSON parser, which would otherwise parse an `application/json`
+  // report up to 10 MB and bypass the route's own 16 KB limit.
+  app.use(createCspReportRoutes((line) => logger.warn(line)));
+
   // Add JSON body parser middleware with size limit
   app.use(express.json({ limit: '10mb' }));
   logger.debug('Configured express middleware');
@@ -1140,9 +1145,6 @@ export async function createApp(): Promise<AppInstance> {
   }
 
   // Apply auth middleware to all API routes (including auth routes for Tailscale header detection)
-  // CSP violation reports come from browsers without credentials: before the auth middleware.
-  app.use(createCspReportRoutes((line) => logger.warn(line)));
-
   app.use('/api', authMiddleware);
   logger.debug('Applied authentication middleware to /api routes');
 

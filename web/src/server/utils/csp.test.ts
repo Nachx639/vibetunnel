@@ -1,4 +1,5 @@
 import express from 'express';
+import { readFileSync } from 'fs';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import { APP_CSP, CSP_REPORT_PATH, createCspReportRoutes, cspReportLogLine } from './csp';
@@ -70,5 +71,27 @@ describe('the app pages CSP', () => {
       if (cspReportLogLine({ 'blocked-uri': `https://spam.example/${i}` }, at + i)) lines++;
     }
     expect(lines).toBe(50);
+  });
+
+  it('refuses a report over 16 KB of any accepted type, also with the global JSON parser', async () => {
+    // server.ts must mount the report route before its 10 MB `express.json()`: a parser that
+    // runs first consumes the body and the route's limit never applies.
+    const server = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+    const reportRoute = server.indexOf('app.use(createCspReportRoutes(');
+    const globalJson = server.indexOf("app.use(express.json({ limit: '10mb' }))");
+    expect(reportRoute).toBeGreaterThan(-1);
+    expect(globalJson).toBeGreaterThan(-1);
+    expect(reportRoute).toBeLessThan(globalJson);
+
+    const log = vi.fn();
+    const app = express();
+    app.use(createCspReportRoutes(log));
+    app.use(express.json({ limit: '10mb' }));
+    const big = JSON.stringify({ 'csp-report': { 'blocked-uri': 'x'.repeat(20 * 1024) } });
+    for (const type of ['application/json', 'application/csp-report', 'application/reports+json']) {
+      const response = await request(app).post(CSP_REPORT_PATH).set('Content-Type', type).send(big);
+      expect(response.status).toBe(413);
+    }
+    expect(log).not.toHaveBeenCalled();
   });
 });
