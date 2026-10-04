@@ -64,6 +64,28 @@ impl Logger {
         self.log(Level::Info, "INFO", message);
     }
 
+    /// Warning shown at the default level, written to the log file only.
+    /// For conditions found while stderr may be the very window that stopped
+    /// draining, where an stderr write would block the caller.
+    pub fn alert_file_only(&self, message: impl fmt::Display) {
+        if self.level < Level::Error {
+            return;
+        }
+        let mut file = self
+            .file
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut message_buffer = MessageBuffer::default();
+        if fmt::write(&mut message_buffer, format_args!("{message}")).is_err() {
+            return;
+        }
+        if let Some(file) = file.as_mut() {
+            let _ = file.write_all(b"WARN: ");
+            let _ = file.write_all(message_buffer.as_str().as_bytes());
+            let _ = file.write_all(b"\n");
+        }
+    }
+
     fn log(&self, level: Level, label: &str, message: impl fmt::Display) {
         if self.level < level {
             return;

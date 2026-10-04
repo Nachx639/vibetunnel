@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import pty
 import signal
 import shutil
 import socket
@@ -56,6 +57,8 @@ def main():
         test_shutdown_interrupts_backpressured_ipc(binary, control_dir, env)
         test_signal_during_shutdown_cleanup(binary, control_dir, env)
         test_ipc(binary, control_dir, env)
+        test_stalled_local_window(binary, control_dir, env, "pipe")
+        test_stalled_local_window(binary, control_dir, env, "pty")
 
         log_path = home / ".vibetunnel/log.txt"
         assert stat.S_IMODE(log_path.stat().st_mode) == 0o600
@@ -429,6 +432,127 @@ def test_ipc(binary, control_dir, env):
     assert any(row[1:] == ["r", "100x40"] for row in rows if isinstance(row, list))
     assert any(row[1:] == ["i", "hello\n"] for row in rows if isinstance(row, list))
     assert not socket_path.exists()
+
+
+class CastScanner:
+    """Finds text appended to a fast-growing cast file after a given point."""
+
+    def __init__(self, path):
+        self.path = path
+        self.offset = path.stat().st_size
+        self.carry = b""
+
+    def seen(self, text):
+        needle = text.encode()
+        with self.path.open("rb") as handle:
+            handle.seek(self.offset)
+            data = self.carry + handle.read()
+        self.offset += len(data) - len(self.carry)
+        if needle in data:
+            return True
+        self.carry = data[-len(needle):]
+        return False
+
+
+# When the Mac screen is locked, Terminal.app can stop draining the
+# `vt` window. The forwarder blocked writing to its own stdout, stopped reading
+# the PTY (the child froze mid-write), and ignored input and Kill from the
+# phone. Its stdout here is a pipe or a PTY that nobody ever reads.
+def test_stalled_local_window(binary, control_dir, env, kind):
+    session_id = f"stalled_window_{kind}"
+    session_dir = control_dir / session_id
+    # The reply marker is built reversed so the command text in the cast
+    # header cannot satisfy the input check.
+    child_code = (
+        "import os,select\n"
+        "i=0\n"
+        "while True:\n"
+        "    os.write(1, (f'tick {i} ' + 'x'*400 + '\\n').encode()); i+=1\n"
+        "    if select.select([0],[],[],0)[0] and b'ping' in os.read(0, 1024):\n"
+        "        os.write(1, b'\\n' + b'devieceR-GNOP'[::-1] + b'\\n')\n"
+    )
+    if kind == "pipe":
+        window_read, window_write = os.pipe()
+    else:
+        window_read, window_write = pty.openpty()
+    proc = None
+    client = None
+    child_pid = None
+    try:
+        proc = subprocess.Popen(
+            [binary, "--session-id", session_id, sys.executable, "-c", child_code],
+            stdin=subprocess.DEVNULL,
+            stdout=window_write,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
+        os.close(window_write)
+        window_write = None
+
+        socket_path = session_dir / "ipc.sock"
+        session_path = session_dir / "session.json"
+        cast_path = session_dir / "stdout"
+
+        def session_is_running():
+            nonlocal child_pid
+            try:
+                info = json.loads(session_path.read_text())
+            except (FileNotFoundError, json.JSONDecodeError):
+                return False
+            child_pid = info.get("pid")
+            return info.get("status") == "running" and isinstance(child_pid, int)
+
+        wait_for(socket_path.exists, f"{kind}: stalled-window IPC socket")
+        wait_for(session_is_running, f"{kind}: stalled-window child pid")
+
+        # The unread window holds at most a few hundred KB (pipe or PTY
+        # buffer plus the forwarder's bounded local queue). The recording must
+        # keep growing far past that.
+        wait_for(
+            lambda: cast_path.stat().st_size > 8 * 1024 * 1024,
+            f"{kind}: child output keeps reaching the cast with an unread window",
+            timeout=20,
+        )
+        size_before = cast_path.stat().st_size
+        time.sleep(0.5)
+        assert cast_path.stat().st_size > size_before, f"{kind}: recording stopped growing"
+
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.connect(str(socket_path))
+        client.settimeout(5)
+        client.sendall(frame(4))
+        assert client.recv(5) == frame(4), f"{kind}: control socket heartbeat"
+        scanner = CastScanner(cast_path)
+        client.sendall(frame(1, b"ping\n"))
+        wait_for(
+            lambda: scanner.seen("PONG-Received"),
+            f"{kind}: input from VibeTunnel reaches the child",
+        )
+
+        client.sendall(frame(2, json.dumps({"cmd": "kill", "signal": "SIGTERM"}).encode()))
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            raise AssertionError(f"{kind}: forwarder did not exit after Kill") from None
+        assert proc.returncode == 143, (kind, proc.returncode)
+        info = json.loads(session_path.read_text())
+        assert info["status"] == "exited" and info["exitCode"] == 143, info
+        assert not socket_path.exists()
+    finally:
+        if client is not None:
+            client.close()
+        if proc is not None and proc.poll() is None:
+            if child_pid:
+                try:
+                    os.killpg(child_pid, signal.SIGKILL)
+                except OSError:
+                    # ESRCH, or EPERM once only zombies are left.
+                    pass
+            proc.kill()
+            proc.wait(timeout=5)
+        if window_write is not None:
+            os.close(window_write)
+        os.close(window_read)
 
 
 if __name__ == "__main__":

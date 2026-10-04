@@ -4,6 +4,7 @@ compile_error!("vibetunnel-fwd does not support Windows");
 mod asciinema;
 mod control_socket;
 mod git;
+mod local_output;
 mod logger;
 mod pty;
 mod session;
@@ -28,6 +29,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use asciinema::AsciinemaWriter;
 use control_socket::{Handler, Server};
+use local_output::LocalOutput;
 use logger::{Level, Logger};
 use nix::libc;
 use pty::{Pty, Winsize, get_winsize_from_fd};
@@ -50,6 +52,8 @@ Options:\n\
 type AnyError = Box<dyn Error + Send + Sync>;
 const WORKER_STACK_BYTES: usize = 2 * 1024 * 1024;
 const PTY_WRITE_POLL_MS: libc::c_int = 50;
+/// Exit waits at most this long for the Mac window to take queued output.
+const LOCAL_OUTPUT_FLUSH_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum TitleMode {
@@ -132,7 +136,7 @@ struct SessionContext {
     child_pid: AtomicI32,
     pty: Arc<Pty>,
     pty_mutex: Mutex<()>,
-    stdout_mutex: Mutex<()>,
+    local_output: LocalOutput,
     session_name: Mutex<String>,
     asciinema: Arc<AsciinemaWriter>,
     title_mode: TitleMode,
@@ -365,7 +369,11 @@ fn run() -> Result<i32, AnyError> {
         child_pid: AtomicI32::new(pid),
         pty: Arc::new(pty),
         pty_mutex: Mutex::new(()),
-        stdout_mutex: Mutex::new(()),
+        local_output: LocalOutput::start(
+            libc::STDOUT_FILENO,
+            local_output::DEFAULT_CAPACITY,
+            Some(logger.clone()),
+        )?,
         session_name: Mutex::new(session_name),
         asciinema: asciinema.clone(),
         title_mode,
@@ -379,7 +387,7 @@ fn run() -> Result<i32, AnyError> {
 
     if title_mode == TitleMode::Static {
         let name = lock_unpoisoned(&context.session_name).clone();
-        let _ = update_local_title(&context, &name);
+        update_local_title(&context, &name);
     }
 
     let mut control_server = Server::start(&ipc_path, context.clone())?;
@@ -409,6 +417,8 @@ fn run() -> Result<i32, AnyError> {
     if !forward_pending_signal(pid, received_signal.as_ref()) && main_loop_error.is_some() {
         terminate_child(pid);
     }
+    // Bounded: a window that stopped draining must not keep the session alive.
+    context.local_output.finish(LOCAL_OUTPUT_FLUSH_TIMEOUT);
     if let Some(mode) = raw_mode.as_mut() {
         mode.restore();
     }
@@ -955,36 +965,6 @@ fn write_pty_all(context: &SessionContext, data: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-fn write_fd_all(fd: RawFd, data: &[u8]) -> io::Result<()> {
-    let mut offset = 0;
-    while offset < data.len() {
-        // SAFETY: the remaining slice is valid for the duration of `write`.
-        let written = unsafe {
-            libc::write(
-                fd,
-                data[offset..].as_ptr().cast::<libc::c_void>(),
-                data.len() - offset,
-            )
-        };
-        if written < 0 {
-            let error = io::Error::last_os_error();
-            if error.raw_os_error() == Some(libc::EINTR) {
-                continue;
-            }
-            return Err(error);
-        }
-        if written == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::WriteZero,
-                "descriptor write returned zero",
-            ));
-        }
-        // Partial writes must resume at the first byte the kernel did not consume.
-        offset += written as usize;
-    }
-    Ok(())
-}
-
 fn resize_pty(context: &SessionContext, cols: u16, rows: u16) {
     if cols == 0 || rows == 0 {
         return;
@@ -998,7 +978,7 @@ fn resize_pty(context: &SessionContext, cols: u16, rows: u16) {
     let _ = context.asciinema.write_resize(cols, rows);
 }
 
-fn update_local_title(context: &SessionContext, name: &str) -> io::Result<()> {
+fn update_local_title(context: &SessionContext, name: &str) {
     let safe_name = title::sanitize_title(name.as_bytes());
     let sequence = match context.title_mode {
         TitleMode::None | TitleMode::Filter => format!("\x1b]2;{safe_name}\x07"),
@@ -1010,8 +990,7 @@ fn update_local_title(context: &SessionContext, name: &str) -> io::Result<()> {
         ),
     };
 
-    let _guard = lock_unpoisoned(&context.stdout_mutex);
-    write_fd_all(libc::STDOUT_FILENO, sequence.as_bytes())
+    context.local_output.push(sequence.as_bytes());
 }
 
 fn replace_session_name(context: &SessionContext, name: String) {
@@ -1020,7 +999,7 @@ fn replace_session_name(context: &SessionContext, name: String) {
         return;
     }
     *current_name = name;
-    let _ = update_local_title(context, &current_name);
+    update_local_title(context, &current_name);
 }
 
 fn session_watcher_thread(context: &SessionContext) {
@@ -1085,6 +1064,9 @@ fn main_loop(context: &SessionContext, stdin_fd: RawFd) -> io::Result<()> {
     let mut title_filter = TitleFilter::new();
 
     while context.running.load(Ordering::Acquire) {
+        if context.local_output.take_redraw_request() {
+            request_redraw(context);
+        }
         if !stdin_active {
             poll_fds[1].fd = -1;
             poll_fds[1].events = 0;
@@ -1137,9 +1119,10 @@ fn main_loop(context: &SessionContext, stdin_fd: RawFd) -> io::Result<()> {
                 filtered.as_slice()
             };
             if !output.is_empty() {
+                // Record first: the cast file and clients must never depend
+                // on the Mac window draining (see local_output.rs).
                 let _ = context.asciinema.write_output(output);
-                let _guard = lock_unpoisoned(&context.stdout_mutex);
-                let _ = write_fd_all(libc::STDOUT_FILENO, output);
+                context.local_output.push(output);
             }
         }
 
@@ -1177,6 +1160,19 @@ fn main_loop(context: &SessionContext, stdin_fd: RawFd) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// The Mac window lost output while it was stalled; SIGWINCH makes full-screen
+/// programs repaint it. Clients see at most a harmless repaint.
+fn request_redraw(context: &SessionContext) {
+    // SAFETY: tcgetpgrp only inspects the descriptor.
+    let foreground = unsafe { libc::tcgetpgrp(context.pty.master_fd()) };
+    let group = if foreground > 0 {
+        foreground
+    } else {
+        context.child_pid.load(Ordering::Acquire)
+    };
+    signal_process_group(group, libc::SIGWINCH);
 }
 
 fn decode_exit_status(status: u32) -> ExitInfo {

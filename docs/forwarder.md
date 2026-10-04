@@ -20,6 +20,10 @@ Each session uses `~/.vibetunnel/control/<session-id>/` by default. `VIBETUNNEL_
 
 The session JSON schema is defined in `web/src/shared/types.ts`. The forwarder creates private directories and artifacts so session contents are not readable by other local users.
 
+## Local Window
+
+The forwarder also copies output to its own stdout, the terminal window `vt` ran in. That copy goes through a 2 MiB queue drained by a dedicated thread (`native/vt-fwd/src/local_output.rs`), so a window that stops draining (a frozen terminal, or Terminal.app with the screen locked) cannot stall the PTY read loop, input, or control commands. A full queue waits up to 250 ms; after that the oldest local output is dropped, one warning goes to the log file, and the child gets `SIGWINCH` to repaint once the window drains again. The `stdout` recording and VibeTunnel clients always get everything.
+
 ## IPC Contract
 
 Frames use one byte for the message type, a four-byte big-endian payload length, and the payload. `STDIN_DATA` payloads are raw bytes; `CONTROL_CMD` payloads are JSON. The command set includes resize, kill, reset-size, and update-title. Heartbeat frames are echoed.
