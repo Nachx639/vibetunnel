@@ -11,6 +11,11 @@ overrides:
   js-yaml: ^4.2.0
   qs: ^6.15.2
 
+patchedDependencies:
+  authenticate-pam@1.0.5:
+    hash: 81f3a9ca7349ae8889449a4abb821845a29bfdd86ab85f446718063eac7111b0
+    path: patches/authenticate-pam@1.0.5.patch
+
 importers:
 
   .:
@@ -226,7 +231,7 @@ importers:
     optionalDependencies:
       authenticate-pam:
         specifier: ^1.0.5
-        version: 1.0.5
+        version: 1.0.5(patch_hash=81f3a9ca7349ae8889449a4abb821845a29bfdd86ab85f446718063eac7111b0)
 
 packages:
 
@@ -4492,7 +4497,7 @@ snapshots:
 
   asynckit@0.4.0: {}
 
-  authenticate-pam@1.0.5:
+  authenticate-pam@1.0.5(patch_hash=81f3a9ca7349ae8889449a4abb821845a29bfdd86ab85f446718063eac7111b0):
     dependencies:
       nan: 2.28.0
     optional: true

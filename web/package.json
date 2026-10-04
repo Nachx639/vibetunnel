@@ -108,7 +108,10 @@
       "esbuild",
       "node-pty",
       "puppeteer"
-    ]
+    ],
+    "patchedDependencies": {
+      "authenticate-pam@1.0.5": "patches/authenticate-pam@1.0.5.patch"
+    }
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",
