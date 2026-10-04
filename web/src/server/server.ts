@@ -908,8 +908,11 @@ export async function createApp(): Promise<AppInstance> {
       etag: !isDevelopment, // Disable ETag in development
       lastModified: !isDevelopment, // Disable Last-Modified in development
       setHeaders: (res, filePath) => {
-        // Report-only Content-Security-Policy on the app's pages (utils/csp.ts).
-        if (filePath.endsWith('.html')) res.setHeader(CSP_HEADER, APP_CSP);
+        // Report-only Content-Security-Policy on the app's pages (utils/csp.ts); not on the
+        // manual test pages under test/, whose inline scripts would only add report noise.
+        if (filePath.endsWith('.html') && !filePath.includes(`${path.sep}test${path.sep}`)) {
+          res.setHeader(CSP_HEADER, APP_CSP);
+        }
         if (isDevelopment) {
           // Disable all caching in development
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
