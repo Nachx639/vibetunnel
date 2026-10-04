@@ -866,6 +866,24 @@ export const en = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Gold',
   'theme.clay': 'Clay',
+
+  // Quick keys: names for glyph keys, sticky modifiers
+  'quickKeys.symbols': 'Symbols',
+  'quickKeys.modifier.once': '{key}: applies to the next key',
+  'quickKeys.modifier.locked': '{key}: locked, tap to release',
+  'quickKeys.hint.shiftTab': 'Cycles modes in Claude Code',
+  'a11y.key.escape': 'Escape',
+  'a11y.key.control': 'Control',
+  'a11y.key.controlKeys': 'Control shortcuts',
+  'a11y.key.functionKeys': 'Function keys',
+  'a11y.key.shiftTab': 'Shift Tab',
+  'a11y.key.enter': 'Enter',
+  'a11y.key.pageUp': 'Page up',
+  'a11y.key.pageDown': 'Page down',
+  'a11y.key.delete': 'Delete',
+  'a11y.key.option': 'Option',
+  'a11y.key.command': 'Command',
+  'a11y.key.controlCombo': 'Control {key}',
 };
 
 export type MessageKey = keyof typeof en;

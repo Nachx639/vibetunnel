@@ -1,10 +1,11 @@
-import { html, LitElement, type PropertyValues } from 'lit';
+import { html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
 import {
   DEFAULT_QUICK_KEYS_LAYOUT,
   getHiddenQuickKeys,
   getQuickKeyDefinition,
+  getQuickKeyDescription,
   getQuickKeyDisplayLabel,
   getQuickKeysPresetName,
   loadQuickKeysLayout,
@@ -146,6 +147,7 @@ export class QuickKeysEditor extends LitElement {
     const definition = getQuickKeyDefinition(key);
     const selected = this.selectedKey === key;
     const label = getQuickKeyDisplayLabel(key, definition.label);
+    const description = getQuickKeyDescription(key);
     const location =
       rowIndex === undefined
         ? t('quickKeys.editor.hidden')
@@ -160,7 +162,8 @@ export class QuickKeysEditor extends LitElement {
             : 'border-border bg-bg-tertiary text-text-muted hover:border-primary/60 hover:text-primary'
         }"
         aria-pressed=${selected ? 'true' : 'false'}
-        aria-label="${label}, ${location}"
+        aria-label="${description ?? label}, ${location}"
+        title=${description ?? nothing}
         data-key=${key}
         @click=${() => {
           this.selectedKey = key;
@@ -358,6 +361,13 @@ export class QuickKeysEditor extends LitElement {
                     : t('quickKeys.editor.selectKey')
                 }
               </h3>
+              ${
+                selectedDefinition && getQuickKeyDescription(selectedDefinition.key)
+                  ? html`<p class="text-xs text-text-muted mb-2" data-testid="quick-key-description">
+                      ${getQuickKeyDescription(selectedDefinition.key)}
+                    </p>`
+                  : nothing
+              }
               ${this.renderSelectedControls()}
             </div>
 

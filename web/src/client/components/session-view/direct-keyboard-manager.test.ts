@@ -211,6 +211,27 @@ describe('DirectKeyboardManager', () => {
     });
   });
 
+  it('sends Return (the server writes \\r) from the ↵ Enter quick key', async () => {
+    await manager.handleQuickKeyPress('Enter');
+    expect(mockInputManager.sendInput).toHaveBeenCalledWith('enter');
+    expect(mockInputManager.sendInputText).not.toHaveBeenCalled();
+  });
+
+  it('sends any Ctrl+<char> chord from the sticky Ctrl quick key', async () => {
+    const sendControlSequence = vi.fn();
+    Object.assign(mockInputManager, { sendControlSequence });
+
+    await manager.handleQuickKeyPress('Ctrl+X');
+    await manager.handleQuickKeyPress('Ctrl+[');
+
+    expect(sendControlSequence.mock.calls).toEqual([['\x18'], ['\x1b']]);
+    expect(mockInputManager.sendInputText).not.toHaveBeenCalled();
+  });
+
+  it('marks the hidden input so armed quick-key modifiers can catch typed letters', () => {
+    expect(getManagerState().hiddenInput?.hasAttribute('data-direct-keyboard-input')).toBe(true);
+  });
+
   it('uses a textarea, so phones show no AutoFill bar above the keyboard', () => {
     expect(getManagerState().hiddenInput?.tagName).toBe('TEXTAREA');
   });

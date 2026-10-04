@@ -848,4 +848,22 @@ export const bn: Messages = {
   'theme.cyber': 'সাইবার',
   'theme.gold': 'সোনালি',
   'theme.clay': 'মাটি',
+
+  // Quick keys: names for glyph keys, sticky modifiers
+  'quickKeys.symbols': 'চিহ্ন',
+  'quickKeys.modifier.once': '{key}: পরের কীতে প্রযোজ্য',
+  'quickKeys.modifier.locked': '{key}: লক করা, ছাড়তে ট্যাপ করুন',
+  'quickKeys.hint.shiftTab': 'Claude Code-এ মোড বদলায়',
+  'a11y.key.escape': 'এস্কেপ',
+  'a11y.key.control': 'কন্ট্রোল',
+  'a11y.key.controlKeys': 'কন্ট্রোল শর্টকাট',
+  'a11y.key.functionKeys': 'ফাংশন কী',
+  'a11y.key.shiftTab': 'শিফট ট্যাব',
+  'a11y.key.enter': 'এন্টার',
+  'a11y.key.pageUp': 'পেজ আপ',
+  'a11y.key.pageDown': 'পেজ ডাউন',
+  'a11y.key.delete': 'ডিলিট',
+  'a11y.key.option': 'অপশন',
+  'a11y.key.command': 'কমান্ড',
+  'a11y.key.controlCombo': 'কন্ট্রোল {key}',
 };

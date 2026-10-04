@@ -871,4 +871,22 @@ export const es: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Oro',
   'theme.clay': 'Arcilla',
+
+  // Quick keys: names for glyph keys, sticky modifiers
+  'quickKeys.symbols': 'Símbolos',
+  'quickKeys.modifier.once': '{key}: se aplica a la siguiente tecla',
+  'quickKeys.modifier.locked': '{key}: bloqueada, toca para soltar',
+  'quickKeys.hint.shiftTab': 'En Claude Code cambia de modo',
+  'a11y.key.escape': 'Escape',
+  'a11y.key.control': 'Control',
+  'a11y.key.controlKeys': 'Atajos con Control',
+  'a11y.key.functionKeys': 'Teclas de función',
+  'a11y.key.shiftTab': 'Mayús+Tab',
+  'a11y.key.enter': 'Intro',
+  'a11y.key.pageUp': 'Re Pág',
+  'a11y.key.pageDown': 'Av Pág',
+  'a11y.key.delete': 'Suprimir',
+  'a11y.key.option': 'Opción',
+  'a11y.key.command': 'Comando',
+  'a11y.key.controlCombo': 'Control {key}',
 };

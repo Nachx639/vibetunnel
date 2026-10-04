@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/component-helpers.js';
 import {
   COMPACT_QUICK_KEYS_LAYOUT,
+  controlCharacterFor,
   DEFAULT_QUICK_KEYS_LAYOUT,
+  getHiddenQuickKeys,
+  getQuickKeyDescription,
   isValidQuickKeysLayout,
   loadQuickKeysLayout,
   QUICK_KEYS_LAYOUT_CHANGED_EVENT,
@@ -85,5 +88,46 @@ describe('quick keys layout preferences', () => {
     expect(listener).toHaveBeenCalledTimes(2);
 
     window.removeEventListener(QUICK_KEYS_LAYOUT_CHANGED_EVENT, listener);
+  });
+});
+
+describe('new quick keys (↵ Enter, #+ symbols)', () => {
+  beforeEach(() => {
+    setupLocalStorageMock();
+  });
+
+  afterEach(() => {
+    restoreLocalStorage();
+  });
+
+  it('leaves the default layout as it was and offers them among the hidden keys', () => {
+    expect(DEFAULT_QUICK_KEYS_LAYOUT.flat()).not.toContain('Enter');
+    expect(DEFAULT_QUICK_KEYS_LAYOUT.flat()).not.toContain('Symbols');
+    const hidden = getHiddenQuickKeys(loadQuickKeysLayout()).map(({ key }) => key);
+    expect(hidden).toContain('Enter');
+    expect(hidden).toContain('Symbols');
+  });
+
+  it('names the glyph-only keys in the editor, including what ⇤ does in Claude Code', () => {
+    expect(getQuickKeyDescription('Enter')).toBe('Enter');
+    expect(getQuickKeyDescription('shift_tab')).toBe('Shift Tab · Cycles modes in Claude Code');
+    expect(getQuickKeyDescription('/')).toBeUndefined();
+  });
+});
+
+describe('controlCharacterFor', () => {
+  it.each([
+    ['c', '\x03'],
+    ['C', '\x03'],
+    ['[', '\x1b'],
+    ['_', '\x1f'],
+    [' ', '\x00'],
+    ['?', '\x7f'],
+  ])('maps Ctrl+%j', (char, expected) => {
+    expect(controlCharacterFor(char)).toBe(expected);
+  });
+
+  it('returns null for characters without a control code', () => {
+    expect(controlCharacterFor('1')).toBeNull();
   });
 });

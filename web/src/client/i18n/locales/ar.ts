@@ -845,4 +845,22 @@ export const ar: Messages = {
   'theme.cyber': 'سايبر',
   'theme.gold': 'ذهبي',
   'theme.clay': 'طيني',
+
+  // Quick keys: names for glyph keys, sticky modifiers
+  'quickKeys.symbols': 'الرموز',
+  'quickKeys.modifier.once': '{key}: يُطبَّق على المفتاح التالي',
+  'quickKeys.modifier.locked': '{key}: مقفل، اضغط للتحرير',
+  'quickKeys.hint.shiftTab': 'يبدّل الأوضاع في Claude Code',
+  'a11y.key.escape': 'مفتاح الهروب',
+  'a11y.key.control': 'مفتاح التحكم',
+  'a11y.key.controlKeys': 'اختصارات التحكم',
+  'a11y.key.functionKeys': 'مفاتيح الوظائف',
+  'a11y.key.shiftTab': 'Shift Tab',
+  'a11y.key.enter': 'إدخال',
+  'a11y.key.pageUp': 'صفحة لأعلى',
+  'a11y.key.pageDown': 'صفحة لأسفل',
+  'a11y.key.delete': 'حذف',
+  'a11y.key.option': 'مفتاح الخيار',
+  'a11y.key.command': 'مفتاح الأوامر',
+  'a11y.key.controlCombo': 'تحكم {key}',
 };

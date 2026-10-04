@@ -880,4 +880,22 @@ export const fr: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Or',
   'theme.clay': 'Argile',
+
+  // Quick keys: names for glyph keys, sticky modifiers
+  'quickKeys.symbols': 'Symboles',
+  'quickKeys.modifier.once': '{key} : s’applique à la touche suivante',
+  'quickKeys.modifier.locked': '{key} : verrouillée, touchez pour relâcher',
+  'quickKeys.hint.shiftTab': 'Change de mode dans Claude Code',
+  'a11y.key.escape': 'Échap',
+  'a11y.key.control': 'Contrôle',
+  'a11y.key.controlKeys': 'Raccourcis Contrôle',
+  'a11y.key.functionKeys': 'Touches de fonction',
+  'a11y.key.shiftTab': 'Maj Tab',
+  'a11y.key.enter': 'Entrée',
+  'a11y.key.pageUp': 'Page précédente',
+  'a11y.key.pageDown': 'Page suivante',
+  'a11y.key.delete': 'Supprimer',
+  'a11y.key.option': 'Option',
+  'a11y.key.command': 'Commande',
+  'a11y.key.controlCombo': 'Contrôle {key}',
 };

@@ -837,4 +837,22 @@ export const zhCN: Messages = {
   'theme.cyber': '赛博',
   'theme.gold': '金色',
   'theme.clay': '陶土',
+
+  // Quick keys: names for glyph keys, sticky modifiers
+  'quickKeys.symbols': '符号',
+  'quickKeys.modifier.once': '{key}：作用于下一个按键',
+  'quickKeys.modifier.locked': '{key}：已锁定，点按以释放',
+  'quickKeys.hint.shiftTab': '在 Claude Code 中切换模式',
+  'a11y.key.escape': 'Esc 键',
+  'a11y.key.control': 'Control 键',
+  'a11y.key.controlKeys': 'Control 快捷键',
+  'a11y.key.functionKeys': '功能键',
+  'a11y.key.shiftTab': 'Shift Tab',
+  'a11y.key.enter': '回车',
+  'a11y.key.pageUp': '向上翻页',
+  'a11y.key.pageDown': '向下翻页',
+  'a11y.key.delete': '删除',
+  'a11y.key.option': 'Option 键',
+  'a11y.key.command': 'Command 键',
+  'a11y.key.controlCombo': 'Control {key}',
 };

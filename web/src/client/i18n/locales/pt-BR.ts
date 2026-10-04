@@ -870,4 +870,22 @@ export const ptBR: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Ouro',
   'theme.clay': 'Argila',
+
+  // Quick keys: names for glyph keys, sticky modifiers
+  'quickKeys.symbols': 'Símbolos',
+  'quickKeys.modifier.once': '{key}: aplica-se à próxima tecla',
+  'quickKeys.modifier.locked': '{key}: travada, toque para soltar',
+  'quickKeys.hint.shiftTab': 'Alterna os modos no Claude Code',
+  'a11y.key.escape': 'Esc',
+  'a11y.key.control': 'Control',
+  'a11y.key.controlKeys': 'Atalhos com Control',
+  'a11y.key.functionKeys': 'Teclas de função',
+  'a11y.key.shiftTab': 'Shift Tab',
+  'a11y.key.enter': 'Enter',
+  'a11y.key.pageUp': 'Page Up',
+  'a11y.key.pageDown': 'Page Down',
+  'a11y.key.delete': 'Delete',
+  'a11y.key.option': 'Option',
+  'a11y.key.command': 'Command',
+  'a11y.key.controlCombo': 'Control {key}',
 };

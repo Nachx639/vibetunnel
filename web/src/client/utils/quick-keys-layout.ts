@@ -14,8 +14,10 @@ export const QUICK_KEY_DEFINITIONS = [
   { key: 'Control', label: 'Ctrl', modifier: true },
   { key: 'CtrlExpand', label: '⌃', toggle: true },
   { key: 'F', label: 'F', toggle: true },
+  { key: 'Symbols', label: '#+', toggle: true },
   { key: 'Tab', label: 'Tab' },
   { key: 'shift_tab', label: '⇤' },
+  { key: 'Enter', label: '↵' },
   { key: 'ArrowUp', label: '↑', arrow: true },
   { key: 'ArrowDown', label: '↓', arrow: true },
   { key: 'ArrowLeft', label: '←', arrow: true },
@@ -44,6 +46,16 @@ export const QUICK_KEY_DEFINITIONS = [
   { key: ']', label: ']' },
   { key: '(', label: '(' },
   { key: ')', label: ')' },
+  { key: '@', label: '@' },
+  { key: '!', label: '!' },
+  { key: '>', label: '>' },
+  { key: '<', label: '<' },
+  { key: '&', label: '&' },
+  { key: '*', label: '*' },
+  { key: '$', label: '$' },
+  { key: '_', label: '_' },
+  { key: '=', label: '=' },
+  { key: ';', label: ';' },
 ] as const satisfies readonly QuickKeyAttributes[];
 
 export type QuickKeyId = (typeof QUICK_KEY_DEFINITIONS)[number]['key'];
@@ -83,6 +95,25 @@ export const COMPACT_QUICK_KEYS_LAYOUT: QuickKeysLayout = [
     'PageDown',
   ],
   ['Home', 'Paste', 'End', 'Delete', 'Option', 'Command', 'Ctrl+C', 'Ctrl+Z', '/', '-'],
+];
+
+/**
+ * Shell symbols that sit two or three taps deep on a phone keyboard (redirects, pipes,
+ * globs, variables, braces). The #+ toggle swaps them into the second row.
+ */
+export const SYMBOL_QUICK_KEYS: QuickKeyId[] = [
+  '>',
+  '<',
+  '&',
+  '*',
+  '$',
+  '_',
+  '=',
+  ';',
+  '{',
+  '}',
+  '[',
+  ']',
 ];
 
 export const QUICK_KEYS_PRESETS = [
@@ -204,6 +235,46 @@ const WORD_LABEL_KEYS: Partial<Record<string, MessageKey>> = {
   End: 'quickKeys.end',
 };
 
+/** Accessible names for keys whose cap is a glyph rather than a word. */
+const ARIA_LABEL_KEYS: Partial<Record<string, MessageKey>> = {
+  Symbols: 'quickKeys.symbols',
+  // VoiceOver reads these caps as "caret", "P G U P", "up arrowhead"...
+  Escape: 'a11y.key.escape',
+  Control: 'a11y.key.control',
+  CtrlExpand: 'a11y.key.controlKeys',
+  F: 'a11y.key.functionKeys',
+  shift_tab: 'a11y.key.shiftTab',
+  Enter: 'a11y.key.enter',
+  PageUp: 'a11y.key.pageUp',
+  PageDown: 'a11y.key.pageDown',
+  Delete: 'a11y.key.delete',
+  Option: 'a11y.key.option',
+  Command: 'a11y.key.command',
+};
+
+/** What a key is for, when its name alone doesn't tell (shown in the quick keys editor). */
+const HINT_KEYS: Partial<Record<string, MessageKey>> = {
+  shift_tab: 'quickKeys.hint.shiftTab',
+};
+
+/** Spoken/written name plus purpose of a quick key for the editor: "Shift Tab · Cycles modes in Claude Code". */
+export function getQuickKeyDescription(key: string): string | undefined {
+  const name = getQuickKeyAriaLabel(key);
+  const hintKey = HINT_KEYS[key];
+  const hint = hintKey ? t(hintKey) : undefined;
+  if (name && hint) return `${name} · ${hint}`;
+  return name ?? hint;
+}
+
+/** Accessible name for a quick key, when its cap alone doesn't say what it does. */
+export function getQuickKeyAriaLabel(key: string): string | undefined {
+  const messageKey = ARIA_LABEL_KEYS[key];
+  if (messageKey) return t(messageKey);
+  // "Ctrl+C" → "Control C"
+  const combo = /^Ctrl\+(.+)$/.exec(key);
+  return combo ? t('a11y.key.controlCombo', { key: combo[1] }) : undefined;
+}
+
 /** The label to show for a quick key in the active language. */
 export function getQuickKeyDisplayLabel(key: string, label: string): string {
   const messageKey = WORD_LABEL_KEYS[key];
@@ -224,4 +295,21 @@ export function getQuickKeysPresetName(preset: { id: string; name: string }): st
 export function getHiddenQuickKeys(layout: QuickKeysLayout): QuickKeyDefinition[] {
   const visible = new Set(layout.flat());
   return QUICK_KEY_DEFINITIONS.filter(({ key }) => !visible.has(key)) as QuickKeyDefinition[];
+}
+
+/** Marks the hidden textarea that receives soft-keyboard typing for the terminal. */
+export const DIRECT_KEYBOARD_INPUT_ATTRIBUTE = 'data-direct-keyboard-input';
+
+/**
+ * The control character Ctrl+<char> produces in a terminal (Ctrl+C → \x03, Ctrl+[ → ESC,
+ * Ctrl+Space → NUL), or null when the character has none.
+ */
+export function controlCharacterFor(char: string): string | null {
+  if (char === ' ') return '\x00';
+  if (char === '?') return '\x7f';
+  const code = char.toUpperCase().charCodeAt(0);
+  if (char.length === 1 && code >= 0x40 && code <= 0x5f) {
+    return String.fromCharCode(code - 0x40);
+  }
+  return null;
 }

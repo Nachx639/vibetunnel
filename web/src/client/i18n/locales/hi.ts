@@ -846,4 +846,22 @@ export const hi: Messages = {
   'theme.cyber': 'साइबर',
   'theme.gold': 'सुनहरा',
   'theme.clay': 'मिट्टी',
+
+  // Quick keys: names for glyph keys, sticky modifiers
+  'quickKeys.symbols': 'चिह्न',
+  'quickKeys.modifier.once': '{key}: अगली कुंजी पर लागू',
+  'quickKeys.modifier.locked': '{key}: लॉक है, छोड़ने के लिए टैप करें',
+  'quickKeys.hint.shiftTab': 'Claude Code में मोड बदलता है',
+  'a11y.key.escape': 'एस्केप',
+  'a11y.key.control': 'कंट्रोल',
+  'a11y.key.controlKeys': 'कंट्रोल शॉर्टकट',
+  'a11y.key.functionKeys': 'फ़ंक्शन कुंजियाँ',
+  'a11y.key.shiftTab': 'शिफ़्ट टैब',
+  'a11y.key.enter': 'एंटर',
+  'a11y.key.pageUp': 'पेज अप',
+  'a11y.key.pageDown': 'पेज डाउन',
+  'a11y.key.delete': 'डिलीट',
+  'a11y.key.option': 'ऑप्शन',
+  'a11y.key.command': 'कमांड',
+  'a11y.key.controlCombo': 'कंट्रोल {key}',
 };

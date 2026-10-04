@@ -1,13 +1,17 @@
 // @vitest-environment happy-dom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/component-helpers.js';
 import {
   COMPACT_QUICK_KEYS_LAYOUT,
   DEFAULT_QUICK_KEYS_LAYOUT,
+  DIRECT_KEYBOARD_INPUT_ATTRIBUTE,
+  SYMBOL_QUICK_KEYS,
   saveQuickKeysLayout,
 } from '../utils/quick-keys-layout.js';
 import { TerminalQuickKeys } from './terminal-quick-keys.js';
+
+type OnKeyPress = NonNullable<TerminalQuickKeys['onKeyPress']>;
 
 // Define interface for private methods we need to test
 interface TerminalQuickKeysPrivate extends TerminalQuickKeys {
@@ -272,5 +276,378 @@ describe('TerminalQuickKeys', () => {
       expect(component.querySelector('[data-key="Home"]')).not.toBeNull();
       component.remove();
     });
+  });
+});
+
+describe('TerminalQuickKeys press-and-hold repeat', () => {
+  let component: TerminalQuickKeys;
+  let onKeyPress: Mock<OnKeyPress>;
+
+  const touch = (target: Element, type: string, x = 10, y = 10) => {
+    const event = new Event(type, { bubbles: true, cancelable: true, composed: true });
+    Object.defineProperty(event, 'touches', { value: [{ clientX: x, clientY: y }] });
+    target.dispatchEvent(event);
+  };
+
+  const pressesOf = (key: string) => onKeyPress.mock.calls.filter(([k]) => k === key).length;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    setupLocalStorageMock();
+    component = new TerminalQuickKeys();
+    onKeyPress = vi.fn();
+    component.onKeyPress = onKeyPress;
+    component.visible = true;
+    document.body.append(component);
+    await component.updateComplete;
+  });
+
+  afterEach(() => {
+    component.remove();
+    restoreLocalStorage();
+    vi.useRealTimers();
+  });
+
+  it.each(['ArrowLeft', 'Delete'])('repeats %s while held with the mouse', (key) => {
+    const button = component.querySelector(`[data-key="${key}"]`) as HTMLElement;
+    button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    expect(pressesOf(key)).toBe(1);
+
+    vi.advanceTimersByTime(399);
+    expect(pressesOf(key)).toBe(1);
+    vi.advanceTimersByTime(1);
+    expect(pressesOf(key)).toBe(2);
+    vi.advanceTimersByTime(120);
+    expect(pressesOf(key)).toBe(4);
+
+    button.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    vi.advanceTimersByTime(1000);
+    expect(pressesOf(key)).toBe(4);
+  });
+
+  it('repeats Del while a finger holds it and stops on touchend', () => {
+    const button = component.querySelector('[data-key="Delete"]') as HTMLElement;
+    touch(button, 'touchstart');
+    vi.advanceTimersByTime(400);
+    expect(pressesOf('Delete')).toBe(1);
+
+    vi.advanceTimersByTime(60);
+    expect(pressesOf('Delete')).toBe(2);
+
+    touch(button, 'touchend');
+    // The mouse events iOS synthesizes after the touch must not press it again.
+    button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    vi.advanceTimersByTime(1000);
+    expect(pressesOf('Delete')).toBe(2);
+  });
+
+  it('presses an arrow once on a quick tap', () => {
+    const button = component.querySelector('[data-key="ArrowUp"]') as HTMLElement;
+    touch(button, 'touchstart');
+    vi.advanceTimersByTime(100);
+    touch(button, 'touchend');
+    vi.advanceTimersByTime(1000);
+    expect(pressesOf('ArrowUp')).toBe(1);
+  });
+
+  it('applies an armed Option to the first press and every repeat', () => {
+    const option = component.querySelector('[data-key="Option"]') as HTMLElement;
+    option.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    const arrow = component.querySelector('[data-key="ArrowLeft"]') as HTMLElement;
+    touch(arrow, 'touchstart');
+    vi.advanceTimersByTime(460);
+    touch(arrow, 'touchend');
+
+    expect(onKeyPress.mock.calls.map(([k]) => k)).toEqual([
+      'Option',
+      'ArrowLeft',
+      'Option',
+      'ArrowLeft',
+    ]);
+  });
+});
+
+describe('TerminalQuickKeys swipe trackpad (compact layout)', () => {
+  let component: TerminalQuickKeys;
+  let onKeyPress: Mock<OnKeyPress>;
+
+  const touch = (target: Element, type: string, x: number, y = 10) => {
+    const event = new Event(type, { bubbles: true, cancelable: true, composed: true });
+    Object.defineProperty(event, 'touches', {
+      value: type === 'touchend' ? [] : [{ clientX: x, clientY: y }],
+    });
+    target.dispatchEvent(event);
+  };
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    setupLocalStorageMock();
+    component = new TerminalQuickKeys();
+    onKeyPress = vi.fn();
+    component.onKeyPress = onKeyPress;
+    component.visible = true;
+    component.compact = true;
+    document.body.append(component);
+    await component.updateComplete;
+  });
+
+  afterEach(() => {
+    component.remove();
+    restoreLocalStorage();
+    vi.useRealTimers();
+  });
+
+  it('moves the cursor one step per 16px of horizontal swipe, both ways', () => {
+    const home = component.querySelector('[data-key="Home"]') as HTMLElement;
+    touch(home, 'touchstart', 100);
+    touch(home, 'touchmove', 150, 14);
+    expect(onKeyPress.mock.calls.map(([k]) => k)).toEqual([
+      'ArrowRight',
+      'ArrowRight',
+      'ArrowRight',
+    ]);
+
+    onKeyPress.mockClear();
+    touch(home, 'touchmove', 60, 14);
+    touch(home, 'touchend', 60);
+    expect(onKeyPress.mock.calls.map(([k]) => k)).toEqual([
+      'ArrowLeft',
+      'ArrowLeft',
+      'ArrowLeft',
+      'ArrowLeft',
+      'ArrowLeft',
+    ]);
+  });
+
+  it('does not press Del when a swipe starts on it', () => {
+    const del = component.querySelector('[data-key="Delete"]') as HTMLElement;
+    touch(del, 'touchstart', 100);
+    touch(del, 'touchmove', 80);
+    vi.advanceTimersByTime(1000);
+    touch(del, 'touchend', 80);
+    expect(onKeyPress.mock.calls.map(([k]) => k)).toEqual(['ArrowLeft']);
+  });
+
+  it('highlights the key under the finger until it lifts or starts a swipe', () => {
+    const home = component.querySelector('[data-key="Home"]') as HTMLElement;
+    touch(home, 'touchstart', 100);
+    expect(home.classList.contains('pressed')).toBe(true);
+    touch(home, 'touchend', 100);
+    expect(home.classList.contains('pressed')).toBe(false);
+    expect(onKeyPress).toHaveBeenCalledWith('Home', false, false, false);
+
+    touch(home, 'touchstart', 100);
+    touch(home, 'touchmove', 130);
+    expect(home.classList.contains('pressed')).toBe(false);
+  });
+
+  it('ignores mostly vertical moves', () => {
+    const home = component.querySelector('[data-key="Home"]') as HTMLElement;
+    touch(home, 'touchstart', 100, 10);
+    touch(home, 'touchmove', 120, 60);
+    expect(onKeyPress).not.toHaveBeenCalled();
+  });
+});
+
+describe('TerminalQuickKeys sticky Ctrl and Option (compact layout)', () => {
+  let component: TerminalQuickKeys;
+  let onKeyPress: Mock<OnKeyPress>;
+  let hiddenInput: HTMLTextAreaElement;
+
+  const tap = (key: string) =>
+    (component.querySelector(`[data-key="${key}"]`) as HTMLElement).dispatchEvent(
+      new MouseEvent('click', { bubbles: true, detail: 1 })
+    );
+
+  /** Simulates the iOS keyboard typing one character into the hidden input. */
+  const type = (data: string) => {
+    const event = new InputEvent('beforeinput', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data,
+    });
+    hiddenInput.dispatchEvent(event);
+    return event;
+  };
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    setupLocalStorageMock();
+    component = new TerminalQuickKeys();
+    onKeyPress = vi.fn();
+    component.onKeyPress = onKeyPress;
+    component.visible = true;
+    component.compact = true;
+    document.body.append(component);
+    hiddenInput = document.createElement('textarea');
+    hiddenInput.setAttribute(DIRECT_KEYBOARD_INPUT_ATTRIBUTE, '');
+    document.body.append(hiddenInput);
+    await component.updateComplete;
+  });
+
+  afterEach(() => {
+    component.remove();
+    hiddenInput.remove();
+    restoreLocalStorage();
+    vi.useRealTimers();
+  });
+
+  it('turns the next letter typed on the soft keyboard into a Ctrl chord', async () => {
+    tap('Control');
+    await component.updateComplete;
+    expect(onKeyPress).not.toHaveBeenCalled();
+    const ctrl = component.querySelector('[data-key="Control"]') as HTMLElement;
+    expect(ctrl.classList.contains('active')).toBe(true);
+    expect(ctrl.getAttribute('aria-pressed')).toBe('true');
+
+    const event = type('c');
+    expect(event.defaultPrevented).toBe(true);
+    expect(onKeyPress).toHaveBeenCalledWith('Ctrl+C', true, false, false);
+
+    // One-shot: the following letter is typed normally.
+    await component.updateComplete;
+    expect(ctrl.classList.contains('active')).toBe(false);
+    expect(type('c').defaultPrevented).toBe(false);
+    expect(onKeyPress).toHaveBeenCalledOnce();
+  });
+
+  it('locks Ctrl on a double tap until it is tapped again', async () => {
+    tap('Control');
+    vi.advanceTimersByTime(200);
+    tap('Control');
+    await component.updateComplete;
+    const ctrl = component.querySelector('[data-key="Control"]') as HTMLElement;
+    expect(ctrl.classList.contains('locked')).toBe(true);
+
+    type('a');
+    type('e');
+    expect(onKeyPress.mock.calls.map(([k]) => k)).toEqual(['Ctrl+A', 'Ctrl+E']);
+
+    vi.advanceTimersByTime(1000);
+    tap('Control');
+    await component.updateComplete;
+    expect(ctrl.classList.contains('active')).toBe(false);
+    expect(type('a').defaultPrevented).toBe(false);
+  });
+
+  it('sends Option with a typed letter as the ESC prefix', () => {
+    tap('Option');
+    type('b');
+    expect(onKeyPress.mock.calls.map(([k]) => k)).toEqual(['Option', 'b']);
+  });
+
+  it('never sends the bare Ctrl key to the terminal', () => {
+    tap('Control');
+    vi.advanceTimersByTime(1000);
+    tap('Control');
+    expect(onKeyPress).not.toHaveBeenCalled();
+  });
+});
+
+describe('TerminalQuickKeys symbols row', () => {
+  let component: TerminalQuickKeys;
+  let onKeyPress: Mock<OnKeyPress>;
+
+  beforeEach(async () => {
+    setupLocalStorageMock();
+    saveQuickKeysLayout([
+      ['Escape', 'Symbols', 'Ctrl+C', 'Tab'],
+      ['Paste', 'Home', 'End', 'Delete'],
+    ]);
+    component = new TerminalQuickKeys();
+    onKeyPress = vi.fn();
+    component.onKeyPress = onKeyPress;
+    component.visible = true;
+    document.body.append(component);
+    await component.updateComplete;
+  });
+
+  afterEach(() => {
+    component.remove();
+    restoreLocalStorage();
+  });
+
+  const click = (key: string) =>
+    (component.querySelector(`[data-key="${key}"]`) as HTMLElement).dispatchEvent(
+      new MouseEvent('click', { bubbles: true, detail: 1 })
+    );
+
+  it('swaps shell symbols into the second row and keeps them open while typing', async () => {
+    const toggle = component.querySelector('[data-key="Symbols"]') as HTMLElement;
+    expect(toggle.getAttribute('aria-label')).toBe('Symbols');
+    expect(component.querySelector('[data-key=">"]')).toBeNull();
+
+    click('Symbols');
+    await component.updateComplete;
+    for (const symbol of SYMBOL_QUICK_KEYS) {
+      expect(component.querySelector(`[data-key="${CSS.escape(symbol)}"]`)).not.toBeNull();
+    }
+    expect(component.querySelector('[data-key="Paste"]')).toBeNull();
+
+    click('>');
+    click('&');
+    await component.updateComplete;
+    expect(onKeyPress.mock.calls.map(([k]) => k)).toEqual(['>', '&']);
+    expect(component.querySelector('[data-key=">"]')).not.toBeNull();
+
+    click('Symbols');
+    await component.updateComplete;
+    expect(component.querySelector('[data-key=">"]')).toBeNull();
+    expect(component.querySelector('[data-key="Paste"]')).not.toBeNull();
+  });
+  it('names glyph keys for VoiceOver and says whether a row toggle is open, without taking focus', async () => {
+    const symbols = () => component.querySelector('[data-key="Symbols"]') as HTMLElement;
+    expect(symbols().getAttribute('aria-expanded')).toBe('false');
+    click('Symbols');
+    await component.updateComplete;
+    expect(symbols().getAttribute('aria-expanded')).toBe('true');
+    expect(component.querySelector('[data-key="Ctrl+C"]')?.getAttribute('aria-label')).toBe(
+      'Control C'
+    );
+    // Quick keys sit over the soft keyboard: none may ever become a focus target.
+    for (const button of component.querySelectorAll('button')) {
+      expect(button.getAttribute('tabindex')).toBe('-1');
+    }
+  });
+});
+
+describe('TerminalQuickKeys default layout keeps the classic modifiers', () => {
+  let component: TerminalQuickKeys;
+  let onKeyPress: Mock<OnKeyPress>;
+
+  beforeEach(async () => {
+    setupLocalStorageMock();
+    component = new TerminalQuickKeys();
+    onKeyPress = vi.fn();
+    component.onKeyPress = onKeyPress;
+    component.visible = true;
+    document.body.append(component);
+    await component.updateComplete;
+  });
+
+  afterEach(() => {
+    component.remove();
+    restoreLocalStorage();
+  });
+
+  it('sends Ctrl to the session instead of arming it', () => {
+    (component.querySelector('[data-key="Control"]') as HTMLElement).dispatchEvent(
+      new MouseEvent('click', { bubbles: true, detail: 1 })
+    );
+    expect(onKeyPress).toHaveBeenCalledWith('Control', true, false, false);
+  });
+
+  it('does not turn a sideways swipe into cursor keys', () => {
+    const home = component.querySelector('[data-key="Home"]') as HTMLElement;
+    const touch = (type: string, x: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true, composed: true });
+      Object.defineProperty(event, 'touches', { value: [{ clientX: x, clientY: 10 }] });
+      home.dispatchEvent(event);
+    };
+    touch('touchstart', 100);
+    touch('touchmove', 160);
+    expect(onKeyPress).not.toHaveBeenCalled();
   });
 });

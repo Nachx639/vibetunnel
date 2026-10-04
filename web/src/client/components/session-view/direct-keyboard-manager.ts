@@ -30,6 +30,10 @@
 import { t } from '../../i18n/index.js';
 import { Z_INDEX } from '../../utils/constants.js';
 import { createLogger } from '../../utils/logger.js';
+import {
+  controlCharacterFor,
+  DIRECT_KEYBOARD_INPUT_ATTRIBUTE,
+} from '../../utils/quick-keys-layout.js';
 import type { InputManager } from './input-manager.js';
 import { ManagerEventEmitter } from './interfaces.js';
 
@@ -338,6 +342,7 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
     this.hiddenInput.setAttribute('inputmode', 'text'); // Allow keyboard but disable optimizations
     this.hiddenInput.setAttribute('enterkeyhint', 'done'); // Prevent iOS enter key behavior
     this.hiddenInput.setAttribute('aria-hidden', 'true');
+    this.hiddenInput.setAttribute(DIRECT_KEYBOARD_INPUT_ATTRIBUTE, '');
 
     // Set initial position based on mode
     this.updateHiddenInputPosition();
@@ -763,6 +768,9 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
     } else if (key === 'Ctrl+Z') {
       // Send Ctrl+Z (suspend signal)
       this.inputManager.sendControlSequence('\x1a');
+    } else if (key.startsWith('Ctrl+') && controlCharacterFor(key.slice(5)) !== null) {
+      // Any other Ctrl+<char> from the sticky Ctrl quick key
+      this.inputManager.sendControlSequence(controlCharacterFor(key.slice(5)) as string);
     } else if (key === 'Option') {
       // Send ESC prefix for Option/Alt key
       this.inputManager.sendControlSequence('\x1b');
@@ -788,6 +796,9 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
       let keyToSend = key;
       if (key === 'Tab') {
         keyToSend = 'tab';
+      } else if (key === 'Enter') {
+        // The server writes \r for 'enter', what a terminal's Return key sends.
+        keyToSend = 'enter';
       } else if (key === 'Escape') {
         keyToSend = 'escape';
       } else if (key === 'ArrowUp') {
