@@ -688,6 +688,77 @@ describe('Terminal', () => {
     });
   });
 
+  describe('phone keyboard', () => {
+    it('covers the terminal with a keyboard catcher whose focus asks for the keyboard', async () => {
+      const requests = vi.fn();
+      element.addEventListener('terminal-keyboard-request', requests);
+      element.keyboardCatcher = true;
+      await element.updateComplete;
+      const catcher = element.querySelector('textarea.keyboard-catcher') as HTMLTextAreaElement;
+      expect(catcher.style.display).toBe('block');
+      catcher.dispatchEvent(new Event('focus'));
+      expect(requests).toHaveBeenCalledTimes(1);
+
+      element.keyboardCatcher = false;
+      await element.updateComplete;
+      expect(catcher.style.display).toBe('none');
+    });
+
+    it('reports a tap, and whether the catcher took it; a scroll is no tap', async () => {
+      const taps: unknown[] = [];
+      element.addEventListener('terminal-tap', (e) => taps.push((e as CustomEvent).detail));
+      const container = element.querySelector('#terminal-container') as HTMLElement;
+
+      container.dispatchEvent(touchEvent('touchstart', [[50, 50]]));
+      container.dispatchEvent(touchEvent('touchend', [], [[52, 51]]));
+      container.dispatchEvent(touchEvent('touchstart', [[50, 50]]));
+      container.dispatchEvent(touchEvent('touchmove', [[50, 120]]));
+      container.dispatchEvent(touchEvent('touchend', [], [[50, 120]]));
+      element.keyboardCatcher = true;
+      await element.updateComplete;
+      container.dispatchEvent(touchEvent('touchstart', [[50, 50]]));
+      container.dispatchEvent(touchEvent('touchend', [], [[50, 50]]));
+
+      expect(taps).toEqual([{ keyboardCatcher: false }, { keyboardCatcher: true }]);
+    });
+
+    it('keeps ghostty from raising its own keyboard while the session view owns it', async () => {
+      const container = element.querySelector('#terminal-container') as HTMLElement;
+      // ghostty-web's hidden input, created when the terminal opens.
+      const input = document.createElement('textarea');
+      container.prepend(input);
+
+      element.disableClick = true;
+      await element.updateComplete;
+      expect(container.getAttribute('contenteditable')).toBe('false');
+      expect(input.readOnly).toBe(true);
+      expect(input.getAttribute('inputmode')).toBe('none');
+
+      element.disableClick = false;
+      await element.updateComplete;
+      expect(container.getAttribute('contenteditable')).toBe('true');
+      expect(input.readOnly).toBe(false);
+      expect(input.hasAttribute('inputmode')).toBe(false);
+    });
+
+    it('reads the screen for Select text with empty cells as spaces', () => {
+      if (!mockTerminal) return;
+      // Apps place words with cursor moves: the cell between the words was never written.
+      const cells = ['D', 'o', '', 'y', 'o', 'u', '', ''];
+      mockTerminal.buffer.active.length = 2;
+      mockTerminal.buffer.active.getLine.mockImplementation(
+        (row: number) =>
+          ({
+            translateToString: vi.fn(() => 'Doyou'),
+            length: row === 0 ? cells.length : 0,
+            getCell: vi.fn((col: number) => ({ getChars: () => cells[col], getWidth: () => 1 })),
+          }) as unknown as ReturnType<MockTerminal['buffer']['active']['getLine']>
+      );
+
+      expect(element.getScreenText()).toBe('Do you\n');
+    });
+  });
+
   describe('scrolling behavior', () => {
     beforeEach(async () => {
       await element.firstUpdated();

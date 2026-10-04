@@ -900,6 +900,16 @@ export const en = {
   'terminal.scrollToNewOutput': 'Scroll to the new output',
   'terminal.newOutput': 'New output',
   'terminal.bottom': 'Bottom',
+
+  // Copy mode (Select text)
+  'copyMode.menuItem': 'Select text',
+  'copyMode.title': 'Select text',
+  'copyMode.hint': 'Touch and hold to select, then Copy.',
+  'copyMode.copyAll': 'Copy all',
+  'copyMode.copied': 'Copied',
+  'copyMode.copyFailed': "Couldn't copy",
+  'copyMode.close': 'Close',
+  'copyMode.empty': 'Nothing on screen yet',
 };
 
 export type MessageKey = keyof typeof en;

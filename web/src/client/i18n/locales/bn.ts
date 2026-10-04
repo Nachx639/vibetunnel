@@ -882,4 +882,14 @@ export const bn: Messages = {
   'terminal.scrollToNewOutput': 'নতুন আউটপুটে যান',
   'terminal.newOutput': 'নতুন আউটপুট',
   'terminal.bottom': 'নিচে',
+
+  // Copy mode (Select text)
+  'copyMode.menuItem': 'টেক্সট নির্বাচন করুন',
+  'copyMode.title': 'টেক্সট নির্বাচন করুন',
+  'copyMode.hint': 'নির্বাচন করতে চেপে ধরে রাখুন, তারপর কপি করুন।',
+  'copyMode.copyAll': 'সব কপি করুন',
+  'copyMode.copied': 'কপি হয়েছে',
+  'copyMode.copyFailed': 'কপি করা যায়নি',
+  'copyMode.close': 'বন্ধ করুন',
+  'copyMode.empty': 'স্ক্রিনে এখনও কিছু নেই',
 };

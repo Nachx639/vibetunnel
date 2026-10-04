@@ -49,6 +49,7 @@ export class CompactMenu extends LitElement {
   @property({ type: Function }) onToggleViewMode?: () => void;
   @property({ type: Boolean }) chatMode = false;
   @property({ type: Function }) onToggleChatMode?: () => void;
+  @property({ type: Function }) onSelectText?: () => void;
 
   @state() private showMenu = false;
   @state() private focusedIndex = -1;
@@ -250,6 +251,7 @@ export class CompactMenu extends LitElement {
           title=${t('actionBar.moreActions')}
           aria-label=${t('menu.moreActionsMenu')}
           data-menu-button
+          aria-haspopup="menu"
           aria-expanded=${this.showMenu}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
@@ -356,6 +358,25 @@ export class CompactMenu extends LitElement {
           </svg>
           ${this.chatMode ? t('menu.terminalMode') : t('menu.chatMode')}
         </button>
+        
+        <!-- Select text: the terminal canvas cannot be selected on phones -->
+        ${
+          this.onSelectText
+            ? html`
+              <button
+                class="w-full text-left px-4 py-3 text-sm font-mono text-primary hover:bg-surface-hover hover:text-primary flex items-center gap-3 ${this.focusedIndex === menuItemIndex++ ? 'bg-surface-hover text-primary' : ''}"
+                @click=${() => this.handleAction(this.onSelectText)}
+                data-testid="compact-select-text"
+                tabindex="${this.showMenu ? '0' : '-1'}"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M4 1.5A1.5 1.5 0 0 1 5.5 0h7A1.5 1.5 0 0 1 14 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 4 10.5v-9zM5.5 1a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-7zM2 4.5a.5.5 0 0 1 .5.5v9a.5.5 0 0 0 .5.5h7a.5.5 0 0 1 0 1H3A1.5 1.5 0 0 1 1.5 14V5a.5.5 0 0 1 .5-.5z"/>
+                </svg>
+                ${t('copyMode.menuItem')}
+              </button>
+            `
+            : nothing
+        }
         
         <!-- Theme: light / dark / system in place -->
         <div class="flex items-center gap-3 px-4 pt-3 pb-2 text-sm font-mono text-primary">

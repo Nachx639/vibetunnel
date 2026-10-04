@@ -67,6 +67,14 @@ export class Terminal extends LitElement {
   @property({ type: Number }) maxCols = 0; // 0 = unlimited
   @property({ type: String }) theme: TerminalThemeId = 'auto';
   @property({ type: Boolean }) disableClick = false;
+  /**
+   * Phone with the soft keyboard down: a transparent textarea covers the terminal so a tap
+   * lands on a real field. iOS ignores a scripted focus() once the page lost keyboard focus
+   * (after Done, or right after loading), so only a native tap reliably raises the keyboard.
+   * Touches still bubble to the container, so scrolling keeps working.
+   */
+  @property({ type: Boolean }) keyboardCatcher = false;
+  private catcher: HTMLTextAreaElement | null = null;
   @property({ type: Boolean }) hideScrollButton = false;
   @property({ type: Number }) initialCols = 0;
   @property({ type: Number }) initialRows = 0;
@@ -186,6 +194,14 @@ export class Terminal extends LitElement {
 
     if (changed.has('maxCols') || changed.has('initialCols') || changed.has('disableClick')) {
       this.requestResize('property-change');
+    }
+
+    if (changed.has('disableClick')) {
+      this.syncNativeInputFocus();
+    }
+
+    if (changed.has('keyboardCatcher')) {
+      this.syncKeyboardCatcher();
     }
 
     if (changed.has('theme')) {
@@ -379,6 +395,29 @@ export class Terminal extends LitElement {
     const max = this.getMaxScrollPosition();
     const viewportFromBottom = this.terminal.getViewportY();
     return Math.round(Math.max(0, Math.min(max, max - viewportFromBottom)));
+  }
+
+  /**
+   * Text of the last `maxLines` lines with empty cells read as spaces. Apps such as Claude
+   * Code position words with cursor moves instead of writing spaces, and
+   * translateToString() skips those empty cells ("Doyouwanttoproceed?").
+   */
+  public getScreenText(maxLines = 30): string {
+    if (!this.terminal) return '';
+    const buffer = this.terminal.buffer.active;
+    const lines: string[] = [];
+    for (let row = Math.max(0, buffer.length - maxLines); row < buffer.length; row++) {
+      const line = buffer.getLine(row);
+      if (!line) continue;
+      let text = '';
+      for (let col = 0; col < line.length; col++) {
+        const cell = line.getCell(col);
+        if (!cell || cell.getWidth() === 0) continue;
+        text += cell.getChars() || ' ';
+      }
+      lines.push(text.trimEnd());
+    }
+    return lines.join('\n');
   }
 
   // e2e-only debug API (canvas has no textContent)
@@ -600,7 +639,81 @@ export class Terminal extends LitElement {
       Math.abs(touch.clientY - this.touchStartY) < 10;
     this.resetTouchScroll();
     if (isTap && touch) this.sendClick(touch.clientX, touch.clientY);
+    if (isTap) {
+      // Dispatched synchronously inside touchend so listeners can still open the iOS keyboard.
+      // With the catcher up, the tap focuses it natively and that opens the keyboard.
+      this.dispatchEvent(
+        new CustomEvent('terminal-tap', {
+          bubbles: true,
+          composed: true,
+          detail: { keyboardCatcher: this.keyboardCatcher },
+        })
+      );
+    }
   };
+
+  /**
+   * ghostty-web focuses its own textarea on every canvas touchend. When the session view owns
+   * the soft keyboard (disableClick: mobile direct-keyboard mode) that opened the iOS keyboard
+   * without quick keys, with the form-assistant bar, and with the layout never adjusting.
+   */
+  private syncNativeInputFocus() {
+    // ghostty-web also makes its container contenteditable and focuses it on open: when
+    // that happened inside a gesture (swiping to another session) iOS raised its own
+    // keyboard for the container.
+    const container = this.container;
+    if (container) {
+      container.setAttribute('contenteditable', this.disableClick ? 'false' : 'true');
+      if (this.disableClick && document.activeElement === container) container.blur();
+    }
+    const textarea = container?.querySelector('textarea');
+    if (!textarea) return;
+    if (this.disableClick) {
+      textarea.readOnly = true;
+      textarea.tabIndex = -1;
+      textarea.setAttribute('inputmode', 'none');
+      textarea.focus = () => {};
+      if (document.activeElement === textarea) textarea.blur();
+    } else {
+      Reflect.deleteProperty(textarea, 'focus');
+      textarea.readOnly = false;
+      textarea.tabIndex = 0;
+      textarea.removeAttribute('inputmode');
+    }
+  }
+
+  private syncKeyboardCatcher() {
+    const container = this.container;
+    if (!container) return;
+    if (!this.catcher) {
+      const catcher = document.createElement('textarea');
+      catcher.className = 'keyboard-catcher';
+      catcher.rows = 1;
+      catcher.tabIndex = -1;
+      catcher.setAttribute('aria-hidden', 'true');
+      catcher.setAttribute('autocomplete', 'off');
+      catcher.setAttribute('autocapitalize', 'none');
+      catcher.setAttribute('autocorrect', 'off');
+      catcher.setAttribute('spellcheck', 'false');
+      catcher.style.cssText =
+        'position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;outline:none;' +
+        'resize:none;opacity:0.01;font-size:16px;color:transparent;background:transparent;' +
+        'caret-color:transparent;z-index:2;-webkit-user-select:none;user-select:none;' +
+        '-webkit-touch-callout:none;touch-action:pinch-zoom;';
+      catcher.addEventListener('focus', () => {
+        this.dispatchEvent(
+          new CustomEvent('terminal-keyboard-request', { bubbles: true, composed: true })
+        );
+      });
+      this.catcher = catcher;
+    }
+    if (this.catcher.parentElement !== container) {
+      if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+      container.appendChild(this.catcher);
+    }
+    this.catcher.style.display = this.keyboardCatcher ? 'block' : 'none';
+    if (!this.keyboardCatcher && document.activeElement === this.catcher) this.catcher.blur();
+  }
 
   private attachTouchScrollHandlers() {
     this.container?.addEventListener('touchstart', this.handleTerminalTouchStart, {
@@ -643,6 +756,8 @@ export class Terminal extends LitElement {
     this.terminal?.dispose();
     this.terminal = null;
     this.fitAddon = null;
+    this.catcher?.remove();
+    this.catcher = null;
     this.container = null;
     this.pasteInput = null;
     this.preservedScrollPosition = null;
@@ -845,6 +960,8 @@ export class Terminal extends LitElement {
 
       // ghostty-web does not translate touch pans into scrollback movement.
       this.attachTouchScrollHandlers();
+      this.syncNativeInputFocus();
+      this.syncKeyboardCatcher();
       this.applyTheme();
 
       if (this.pendingOutput.length > 0) {

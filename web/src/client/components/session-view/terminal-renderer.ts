@@ -33,6 +33,8 @@ export class TerminalRenderer extends LitElement {
   @property({ type: String }) terminalTheme: TerminalThemeId = 'auto';
   @property({ type: Boolean }) disableClick = false;
   @property({ type: Boolean }) hideScrollButton = false;
+  /** Phone direct-keyboard mode with the keyboard down: see vibe-terminal keyboardCatcher. */
+  @property({ type: Boolean }) keyboardCatcher = false;
   @property({ type: Boolean }) isMobile = false;
   @property({ type: Boolean }) showQuickKeys = false;
 
@@ -61,6 +63,7 @@ export class TerminalRenderer extends LitElement {
         .initialRows=${this.session.initialRows || 0}
         .disableClick=${this.disableClick}
         .hideScrollButton=${this.hideScrollButton}
+        .keyboardCatcher=${this.keyboardCatcher}
         class="w-full h-full p-0 m-0 terminal-container"
         @click=${(e: Event) => this.handleClick(e)}
         @touchend=${(e: Event) => this.handleClick(e)}

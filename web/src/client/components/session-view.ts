@@ -58,6 +58,7 @@ import { UIStateManager } from './session-view/ui-state-manager.js';
 import './session-view/terminal-renderer.js';
 import './session-view/overlays-container.js';
 import './mobile-action-bar.js';
+import { COPY_MODE_LINES, closeCopyMode, openCopyMode } from './session-view/copy-mode-sheet.js';
 import type { Terminal } from './terminal.js';
 
 // Extend Window interface to include our custom property
@@ -445,6 +446,7 @@ export class SessionView extends LitElement {
     super.disconnectedCallback();
     this.phoneUiUnsubscribe?.();
     this.phoneUiUnsubscribe = undefined;
+    closeCopyMode();
 
     // Remove orientation listeners
     if (this.boundHandleOrientationChange) {
@@ -777,6 +779,12 @@ export class SessionView extends LitElement {
     }
   }
 
+  /** Copy mode: the terminal's text in a native, selectable sheet (the canvas is not). */
+  private handleSelectText = () => {
+    const terminal = this.terminalLifecycleManager.getTerminal() ?? this.getTerminalElement();
+    openCopyMode(terminal?.getScreenText(COPY_MODE_LINES) ?? '');
+  };
+
   private handleToggleChatMode() {
     const currentChatMode = this.uiStateManager.getState().chatMode;
     const enteringChatMode = !currentChatMode;
@@ -836,6 +844,40 @@ export class SessionView extends LitElement {
       return;
     }
   }
+
+  /** A tap landed on the terminal's keyboard catcher: iOS is already raising the keyboard. */
+  private handleTerminalKeyboardRequest = () => {
+    // That tap only closed an open menu: don't raise the keyboard as well.
+    if (Date.now() < this.catcherMutedUntil) {
+      (document.activeElement as HTMLElement | null)?.blur();
+      return;
+    }
+    this.handleKeyboardButtonClick();
+  };
+
+  private catcherMutedUntil = 0;
+
+  /** Mobile: tapping the terminal opens the soft keyboard with the quick keys. */
+  private handleTerminalTap = (e?: CustomEvent<{ keyboardCatcher?: boolean }>) => {
+    const state = this.uiStateManager.getState();
+    if (!state.isMobile || !state.useDirectKeyboard || state.chatMode) return;
+    // ghostty-web cancels the click that follows a canvas tap, so menus listening for an
+    // outside click never closed. Treat the tap as that outside click instead of typing.
+    const openMenu = [
+      ...document.querySelectorAll<HTMLElement>('[aria-haspopup][aria-expanded="true"]'),
+    ].some((toggle) => toggle.getClientRects().length > 0);
+    if (openMenu) {
+      this.catcherMutedUntil = Date.now() + 800;
+      document.body.click();
+      return;
+    }
+    // Soft keyboard already up: leave it alone. Quick keys can stay visible after iOS hides
+    // the keyboard (its ✓ / swipe-down), so check the keyboard itself, not the quick keys.
+    if (state.showQuickKeys && state.keyboardHeight > 50) return;
+    // The catcher's own focus opens the keyboard (handleTerminalKeyboardRequest).
+    if (e?.detail?.keyboardCatcher) return;
+    this.handleKeyboardButtonClick();
+  };
 
   private async handleTerminalInput(e: CustomEvent) {
     const { text } = e.detail;
@@ -1493,6 +1535,7 @@ export class SessionView extends LitElement {
             .onToggleViewMode=${() => this.sessionActionsHandler.handleToggleViewMode()}
             .chatMode=${uiState.chatMode}
             .onToggleChatMode=${() => this.handleToggleChatMode()}
+            .onSelectText=${this.handleSelectText}
             @close-width-selector=${() => {
               this.uiStateManager.setShowWidthSelector(false);
               this.uiStateManager.setCustomWidth('');
@@ -1573,12 +1616,20 @@ export class SessionView extends LitElement {
                   .terminalTheme=${uiState.terminalTheme}
                   .disableClick=${uiState.isMobile && uiState.useDirectKeyboard}
                   .hideScrollButton=${uiState.showQuickKeys}
+                  .keyboardCatcher=${
+                    uiState.isMobile &&
+                    uiState.useDirectKeyboard &&
+                    !uiState.chatMode &&
+                    !(uiState.showQuickKeys && uiState.keyboardHeight > 50)
+                  }
                   .isMobile=${uiState.isMobile}
                   .showQuickKeys=${uiState.showQuickKeys}
                   .onTerminalClick=${this.boundHandleTerminalClick}
                   .onTerminalInput=${this.boundHandleTerminalInput}
                   .onTerminalResize=${this.boundHandleTerminalResize}
                   .onTerminalReady=${this.boundHandleTerminalReady}
+                  @terminal-tap=${this.handleTerminalTap}
+                  @terminal-keyboard-request=${this.handleTerminalKeyboardRequest}
                 ></terminal-renderer>
                 
                 <!-- Chat view overlay (always rendered but hidden to preserve history) -->

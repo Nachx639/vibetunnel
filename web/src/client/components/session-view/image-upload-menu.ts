@@ -252,6 +252,7 @@ export class ImageUploadMenu extends LitElement {
             title=${t('menu.uploadImage')}
             aria-label=${t('upload.menu')}
             data-menu-button
+            aria-haspopup="menu"
             aria-expanded=${this.showMenu}
             data-testid="image-upload-button"
           >

@@ -654,6 +654,15 @@ describe('SessionView', () => {
   });
 
   describe('mobile interface', () => {
+    const viewInternals = () =>
+      element as unknown as {
+        uiStateManager: {
+          getState(): { showQuickKeys: boolean; terminalFontSize: number };
+          setShowQuickKeys(value: boolean): void;
+          setKeyboardHeight(value: number): void;
+        };
+      };
+
     beforeEach(async () => {
       // Set mobile viewport
       setViewport(375, 667);
@@ -764,6 +773,99 @@ describe('SessionView', () => {
       } finally {
         setPhoneUi('classic');
         for (const spy of spies) spy.mockRestore();
+      }
+    });
+
+    it('opens the keyboard with quick keys when the terminal is tapped', async () => {
+      const testElement = viewInternals();
+      expect(testElement.uiStateManager.getState().showQuickKeys).toBe(false);
+
+      const renderer = element.querySelector('terminal-renderer');
+      renderer?.dispatchEvent(new CustomEvent('terminal-tap', { bubbles: true, composed: true }));
+      await element.updateComplete;
+
+      expect(testElement.uiStateManager.getState().showQuickKeys).toBe(true);
+    });
+
+    it('covers the terminal with a keyboard catcher only while the keyboard is down', async () => {
+      const testElement = viewInternals();
+      const renderer = element.querySelector('terminal-renderer') as HTMLElement & {
+        keyboardCatcher: boolean;
+      };
+      expect(renderer.keyboardCatcher).toBe(true);
+
+      testElement.uiStateManager.setShowQuickKeys(true);
+      testElement.uiStateManager.setKeyboardHeight(300);
+      await element.updateComplete;
+      expect(renderer.keyboardCatcher).toBe(false);
+    });
+
+    it('leaves a catcher tap to the catcher focus, which opens the keyboard', async () => {
+      const testElement = viewInternals();
+      const renderer = element.querySelector('terminal-renderer');
+
+      renderer?.dispatchEvent(
+        new CustomEvent('terminal-tap', {
+          bubbles: true,
+          composed: true,
+          detail: { keyboardCatcher: true },
+        })
+      );
+      await element.updateComplete;
+      expect(testElement.uiStateManager.getState().showQuickKeys).toBe(false);
+
+      renderer?.dispatchEvent(
+        new CustomEvent('terminal-keyboard-request', { bubbles: true, composed: true })
+      );
+      await element.updateComplete;
+      expect(testElement.uiStateManager.getState().showQuickKeys).toBe(true);
+    });
+
+    it('still opens the keyboard when only non-menu toggles are expanded', async () => {
+      const testElement = viewInternals();
+      // e.g. the sidebar collapse button reports aria-expanded="true"
+      const sidebarToggle = document.createElement('button');
+      sidebarToggle.setAttribute('aria-expanded', 'true');
+      document.body.appendChild(sidebarToggle);
+
+      try {
+        element
+          .querySelector('terminal-renderer')
+          ?.dispatchEvent(new CustomEvent('terminal-tap', { bubbles: true, composed: true }));
+        await element.updateComplete;
+
+        expect(testElement.uiStateManager.getState().showQuickKeys).toBe(true);
+      } finally {
+        sidebarToggle.remove();
+      }
+    });
+
+    it('closes an open menu instead of opening the keyboard when the terminal is tapped', async () => {
+      const testElement = viewInternals();
+      const menuToggle = document.createElement('button');
+      menuToggle.setAttribute('aria-haspopup', 'menu');
+      menuToggle.setAttribute('aria-expanded', 'true');
+      document.body.appendChild(menuToggle);
+      const outsideClick = vi.fn();
+      document.addEventListener('click', outsideClick);
+
+      try {
+        const renderer = element.querySelector('terminal-renderer');
+        renderer?.dispatchEvent(new CustomEvent('terminal-tap', { bubbles: true, composed: true }));
+        await element.updateComplete;
+
+        expect(outsideClick).toHaveBeenCalledOnce();
+        expect(testElement.uiStateManager.getState().showQuickKeys).toBe(false);
+
+        // The same tap also focused the catcher: that must not raise the keyboard either.
+        renderer?.dispatchEvent(
+          new CustomEvent('terminal-keyboard-request', { bubbles: true, composed: true })
+        );
+        await element.updateComplete;
+        expect(testElement.uiStateManager.getState().showQuickKeys).toBe(false);
+      } finally {
+        document.removeEventListener('click', outsideClick);
+        menuToggle.remove();
       }
     });
   });

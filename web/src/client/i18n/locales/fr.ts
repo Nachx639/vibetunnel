@@ -914,4 +914,14 @@ export const fr: Messages = {
   'terminal.scrollToNewOutput': 'Défiler jusqu’à la nouvelle sortie',
   'terminal.newOutput': 'Nouvelle sortie',
   'terminal.bottom': 'Bas',
+
+  // Copy mode (Select text)
+  'copyMode.menuItem': 'Sélectionner du texte',
+  'copyMode.title': 'Sélectionner du texte',
+  'copyMode.hint': 'Maintenez le doigt pour sélectionner, puis Copier.',
+  'copyMode.copyAll': 'Tout copier',
+  'copyMode.copied': 'Copié',
+  'copyMode.copyFailed': 'Copie impossible',
+  'copyMode.close': 'Fermer',
+  'copyMode.empty': "Rien à l'écran pour l'instant",
 };

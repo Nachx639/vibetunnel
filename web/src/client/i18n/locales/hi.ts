@@ -880,4 +880,14 @@ export const hi: Messages = {
   'terminal.scrollToNewOutput': 'नए आउटपुट तक स्क्रॉल करें',
   'terminal.newOutput': 'नया आउटपुट',
   'terminal.bottom': 'नीचे',
+
+  // Copy mode (Select text)
+  'copyMode.menuItem': 'टेक्स्ट चुनें',
+  'copyMode.title': 'टेक्स्ट चुनें',
+  'copyMode.hint': 'चुनने के लिए दबाकर रखें, फिर कॉपी करें।',
+  'copyMode.copyAll': 'सब कॉपी करें',
+  'copyMode.copied': 'कॉपी हो गया',
+  'copyMode.copyFailed': 'कॉपी नहीं हो सका',
+  'copyMode.close': 'बंद करें',
+  'copyMode.empty': 'स्क्रीन पर अभी कुछ नहीं है',
 };

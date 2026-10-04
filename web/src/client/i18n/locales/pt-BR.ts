@@ -904,4 +904,14 @@ export const ptBR: Messages = {
   'terminal.scrollToNewOutput': 'Rolar até a nova saída',
   'terminal.newOutput': 'Nova saída',
   'terminal.bottom': 'Fim',
+
+  // Copy mode (Select text)
+  'copyMode.menuItem': 'Selecionar texto',
+  'copyMode.title': 'Selecionar texto',
+  'copyMode.hint': 'Toque e segure para selecionar e depois Copiar.',
+  'copyMode.copyAll': 'Copiar tudo',
+  'copyMode.copied': 'Copiado',
+  'copyMode.copyFailed': 'Não foi possível copiar',
+  'copyMode.close': 'Fechar',
+  'copyMode.empty': 'Nada na tela ainda',
 };

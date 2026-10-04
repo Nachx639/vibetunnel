@@ -620,6 +620,7 @@ export class MobileActionBar extends LitElement {
           }}
           title=${this.isExpanded ? t('actionBar.collapse') : t('actionBar.moreActions')}
           aria-label=${this.isExpanded ? t('actionBar.collapseMenu') : t('actionBar.showMoreActions')}
+          aria-haspopup="menu"
           aria-expanded="${this.isExpanded}"
         >
           <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" class="transition-transform duration-200 ${this.isExpanded ? 'rotate-180' : ''}">

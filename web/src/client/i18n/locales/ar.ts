@@ -879,4 +879,14 @@ export const ar: Messages = {
   'terminal.scrollToNewOutput': 'التمرير إلى المخرجات الجديدة',
   'terminal.newOutput': 'مخرجات جديدة',
   'terminal.bottom': 'الأسفل',
+
+  // Copy mode (Select text)
+  'copyMode.menuItem': 'تحديد النص',
+  'copyMode.title': 'تحديد النص',
+  'copyMode.hint': 'اضغط مطولًا للتحديد، ثم انسخ.',
+  'copyMode.copyAll': 'نسخ الكل',
+  'copyMode.copied': 'تم النسخ',
+  'copyMode.copyFailed': 'تعذّر النسخ',
+  'copyMode.close': 'إغلاق',
+  'copyMode.empty': 'لا شيء على الشاشة بعد',
 };

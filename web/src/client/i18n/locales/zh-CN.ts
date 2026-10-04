@@ -871,4 +871,14 @@ export const zhCN: Messages = {
   'terminal.scrollToNewOutput': '滚动到新输出',
   'terminal.newOutput': '新输出',
   'terminal.bottom': '底部',
+
+  // Copy mode (Select text)
+  'copyMode.menuItem': '选择文本',
+  'copyMode.title': '选择文本',
+  'copyMode.hint': '长按以选择，然后复制。',
+  'copyMode.copyAll': '全部复制',
+  'copyMode.copied': '已复制',
+  'copyMode.copyFailed': '无法复制',
+  'copyMode.close': '关闭',
+  'copyMode.empty': '屏幕上还没有内容',
 };

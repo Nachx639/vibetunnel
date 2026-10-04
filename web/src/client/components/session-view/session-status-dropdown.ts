@@ -187,6 +187,7 @@ export class SessionStatusDropdown extends LitElement {
           title="${isRunning ? t('status.runningHint') : t('status.exitedHint')}"
           aria-label=${t('status.menu')}
           data-menu-button
+          aria-haspopup="menu"
           aria-expanded=${this.showMenu}
         >
           <span class="text-xs flex items-center gap-2 font-medium ${this.getStatusColor()}">

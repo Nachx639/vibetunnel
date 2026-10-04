@@ -905,4 +905,14 @@ export const es: Messages = {
   'terminal.scrollToNewOutput': 'Ir a la salida nueva',
   'terminal.newOutput': 'Salida nueva',
   'terminal.bottom': 'Final',
+
+  // Copy mode (Select text)
+  'copyMode.menuItem': 'Seleccionar texto',
+  'copyMode.title': 'Seleccionar texto',
+  'copyMode.hint': 'Mantén pulsado para seleccionar y luego Copiar.',
+  'copyMode.copyAll': 'Copiar todo',
+  'copyMode.copied': 'Copiado',
+  'copyMode.copyFailed': 'No se pudo copiar',
+  'copyMode.close': 'Cerrar',
+  'copyMode.empty': 'Aún no hay nada en pantalla',
 };
