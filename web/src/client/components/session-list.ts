@@ -40,6 +40,11 @@ import { Z_INDEX } from '../utils/constants.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
+import {
+  COMPACT_LIST_CHANGED_EVENT,
+  currentPhoneListLayout,
+  type PhoneListLayout,
+} from '../utils/phone-list-layout.js';
 import { PHONE_UI_CHANGED_EVENT, usesCompactPhoneUi } from '../utils/phone-ui.js';
 import { loadPinned, pinnedFirst, setPinned } from '../utils/pinned-sessions.js';
 import { endsADrag } from '../utils/pointer-drag.js';
@@ -53,6 +58,7 @@ import {
   type PreviewItem,
   previewCandidateLabel,
   previewLabel,
+  previewsFolded,
   sortPreviews,
 } from '../utils/preview-rows.js';
 import { holdSheetFocus } from '../utils/sheet-a11y.js';
@@ -134,6 +140,7 @@ export class SessionList extends LitElement {
     super.connectedCallback();
     window.addEventListener('resize', this.placeFab);
     window.addEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
+    window.addEventListener(COMPACT_LIST_CHANGED_EVENT, this.handlePhoneUiChanged);
     // Make the component focusable
     this.tabIndex = 0;
     // Add keyboard listener only to this component
@@ -219,6 +226,18 @@ export class SessionList extends LitElement {
    * localhost URL typed; in the sidebar opened from a session the section shows only when
    * there is something in it. Nothing at all while the server has previews off.
    */
+  /**
+   * How the compact phone list fits the screen (utils/phone-list-layout.ts); the sidebar
+   * opened from a session (compactMode), the classic layout and larger screens keep theirs.
+   */
+  private listLayout(): PhoneListLayout {
+    if (this.compactMode || !this.usePhoneRows()) return { tight: false, compact: false };
+    return currentPhoneListLayout();
+  }
+
+  /** The folded previews section opened by a tap (compact list). */
+  @state() private previewsExpanded = false;
+
   private renderPreviewSection(query = '') {
     if (!this.previewsEnabled) return nothing;
     const q = query.trim().toLowerCase();
@@ -246,23 +265,64 @@ export class SessionList extends LitElement {
       }
       void this.openAddPreviewSheet();
     };
+    // Compact list on a small phone: two or more previews fold into one line,
+    // "Previews (2) names ›", which opens on a tap. They pushed the first session off an
+    // iPhone SE's first screen.
+    const compact = this.listLayout().compact;
+    const foldable = compact && rows.length > 1 && !q;
+    const folded = previewsFolded({
+      compact,
+      count: rows.length,
+      searching: Boolean(q),
+      expanded: this.previewsExpanded,
+      highlighted: rows.some((item) => isPreviewRowHighlighted(item.id)),
+    });
+    const heading = foldable
+      ? html`<h3 class="pvr-heading pvr-heading-toggle" data-testid="preview-rows-heading">
+          <button
+            type="button"
+            class="pvr-toggle"
+            data-testid="preview-rows-toggle"
+            aria-expanded=${folded ? 'false' : 'true'}
+            aria-controls="phone-preview-rows"
+            @click=${() => {
+              this.previewsExpanded = folded;
+            }}
+          >
+            <span class="pvr-toggle-label">${t('previewRows.heading')} (${rows.length})</span>
+            ${
+              folded
+                ? html`<span class="pvr-summary" data-testid="preview-rows-summary"
+                    >${rows.map((item) => previewLabel(item)).join(', ')}</span
+                  >`
+                : nothing
+            }
+            <svg class="pvr-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none"
+              stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </button>
+        </h3>`
+      : html`<h3 class="pvr-heading" data-testid="preview-rows-heading">${t('previewRows.heading')}</h3>`;
     return html`
       <div class="pvr-header">
-        <h3 class="pvr-heading" data-testid="preview-rows-heading">${t('previewRows.heading')}</h3>
+        ${heading}
         <button
           class="pvr-add"
           type="button"
           data-testid="preview-add"
+          aria-label=${foldable ? t('previewRows.add') : nothing}
           @pointerup=${add}
           @click=${add}
         >
-          ${t('previewRows.add')}
+          ${t(foldable ? 'previewRows.addShort' : 'previewRows.add')}
         </button>
       </div>
       ${
-        rows.length
+        rows.length && !folded
           ? html`<div
               class="psr-list pvr-list"
+              id="phone-preview-rows"
               data-testid="preview-rows"
               @preview-deleted=${this.handlePreviewDeleted}
             >
@@ -276,7 +336,7 @@ export class SessionList extends LitElement {
                 ></preview-row>`
               )}
             </div>`
-          : html`<div class="pvr-list"></div>`
+          : html`<div class="pvr-list" id="phone-preview-rows"></div>`
       }
     `;
   }
@@ -334,6 +394,7 @@ export class SessionList extends LitElement {
     this.observedFooter = null;
     window.removeEventListener('resize', this.placeFab);
     window.removeEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
+    window.removeEventListener(COMPACT_LIST_CHANGED_EVENT, this.handlePhoneUiChanged);
     this.closeSheet();
     this.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('click', this.handleClickOutside);

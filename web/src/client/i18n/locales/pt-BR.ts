@@ -973,4 +973,5 @@ export const ptBR: Messages = {
   'previewView.retry': 'Tentar de novo',
   'previewView.retrying': 'Verificando…',
   'previewView.splitInSession': 'Ver ao lado da sessão',
+  'previewRows.addShort': '+ Adicionar',
 };

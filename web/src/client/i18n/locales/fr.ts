@@ -984,4 +984,5 @@ export const fr: Messages = {
   'previewView.retry': 'Réessayer',
   'previewView.retrying': 'Vérification…',
   'previewView.splitInSession': 'Afficher à côté de la session',
+  'previewRows.addShort': '+ Ajouter',
 };

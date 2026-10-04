@@ -13,6 +13,7 @@ import {
   parsePreviewViewUrl,
   previewCandidateLabel,
   previewLabel,
+  previewsFolded,
   previewViewPath,
   setPreviewsAvailable,
   sortPreviews,
@@ -171,5 +172,26 @@ describe('preview items', () => {
     expect(isPreviewRowHighlighted('pshop123', 2000)).toBe(true);
     expect(isPreviewRowHighlighted('pshop123', 10_000)).toBe(false);
     expect(isPreviewRowHighlighted('papi4567', 2000)).toBe(false);
+  });
+});
+
+describe('folding the previews section', () => {
+  const base = { compact: true, count: 2, searching: false, expanded: false, highlighted: false };
+
+  it('folds two or more previews in the compact list', () => {
+    expect(previewsFolded(base)).toBe(true);
+    expect(previewsFolded({ ...base, count: 5 })).toBe(true);
+  });
+
+  it('never folds a single preview, or outside the compact list', () => {
+    expect(previewsFolded({ ...base, count: 1 })).toBe(false);
+    expect(previewsFolded({ ...base, count: 0 })).toBe(false);
+    expect(previewsFolded({ ...base, compact: false })).toBe(false);
+  });
+
+  it('opens while searching, once tapped open, or when `vt preview` highlights one', () => {
+    expect(previewsFolded({ ...base, searching: true })).toBe(false);
+    expect(previewsFolded({ ...base, expanded: true })).toBe(false);
+    expect(previewsFolded({ ...base, highlighted: true })).toBe(false);
   });
 });

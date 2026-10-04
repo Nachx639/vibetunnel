@@ -967,6 +967,7 @@ export const en = {
   'previewView.retry': 'Retry',
   'previewView.retrying': 'Checking…',
   'previewView.splitInSession': 'Show beside the session',
+  'previewRows.addShort': '+ Add',
 };
 
 export type MessageKey = keyof typeof en;

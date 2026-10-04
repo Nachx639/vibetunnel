@@ -945,4 +945,5 @@ export const ar: Messages = {
   'previewView.retry': 'إعادة المحاولة',
   'previewView.retrying': 'جارٍ التحقق…',
   'previewView.splitInSession': 'عرض بجانب الجلسة',
+  'previewRows.addShort': '+ إضافة',
 };

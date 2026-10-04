@@ -3406,6 +3406,56 @@ body.preview-split-open session-view .session-header-area {
   }
 }
 
+/* Folded previews in the compact phone list on a small screen (session-list.ts,
+   utils/phone-list-layout.ts): "PREVIEWS (2) names ›" on one line, a disclosure button. */
+.pvr-heading-toggle {
+  flex: 1;
+  min-width: 0;
+}
+.pvr-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  text-align: start;
+  touch-action: manipulation;
+}
+.pvr-toggle-label {
+  flex: none;
+}
+.pvr-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  color: var(--color-text-dim);
+}
+.pvr-chevron {
+  flex: none;
+  transition: transform 150ms ease;
+}
+.pvr-toggle[aria-expanded="true"] .pvr-chevron {
+  transform: rotate(90deg);
+}
+[dir="rtl"] .pvr-chevron {
+  transform: scaleX(-1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pvr-chevron {
+    transition: none;
+  }
+}
+
 /* Dev-server previews as rows (components/preview-row.ts) and their own view
    (components/preview-view.ts). */
 .pvr-header {

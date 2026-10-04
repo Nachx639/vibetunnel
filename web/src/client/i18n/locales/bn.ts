@@ -948,4 +948,5 @@ export const bn: Messages = {
   'previewView.retry': 'আবার চেষ্টা করুন',
   'previewView.retrying': 'যাচাই হচ্ছে…',
   'previewView.splitInSession': 'সেশনের পাশে দেখান',
+  'previewRows.addShort': '+ যোগ করুন',
 };

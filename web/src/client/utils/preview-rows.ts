@@ -217,3 +217,25 @@ export function setPreviewsAvailable(available: boolean): void {
   previewsAvailable = available;
   window.dispatchEvent(new CustomEvent(PREVIEWS_AVAILABILITY_EVENT, { detail: { available } }));
 }
+
+/**
+ * The phone list's previews section: every row, or a one-line summary. Folded only in the
+ * compact list (utils/phone-list-layout.ts), with two or more previews, while not searching
+ * (a search shows what matches), not opened by the user, and none of them glowing after
+ * `vt preview` (that one must be seen).
+ */
+export function previewsFolded(options: {
+  compact: boolean;
+  count: number;
+  searching: boolean;
+  expanded: boolean;
+  highlighted: boolean;
+}): boolean {
+  return (
+    options.compact &&
+    options.count > 1 &&
+    !options.searching &&
+    !options.expanded &&
+    !options.highlighted
+  );
+}

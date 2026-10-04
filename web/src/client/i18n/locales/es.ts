@@ -976,4 +976,5 @@ export const es: Messages = {
   'previewView.retry': 'Reintentar',
   'previewView.retrying': 'Comprobando…',
   'previewView.splitInSession': 'Ver junto a la sesión',
+  'previewRows.addShort': '+ Añadir',
 };

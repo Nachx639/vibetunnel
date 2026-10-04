@@ -947,4 +947,5 @@ export const hi: Messages = {
   'previewView.retry': 'दोबारा कोशिश करें',
   'previewView.retrying': 'जाँच हो रही है…',
   'previewView.splitInSession': 'सेशन के साथ दिखाएँ',
+  'previewRows.addShort': '+ जोड़ें',
 };

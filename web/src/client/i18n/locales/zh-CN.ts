@@ -936,4 +936,5 @@ export const zhCN: Messages = {
   'previewView.retry': '重试',
   'previewView.retrying': '检查中…',
   'previewView.splitInSession': '在会话旁显示',
+  'previewRows.addShort': '+ 添加',
 };
