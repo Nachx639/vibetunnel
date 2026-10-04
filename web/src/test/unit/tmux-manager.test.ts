@@ -91,6 +91,32 @@ test|1|Thu Jul 25 12:00:00 2024|detached||`;
       });
     });
 
+    it("reads the pane's title, program and folder", async () => {
+      const os = await import('os');
+      const mockOutput = [
+        tmuxOutput('0|1|1790000000|detached|1790000100||2.1.283|/Users/me/project|') +
+          '✳ Fix the login | form',
+        tmuxOutput(`1|1|1790000000|detached|1790000100||zsh|/Users/me|${os.hostname()}`),
+        // Made before macOS renamed the computer (a name taken on the network): the old name.
+        tmuxOutput('2|1|1790000000|detached|1790000100||zsh|/Users/me|Host-0000-old.local'),
+      ].join('\n');
+      mockExecFileAsync.mockResolvedValue({ stdout: mockOutput, stderr: '' });
+
+      const [claude, shell, olderShell] = await tmuxManager.listSessions();
+
+      // Claude Code's versioned binary shows as claude, its status glyph dropped.
+      expect(claude).toMatchObject({
+        title: 'Fix the login | form',
+        command: 'claude',
+        path: '/Users/me/project',
+      });
+      // tmux's default title is the host name: no title.
+      expect(shell.title).toBeUndefined();
+      expect(shell).toMatchObject({ command: 'zsh', path: '/Users/me' });
+      // Also the name the computer had when the pane was made.
+      expect(olderShell.title).toBeUndefined();
+    });
+
     it('should handle shell output pollution', async () => {
       const mockOutput = `stty: stdin isn't a terminal
 main|1|Thu Jul 25 10:00:00 2024|attached||
@@ -187,6 +213,23 @@ main|2|logs||2`;
         height: 24,
         currentPath: '/Users/me/a|b',
       });
+
+      mockExecFileAsync.mockResolvedValue({
+        stdout: [
+          'dev',
+          '1',
+          '1790000000',
+          'detached',
+          '1790000100',
+          '',
+          'zsh',
+          '/Users/me/a|b',
+          'notes',
+        ].join(TMUX_FIELD_SEPARATOR),
+        stderr: '',
+      });
+      const [session] = await tmuxManager.listSessions();
+      expect(session).toMatchObject({ name: 'dev', path: '/Users/me/a|b', title: 'notes' });
     });
 
     it('should parse tmux panes correctly', async () => {
