@@ -34,6 +34,7 @@ import { getBaseRepoName } from '../../shared/utils/git.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
+import { prefersReducedMotion } from '../utils/reduced-motion.js';
 
 const logger = createLogger('session-list');
 
@@ -217,7 +218,11 @@ export class SessionList extends LitElement {
         this.querySelector(`session-card[selected]`) ||
         this.querySelector(`div[class*="bg-bg-elevated"][class*="border-accent-primary"]`);
       if (selectedCard) {
-        selectedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // An explicit 'smooth' ignores the page's Reduce Motion rule (scroll-behavior).
+        selectedCard.scrollIntoView({
+          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+          block: 'nearest',
+        });
       }
     }, 0);
   };

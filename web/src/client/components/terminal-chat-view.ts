@@ -2,6 +2,7 @@ import { css, html, LitElement } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
+import { reducedMotionStyles } from '../utils/reduced-motion.js';
 
 const logger = createLogger('terminal-chat-view');
 
@@ -19,7 +20,9 @@ interface InteractiveOption {
 
 @customElement('terminal-chat-view')
 export class TerminalChatView extends LitElement {
-  static styles = css`
+  static styles = [
+    reducedMotionStyles,
+    css`
     :host {
       display: block;
       height: 100%;
@@ -366,7 +369,8 @@ export class TerminalChatView extends LitElement {
     .option-text {
       line-height: 1.3;
     }
-  `;
+  `,
+  ];
 
   @property() onSend?: (data: string) => void;
   @property() onPendingInputChange?: (input: string) => void;

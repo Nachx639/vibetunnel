@@ -1,11 +1,14 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { reducedMotionStyles } from '../utils/reduced-motion.js';
 
 @customElement('copy-icon')
 export class CopyIcon extends LitElement {
   @property({ type: Number }) size = 16;
 
-  static styles = css`
+  static styles = [
+    reducedMotionStyles,
+    css`
     :host {
       display: inline-flex;
       align-items: center;
@@ -23,7 +26,8 @@ export class CopyIcon extends LitElement {
       width: var(--icon-size, 16px);
       height: var(--icon-size, 16px);
     }
-  `;
+  `,
+  ];
 
   render() {
     return html`

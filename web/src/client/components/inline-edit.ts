@@ -1,6 +1,7 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
+import { reducedMotionStyles } from '../utils/reduced-motion.js';
 
 /**
  * Inline Edit Component
@@ -15,7 +16,9 @@ import { LocaleController, t } from '../i18n/index.js';
 export class InlineEdit extends LitElement {
   protected readonly i18n = new LocaleController(this);
 
-  static override styles = css`
+  static override styles = [
+    reducedMotionStyles,
+    css`
     :host {
       display: block;
       max-width: 100%;
@@ -134,7 +137,8 @@ export class InlineEdit extends LitElement {
       background: var(--color-status-error);
       background-opacity: 0.2;
     }
-  `;
+  `,
+  ];
 
   @property({ type: String })
   value = '';

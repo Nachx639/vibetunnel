@@ -1,10 +1,13 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
+import { reducedMotionStyles } from '../utils/reduced-motion.js';
 
 @customElement('file-browser-fab')
 export class FileBrowserFAB extends LitElement {
-  static styles = css`
+  static styles = [
+    reducedMotionStyles,
+    css`
     :host {
       position: fixed;
       bottom: 24px;
@@ -77,7 +80,8 @@ export class FileBrowserFAB extends LitElement {
         font-size: 20px;
       }
     }
-  `;
+  `,
+  ];
 
   protected readonly i18n = new LocaleController(this);
 
