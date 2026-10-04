@@ -905,4 +905,15 @@ export const es: Messages = {
   'settings.notify.skipWhenViewing': 'Omitir la sesión en pantalla',
   'settings.notify.skipWhenViewing.description':
     'Sin notificaciones de campana ni de comandos sobre una sesión que estás mirando ahora mismo en algún navegador',
+  // Push notifications rebuilt by the service worker (sw-notify-i18n.ts)
+  'notify.needsYou': '⏳ Claude te necesita · {where}',
+  'notify.finished': '✅ Claude ha terminado · {where}',
+  'notify.waiting': 'Esperando tu respuesta',
+  'notify.yourTurn': 'Te toca',
+  'notify.open': 'Abrir',
+  'notify.dismiss': 'Descartar',
+  'notify.attention': '🔔 {where} necesita atención',
+  'notify.bellBody': 'El terminal ha hecho sonar la campana',
+  'notify.commandFailed': '❌ Ha fallado: {where}',
+  'notify.commandFailedBody': 'Código de salida {code} · {duration}',
 };

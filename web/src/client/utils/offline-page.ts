@@ -1,9 +1,11 @@
 /**
  * Stores the service worker's offline page in the user's language. The worker can't load
  * the i18n bundle, so the app renders the page while it's online and leaves it in Cache
- * Storage; the worker falls back to English if it never got one. Static text only.
+ * Storage; the worker falls back to English if it never got one. Static text only. The
+ * notification strings the worker needs (sw-notify-i18n.ts) are stored next to it.
  */
 import { getLocale, isRtlLocale, LOCALE_CHANGED_EVENT, t } from '../i18n/index.js';
+import { NOTIFY_STRINGS_URL, type NotifyStrings } from '../sw-notify-i18n.js';
 import { OFFLINE_CACHE, OFFLINE_PAGE_URL, renderOfflinePage } from '../sw-offline.js';
 import { createLogger } from './logger.js';
 
@@ -23,6 +25,22 @@ async function store(): Promise<void> {
   await cache.put(
     OFFLINE_PAGE_URL,
     new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+  );
+  const strings: NotifyStrings = {
+    needsYou: t('notify.needsYou', { where: '{where}' }),
+    finished: t('notify.finished', { where: '{where}' }),
+    waiting: t('notify.waiting'),
+    yourTurn: t('notify.yourTurn'),
+    open: t('notify.open'),
+    dismiss: t('notify.dismiss'),
+    attention: t('notify.attention', { where: '{where}' }),
+    bellBody: t('notify.bellBody'),
+    commandFailed: t('notify.commandFailed', { where: '{where}' }),
+    commandFailedBody: t('notify.commandFailedBody', { code: '{code}', duration: '{duration}' }),
+  };
+  await cache.put(
+    NOTIFY_STRINGS_URL,
+    new Response(JSON.stringify(strings), { headers: { 'Content-Type': 'application/json' } })
   );
 }
 

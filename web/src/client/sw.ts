@@ -7,6 +7,12 @@ declare const self: ServiceWorkerGlobalScope;
 import { syncAppBadge } from './sw-badge.js';
 import { handleNotificationClick } from './sw-notification-click.js';
 import {
+  isNotifyStrings,
+  localizeNotification,
+  NOTIFY_STRINGS_URL,
+  type NotifyStrings,
+} from './sw-notify-i18n.js';
+import {
   isGuardedNavigation,
   OFFLINE_CACHE,
   OFFLINE_PAGE_URL,
@@ -192,7 +198,26 @@ self.addEventListener('notificationclose', (event: NotificationEvent) => {
 
 // No background sync needed
 
-async function handlePushNotification(payload: PushNotificationPayload): Promise<void> {
+async function storedNotifyStrings(): Promise<NotifyStrings | null> {
+  try {
+    const cache = await caches.open(OFFLINE_CACHE);
+    const response = await cache.match(NOTIFY_STRINGS_URL);
+    const strings: unknown = response ? await response.json() : null;
+    return isNotifyStrings(strings) ? strings : null;
+  } catch {
+    return null;
+  }
+}
+
+async function handlePushNotification(raw: PushNotificationPayload): Promise<void> {
+  // Never let translation stop a notification: a browser can revoke a push subscription
+  // whose pushes show nothing.
+  let payload = raw;
+  try {
+    payload = localizeNotification(raw, await storedNotifyStrings());
+  } catch (error) {
+    console.warn('[SW] Notification left untranslated:', error);
+  }
   const { title, body, icon, badge, data, actions, tag, requireInteraction } = payload;
 
   try {

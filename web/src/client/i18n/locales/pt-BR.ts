@@ -903,4 +903,15 @@ export const ptBR: Messages = {
   'settings.notify.skipWhenViewing': 'Ignorar a sessão na tela',
   'settings.notify.skipWhenViewing.description':
     'Sem notificações de sino ou de comandos sobre uma sessão que você está vendo agora em algum navegador',
+  // Push notifications rebuilt by the service worker (sw-notify-i18n.ts)
+  'notify.needsYou': '⏳ O Claude precisa de você · {where}',
+  'notify.finished': '✅ O Claude terminou · {where}',
+  'notify.waiting': 'Aguardando sua resposta',
+  'notify.yourTurn': 'Sua vez',
+  'notify.open': 'Abrir',
+  'notify.dismiss': 'Dispensar',
+  'notify.attention': '🔔 {where} precisa de atenção',
+  'notify.bellBody': 'O terminal tocou o sinal sonoro',
+  'notify.commandFailed': '❌ Falhou: {where}',
+  'notify.commandFailedBody': 'Código de saída {code} · {duration}',
 };

@@ -720,6 +720,8 @@ export async function createApp(): Promise<AppInstance> {
               type: 'bell',
               title: '🔔 Terminal Bell',
               body: event.sessionName || 'Terminal',
+              // Rebuilt in the user's language by the service worker (sw-notify-i18n.ts).
+              data: { where: event.sessionName || 'Terminal' },
             };
             break;
 
@@ -1132,6 +1134,9 @@ export async function createApp(): Promise<AppInstance> {
             exitCode,
             duration,
             timestamp,
+            // Rebuilt in the user's language by the service worker (sw-notify-i18n.ts).
+            where: command,
+            detail: durationStr,
           },
           actions: [
             { action: 'view-session', title: 'View Session' },

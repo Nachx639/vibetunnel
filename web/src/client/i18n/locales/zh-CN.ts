@@ -866,4 +866,15 @@ export const zhCN: Messages = {
   'settings.notify.skipWhenViewing': '跳过屏幕上的会话',
   'settings.notify.skipWhenViewing.description':
     '你正在某个浏览器中查看的会话，不再发送响铃或命令通知',
+  // Push notifications rebuilt by the service worker (sw-notify-i18n.ts)
+  'notify.needsYou': '⏳ Claude 需要你 · {where}',
+  'notify.finished': '✅ Claude 已完成 · {where}',
+  'notify.waiting': '等待你的回答',
+  'notify.yourTurn': '轮到你了',
+  'notify.open': '打开',
+  'notify.dismiss': '忽略',
+  'notify.attention': '🔔 {where} 需要你关注',
+  'notify.bellBody': '终端发出了提示音',
+  'notify.commandFailed': '❌ 失败：{where}',
+  'notify.commandFailedBody': '退出码 {code} · {duration}',
 };

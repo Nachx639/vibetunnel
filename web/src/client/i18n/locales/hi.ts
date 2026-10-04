@@ -875,4 +875,15 @@ export const hi: Messages = {
   'settings.notify.skipWhenViewing': 'स्क्रीन पर खुले सत्र को छोड़ें',
   'settings.notify.skipWhenViewing.description':
     'जिस सत्र को आप अभी किसी ब्राउज़र में देख रहे हैं, उसके लिए घंटी या कमांड की सूचनाएँ नहीं',
+  // Push notifications rebuilt by the service worker (sw-notify-i18n.ts)
+  'notify.needsYou': '⏳ Claude को आपकी ज़रूरत है · {where}',
+  'notify.finished': '✅ Claude ने काम पूरा किया · {where}',
+  'notify.waiting': 'आपके जवाब का इंतज़ार',
+  'notify.yourTurn': 'आपकी बारी',
+  'notify.open': 'खोलें',
+  'notify.dismiss': 'हटाएँ',
+  'notify.attention': '🔔 {where} पर ध्यान चाहिए',
+  'notify.bellBody': 'टर्मिनल ने घंटी बजाई',
+  'notify.commandFailed': '❌ विफल: {where}',
+  'notify.commandFailedBody': 'निकास कोड {code} · {duration}',
 };

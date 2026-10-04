@@ -895,6 +895,17 @@ export const en = {
   'settings.notify.skipWhenViewing': 'Skip the session on screen',
   'settings.notify.skipWhenViewing.description':
     'No bell or command notifications about a session you are looking at in some browser right now',
+  // Push notifications rebuilt by the service worker (sw-notify-i18n.ts)
+  'notify.needsYou': '⏳ Claude needs you · {where}',
+  'notify.finished': '✅ Claude finished · {where}',
+  'notify.waiting': 'Waiting for your answer',
+  'notify.yourTurn': 'Your turn',
+  'notify.open': 'Open',
+  'notify.dismiss': 'Dismiss',
+  'notify.attention': '🔔 {where} needs attention',
+  'notify.bellBody': 'The terminal rang its bell',
+  'notify.commandFailed': '❌ {where} failed',
+  'notify.commandFailedBody': 'Exit code {code} · {duration}',
 };
 
 export type MessageKey = keyof typeof en;

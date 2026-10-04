@@ -876,4 +876,15 @@ export const ar: Messages = {
   'settings.notify.skipWhenViewing': 'تخطَّ الجلسة المعروضة على الشاشة',
   'settings.notify.skipWhenViewing.description':
     'لا إشعارات جرس أو أوامر لجلسة تشاهدها الآن في أي متصفح',
+  // Push notifications rebuilt by the service worker (sw-notify-i18n.ts)
+  'notify.needsYou': '⏳ ‏Claude يحتاج إليك · {where}',
+  'notify.finished': '✅ ‏Claude انتهى · {where}',
+  'notify.waiting': 'في انتظار إجابتك',
+  'notify.yourTurn': 'دورك',
+  'notify.open': 'فتح',
+  'notify.dismiss': 'تجاهل',
+  'notify.attention': '🔔 ‏{where} يحتاج إلى انتباهك',
+  'notify.bellBody': 'أصدرت الطرفية تنبيهًا صوتيًا',
+  'notify.commandFailed': '❌ فشل: {where}',
+  'notify.commandFailedBody': 'رمز الخروج {code} · {duration}',
 };

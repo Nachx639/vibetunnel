@@ -878,4 +878,15 @@ export const bn: Messages = {
   'settings.notify.skipWhenViewing': 'স্ক্রিনে থাকা সেশন বাদ দিন',
   'settings.notify.skipWhenViewing.description':
     'যে সেশন আপনি এখন কোনো ব্রাউজারে দেখছেন, তার জন্য বেল বা কমান্ডের বিজ্ঞপ্তি নয়',
+  // Push notifications rebuilt by the service worker (sw-notify-i18n.ts)
+  'notify.needsYou': '⏳ Claude-এর আপনাকে দরকার · {where}',
+  'notify.finished': '✅ Claude শেষ করেছে · {where}',
+  'notify.waiting': 'আপনার উত্তরের অপেক্ষায়',
+  'notify.yourTurn': 'আপনার পালা',
+  'notify.open': 'খুলুন',
+  'notify.dismiss': 'বাতিল করুন',
+  'notify.attention': '🔔 {where}-এ মনোযোগ দরকার',
+  'notify.bellBody': 'টার্মিনাল ঘণ্টা বাজিয়েছে',
+  'notify.commandFailed': '❌ ব্যর্থ: {where}',
+  'notify.commandFailedBody': 'প্রস্থান কোড {code} · {duration}',
 };

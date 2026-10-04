@@ -914,4 +914,15 @@ export const fr: Messages = {
   'settings.notify.skipWhenViewing': 'Ignorer la session à l’écran',
   'settings.notify.skipWhenViewing.description':
     'Pas de notifications de cloche ni de commande pour une session que vous regardez en ce moment dans un navigateur',
+  // Push notifications rebuilt by the service worker (sw-notify-i18n.ts)
+  'notify.needsYou': '⏳ Claude a besoin de vous · {where}',
+  'notify.finished': '✅ Claude a terminé · {where}',
+  'notify.waiting': 'En attente de votre réponse',
+  'notify.yourTurn': 'À vous',
+  'notify.open': 'Ouvrir',
+  'notify.dismiss': 'Ignorer',
+  'notify.attention': '🔔 {where} demande votre attention',
+  'notify.bellBody': 'Le terminal a émis un signal sonore',
+  'notify.commandFailed': '❌ Échec : {where}',
+  'notify.commandFailedBody': 'Code de sortie {code} · {duration}',
 };
