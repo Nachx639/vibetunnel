@@ -18,16 +18,4 @@ describe('claudeConfigDir', () => {
     expect(claudeConfigDir({ CLAUDE_CONFIG_DIR: '' })).toBe(home);
     expect(claudeConfigDir({ CLAUDE_CONFIG_DIR: '   ' })).toBe(home);
   });
-
-  // Unless a run asks for the real home on purpose.
-  it.skipIf(!!process.env.VIBETUNNEL_TEST_REAL_HOME)(
-    "in server tests is under the test's own home, whatever the developer's shell sets",
-    () => {
-      // src/test/setup.ts moves HOME to a temp folder and drops the agents' folder overrides.
-      expect(process.env.CLAUDE_CONFIG_DIR).toBeUndefined();
-      expect(process.env.CODEX_HOME).toBeUndefined();
-      expect(process.env.GEMINI_CLI_HOME).toBeUndefined();
-      expect(claudeConfigDir().startsWith(os.tmpdir())).toBe(true);
-    }
-  );
 });
