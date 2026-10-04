@@ -2,10 +2,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/component-helpers.js';
+import { setLocale } from '../i18n/index.js';
+import {
+  QUICK_KEY_GAP_PX,
+  QUICK_KEY_ROW_INSET_PX,
+  quickKeyMinWidth,
+  quickKeyRowSizing,
+} from '../utils/quick-key-sizing.js';
 import {
   COMPACT_QUICK_KEYS_LAYOUT,
   DEFAULT_QUICK_KEYS_LAYOUT,
   DIRECT_KEYBOARD_INPUT_ATTRIBUTE,
+  PHONE_QUICK_KEYS_LAYOUT,
   SYMBOL_QUICK_KEYS,
   saveQuickKeysLayout,
 } from '../utils/quick-keys-layout.js';
@@ -15,7 +23,6 @@ type OnKeyPress = NonNullable<TerminalQuickKeys['onKeyPress']>;
 
 // Define interface for private methods we need to test
 interface TerminalQuickKeysPrivate extends TerminalQuickKeys {
-  getButtonSizeClass(label: string): string;
   handleKeyPress(
     key: string,
     isModifier?: boolean,
@@ -180,29 +187,93 @@ describe('TerminalQuickKeys', () => {
   });
 
   describe('Touch target sizing', () => {
-    it('uses larger padding in portrait orientation', () => {
-      component.isLandscape = false;
+    const realWidth = window.innerWidth;
+    const setViewportWidth = (value: number) => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value });
+      window.dispatchEvent(new Event('resize'));
+    };
 
-      expect(component.getButtonSizeClass('Esc')).toBe('px-1.5 py-2.5');
+    afterEach(async () => {
+      setViewportWidth(realWidth);
+      await setLocale('en');
     });
 
-    it('keeps compact padding in landscape orientation', () => {
-      component.isLandscape = true;
+    const renderedRows = () =>
+      Array.from(component.querySelectorAll<HTMLElement>('.quick-keys-bar > div')).map((row) =>
+        Array.from(row.querySelectorAll<HTMLButtonElement>('button'))
+      );
 
-      expect(component.getButtonSizeClass('Esc')).toBe('px-1 py-2');
-    });
-
-    it('applies the orientation padding to arrow keys', async () => {
+    it('keeps the roomy portrait padding on a short row and the tighter one in landscape', async () => {
+      saveQuickKeysLayout([
+        ['Escape', 'Control', 'Tab', 'ArrowUp', 'ArrowDown'],
+        ['Home', 'End'],
+      ]);
       document.body.append(component);
       component.isLandscape = false;
-      component.requestUpdate();
+      await component.updateComplete;
+      const arrowKey = () => component.querySelector<HTMLButtonElement>('[data-key="ArrowUp"]');
+      expect(arrowKey()?.className).toContain('px-1.5 py-2.5');
+
+      component.isLandscape = true;
+      await component.updateComplete;
+      expect(arrowKey()?.className).toContain('px-1 py-2');
+    });
+
+    // A 375 pt phone gave the translated 12-key second row 29 px keys with 6 px padding a
+    // side, so the longer labels spilled out of their keys.
+    it.each([
+      320, 375, 440,
+    ])('gives every key of the 12-key Spanish phone row at least its label width at %i pt', async (width) => {
+      await setLocale('es');
+      setViewportWidth(width);
+      saveQuickKeysLayout(PHONE_QUICK_KEYS_LAYOUT);
+      document.body.append(component);
       await component.updateComplete;
 
-      const arrowKey = component.querySelector<HTMLButtonElement>('[data-key="ArrowUp"]');
+      const secondRow = renderedRows()[1];
+      expect(secondRow.map((button) => button.textContent?.trim())).toEqual([
+        'Pegar',
+        '/',
+        '@',
+        '!',
+        '-',
+        '|',
+        '~',
+        'Inicio',
+        'Fin',
+        'Del',
+        '↵',
+        'Listo',
+      ]);
+      for (const button of secondRow) {
+        expect(button.classList.contains('px-0.5')).toBe(true);
+      }
+      const labels = secondRow.map((button) => button.textContent?.trim() ?? '');
+      // The labels' minimum widths, at the padding and font picked, add up to no more than the row.
+      const { paddingPx, fontStep } = quickKeyRowSizing(labels, width);
+      const needed = labels.reduce(
+        (sum, label) => sum + quickKeyMinWidth(label, paddingPx, fontStep),
+        0
+      );
+      expect(needed).toBeLessThanOrEqual(
+        width - QUICK_KEY_ROW_INSET_PX - QUICK_KEY_GAP_PX * (labels.length - 1)
+      );
+    });
 
-      expect(arrowKey?.classList.contains('px-1.5')).toBe(true);
-      expect(arrowKey?.classList.contains('py-2.5')).toBe(true);
-      component.remove();
+    it('sizes the expanded rows, Done included, to fit a 320 pt screen', async () => {
+      setViewportWidth(320);
+      saveQuickKeysLayout(DEFAULT_QUICK_KEYS_LAYOUT);
+      document.body.append(component);
+      await component.updateComplete;
+
+      component.handleKeyPress('F', false, false, true);
+      await component.updateComplete;
+      const functionRow = renderedRows()[1];
+      expect(functionRow).toHaveLength(13);
+      // 13 keys at 22 px: only 1 px of padding a side leaves room for "F10" and "Done".
+      for (const button of functionRow) {
+        expect(button.classList.contains('px-px')).toBe(true);
+      }
     });
   });
 

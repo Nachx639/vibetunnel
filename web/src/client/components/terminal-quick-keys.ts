@@ -3,6 +3,11 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
 import { Z_INDEX } from '../utils/constants.js';
 import {
+  type QuickKeyRowSizing,
+  quickKeyFontClass,
+  quickKeyRowSizing,
+} from '../utils/quick-key-sizing.js';
+import {
   controlCharacterFor,
   DIRECT_KEYBOARD_INPUT_ATTRIBUTE,
   getQuickKeyAriaLabel,
@@ -92,6 +97,7 @@ export class TerminalQuickKeys extends LitElement {
   @state() private showCtrlKeys = false;
   @state() private showSymbolKeys = false;
   @state() private isLandscape = false;
+  @state() private viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth;
   @state() private quickKeysLayout: QuickKeysLayout = loadQuickKeysLayout();
 
   private keyRepeatInterval: number | null = null;
@@ -150,21 +156,16 @@ export class TerminalQuickKeys extends LitElement {
     // Consider landscape if width is greater than height
     // and width is more than 600px (typical phone landscape width)
     this.isLandscape = window.innerWidth > window.innerHeight && window.innerWidth > 600;
+    this.viewportWidth = window.innerWidth;
   }
 
-  private getButtonSizeClass(_label: string): string {
-    // Increase touch area while preserving space for all three rows.
-    return this.isLandscape ? 'px-1 py-2' : 'px-1.5 py-2.5';
+  /** Padding and font for a row with these labels (Done included), so it fits the screen. */
+  private getRowSizing(labels: readonly string[]): QuickKeyRowSizing {
+    return quickKeyRowSizing(labels, this.viewportWidth, this.isLandscape);
   }
 
-  private getButtonFontClass(label: string): string {
-    if (label.length >= 4) {
-      return 'quick-key-btn-xs'; // 8px
-    } else if (label.length === 3) {
-      return 'quick-key-btn-small'; // 10px
-    } else {
-      return 'quick-key-btn-medium'; // 13px
-    }
+  private quickKeyLabel(definition: QuickKeyDefinition): string {
+    return displayLabel(definition.key, definition.label);
   }
 
   // Delegated touch start handler (passive)
@@ -557,17 +558,20 @@ export class TerminalQuickKeys extends LitElement {
     return this.quickKeysLayout.map((row) => row.map((key) => getQuickKeyDefinition(key)));
   }
 
-  private renderExpandedToggle(rows: QuickKeyDefinition[][], key: 'CtrlExpand' | 'F' | 'Symbols') {
+  /** The toggle that collapses an expanded row, when no other row still shows it. */
+  private expandedToggle(
+    rows: QuickKeyDefinition[][],
+    key: 'CtrlExpand' | 'F' | 'Symbols'
+  ): QuickKeyDefinition[] {
     const remainsVisible = [rows[0], ...rows.slice(2)].some((row) =>
       row.some((definition) => definition.key === key)
     );
-
-    return remainsVisible ? '' : this.renderQuickKey(getQuickKeyDefinition(key));
+    return remainsVisible ? [] : [getQuickKeyDefinition(key)];
   }
 
-  private renderQuickKey(definition: QuickKeyDefinition) {
+  private renderQuickKey(definition: QuickKeyDefinition, sizing: QuickKeyRowSizing) {
     const { key, modifier, combo, arrow, toggle } = definition;
-    const label = displayLabel(key, definition.label);
+    const label = this.quickKeyLabel(definition);
     const activeToggle =
       toggle &&
       ((key === 'CtrlExpand' && this.showCtrlKeys) ||
@@ -581,7 +585,7 @@ export class TerminalQuickKeys extends LitElement {
       <button
         type="button"
         tabindex="-1"
-        class="quick-key-btn ${this.getButtonFontClass(label)} min-w-0 ${this.getButtonSizeClass(label)} bg-bg-tertiary text-primary font-mono rounded border border-border hover:bg-surface hover:border-primary transition-all whitespace-nowrap ${modifier ? 'modifier-key' : ''} ${combo ? 'combo-key' : ''} ${arrow ? 'arrow-key' : ''} ${toggle ? 'toggle-key' : ''} ${activeToggle || activeModifier ? 'active' : ''} ${lockedModifier ? 'locked' : ''}"
+        class="quick-key-btn ${quickKeyFontClass(label, sizing.fontStep)} ${sizing.paddingClass} bg-bg-tertiary text-primary font-mono rounded border border-border hover:bg-surface hover:border-primary transition-all whitespace-nowrap ${modifier ? 'modifier-key' : ''} ${combo ? 'combo-key' : ''} ${arrow ? 'arrow-key' : ''} ${toggle ? 'toggle-key' : ''} ${activeToggle || activeModifier ? 'active' : ''} ${lockedModifier ? 'locked' : ''}"
         aria-pressed=${
           modifier && (this.compact ? isStickyModifier(key) : key === 'Option')
             ? String(Boolean(activeModifier))
@@ -650,13 +654,16 @@ export class TerminalQuickKeys extends LitElement {
     `;
   }
 
-  private renderAuxiliaryKey(definition: {
-    key: string;
-    label: string;
-    combo?: boolean;
-    special?: boolean;
-    func?: boolean;
-  }) {
+  private renderAuxiliaryKey(
+    definition: {
+      key: string;
+      label: string;
+      combo?: boolean;
+      special?: boolean;
+      func?: boolean;
+    },
+    sizing: QuickKeyRowSizing
+  ) {
     const { key, label, combo, special, func } = definition;
 
     return html`
@@ -664,7 +671,7 @@ export class TerminalQuickKeys extends LitElement {
         type="button"
         tabindex="-1"
         aria-label=${getQuickKeyAriaLabel(key) ?? nothing}
-        class="${func ? 'func-key-btn' : 'ctrl-shortcut-btn'} ${this.getButtonFontClass(label)} min-w-0 ${this.getButtonSizeClass(label)} bg-bg-tertiary text-primary font-mono rounded border border-border hover:bg-surface hover:border-primary transition-all whitespace-nowrap ${combo ? 'combo-key' : ''} ${special ? 'special-key' : ''}"
+        class="${func ? 'func-key-btn' : 'ctrl-shortcut-btn'} ${quickKeyFontClass(label, sizing.fontStep)} ${sizing.paddingClass} bg-bg-tertiary text-primary font-mono rounded border border-border hover:bg-surface hover:border-primary transition-all whitespace-nowrap ${combo ? 'combo-key' : ''} ${special ? 'special-key' : ''}"
         data-key=${key}
         ?data-combo=${combo}
         ?data-special=${special}
@@ -688,13 +695,13 @@ export class TerminalQuickKeys extends LitElement {
     `;
   }
 
-  private renderDoneButton() {
+  private renderDoneButton(sizing: QuickKeyRowSizing) {
     const doneLabel = t('quickKeys.done');
     return html`
       <button
         type="button"
         tabindex="-1"
-        class="quick-key-btn ${this.getButtonFontClass(doneLabel)} min-w-0 ${this.getButtonSizeClass(doneLabel)} bg-bg-tertiary text-primary font-mono rounded border border-border hover:bg-surface hover:border-primary transition-all whitespace-nowrap special-key"
+        class="quick-key-btn ${quickKeyFontClass(doneLabel, sizing.fontStep)} ${sizing.paddingClass} bg-bg-tertiary text-primary font-mono rounded border border-border hover:bg-surface hover:border-primary transition-all whitespace-nowrap special-key"
         data-key=${DONE_BUTTON.key}
         data-special
         @mousedown=${(event: Event) => {
@@ -775,9 +782,19 @@ export class TerminalQuickKeys extends LitElement {
           user-select: none;
           -webkit-user-select: none;
           flex: 1 1 0;
-          min-width: 0;
           /* Ensure buttons are interactive */
           pointer-events: auto;
+        }
+
+        /* Keys share a row equally but never get narrower than their label. With
+           min-width: 0 a 29 px share on a 375 pt phone was narrower than a translated
+           "Home" or "Done", and the nowrap label spilled out of its key: under the next
+           key, or past the screen edge. quickKeyRowSizing() picks padding and font so the
+           labels' minimums add up to no more than the row. */
+        .quick-key-btn,
+        .ctrl-shortcut-btn,
+        .func-key-btn {
+          min-width: min-content;
         }
         
         /* Modifier key styling */
@@ -821,6 +838,11 @@ export class TerminalQuickKeys extends LitElement {
         .quick-key-btn-xs {
           font-size: 8px;
         }
+
+        /* Last resort for word keys when a row is too full even without padding */
+        .quick-key-btn-xxs {
+          font-size: 7px;
+        }
         
         /* Combo key styling (like ^C, ^Z) */
         .combo-key {
@@ -844,7 +866,6 @@ export class TerminalQuickKeys extends LitElement {
           user-select: none;
           -webkit-user-select: none;
           flex: 1 1 0;
-          min-width: 0;
         }
         
         /* Scrollable row styling */
@@ -885,7 +906,6 @@ export class TerminalQuickKeys extends LitElement {
           user-select: none;
           -webkit-user-select: none;
           flex: 1 1 0;
-          min-width: 0;
         }
 
         /* Hover styles only where hover exists: on iOS a tapped key kept its hover look */
@@ -932,6 +952,43 @@ export class TerminalQuickKeys extends LitElement {
     if (!this.visible) return '';
 
     const rows = this.getQuickKeyRows();
+    const doneLabel = t('quickKeys.done');
+    const quickKeyRow = (row: QuickKeyDefinition[], withDone: boolean, marginClass: string) => {
+      const labels = row.map((definition) => this.quickKeyLabel(definition));
+      const sizing = this.getRowSizing(withDone ? [...labels, doneLabel] : labels);
+      return html`
+        <div class="flex gap-0.5 ${marginClass}">
+          ${row.map((definition) => this.renderQuickKey(definition, sizing))}
+          ${withDone ? this.renderDoneButton(sizing) : nothing}
+        </div>
+      `;
+    };
+    const auxiliaryRow = (
+      keys: ReadonlyArray<{
+        key: string;
+        label: string;
+        combo?: boolean;
+        special?: boolean;
+        func?: boolean;
+      }>,
+      toggle: QuickKeyDefinition[],
+      marginClass: string
+    ) => {
+      const labels = [
+        ...keys.map(({ label }) => label),
+        ...toggle.map((definition) => this.quickKeyLabel(definition)),
+        doneLabel,
+      ];
+      const sizing = this.getRowSizing(labels);
+      return html`
+        <div class="flex gap-0.5 ${marginClass}">
+          ${keys.map((key) => this.renderAuxiliaryKey(key, sizing))}
+          ${toggle.map((definition) => this.renderQuickKey(definition, sizing))}
+          ${this.renderDoneButton(sizing)}
+        </div>
+      `;
+    };
+    const secondRowMargin = rows.length > 2 ? 'mb-0.5' : '';
 
     return html`
       <div
@@ -944,46 +1001,28 @@ export class TerminalQuickKeys extends LitElement {
         }
       >
         <div class="quick-keys-bar ${this.compact ? 'compact' : ''}">
-          <div class="flex gap-0.5 mb-0.5">${rows[0].map((key) => this.renderQuickKey(key))}</div>
-
+          ${quickKeyRow(rows[0], false, 'mb-0.5')}
           ${
             this.showCtrlKeys
-              ? html`
-              <div class="flex gap-0.5 ${rows.length > 2 ? 'mb-0.5' : ''}">
-                ${CTRL_SHORTCUTS.map((key) => this.renderAuxiliaryKey(key))}
-                ${this.renderExpandedToggle(rows, 'CtrlExpand')}
-                ${this.renderDoneButton()}
-              </div>
-            `
+              ? auxiliaryRow(
+                  CTRL_SHORTCUTS,
+                  this.expandedToggle(rows, 'CtrlExpand'),
+                  secondRowMargin
+                )
               : this.showSymbolKeys
-                ? html`
-              <div class="flex gap-0.5 ${rows.length > 2 ? 'mb-0.5' : ''}">
-                ${SYMBOL_QUICK_KEYS.map((key) => this.renderQuickKey(getQuickKeyDefinition(key)))}
-                ${this.renderExpandedToggle(rows, 'Symbols')}
-                ${this.renderDoneButton()}
-              </div>
-            `
+                ? quickKeyRow(
+                    [
+                      ...SYMBOL_QUICK_KEYS.map((key) => getQuickKeyDefinition(key)),
+                      ...this.expandedToggle(rows, 'Symbols'),
+                    ],
+                    true,
+                    secondRowMargin
+                  )
                 : this.showFunctionKeys
-                  ? html`
-              <div class="flex gap-0.5 ${rows.length > 2 ? 'mb-0.5' : ''}">
-                ${FUNCTION_KEYS.map((key) => this.renderAuxiliaryKey(key))}
-                ${this.renderExpandedToggle(rows, 'F')}
-                ${this.renderDoneButton()}
-              </div>
-            `
-                  : html`
-              <div class="flex gap-0.5 ${rows.length > 2 ? 'mb-0.5' : ''}">
-                ${rows[1].map((key) => this.renderQuickKey(key))}
-                ${this.renderDoneButton()}
-              </div>
-            `
+                  ? auxiliaryRow(FUNCTION_KEYS, this.expandedToggle(rows, 'F'), secondRowMargin)
+                  : quickKeyRow(rows[1], true, secondRowMargin)
           }
-
-          ${rows.slice(2).map(
-            (row) => html`
-              <div class="flex gap-0.5">${row.map((key) => this.renderQuickKey(key))}</div>
-            `
-          )}
+          ${rows.slice(2).map((row) => quickKeyRow(row, false, ''))}
         </div>
       </div>
       ${this.renderStyles()}
