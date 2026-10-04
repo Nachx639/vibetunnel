@@ -168,13 +168,14 @@ export class AuthLogin extends LitElement {
     return html`
       <div class="auth-container">
         <!-- Language picker in top left corner -->
-        <div class="absolute top-4 left-4">
+        <div class="absolute left-4" style="top: calc(1rem + env(safe-area-inset-top, 0px))">
           <language-picker compact></language-picker>
         </div>
 
         <!-- Settings button in top right corner -->
         <button
-          class="absolute top-4 right-4 p-2 text-text-muted hover:text-primary transition-colors"
+          class="absolute right-4 p-2 text-text-muted hover:text-primary transition-colors"
+          style="top: calc(1rem + env(safe-area-inset-top, 0px))"
           @click=${this.handleOpenSettings}
           title=${t('common.settings')}
         >
@@ -289,8 +290,21 @@ export class AuthLogin extends LitElement {
                               : t('login.computerPassword')
                           }
                         </label>
+                        <!-- Lets iOS/macOS Keychain save the account (not just a password) and
+                        fill it with Face ID next time. Not display:none, or Safari ignores it. -->
+                        <input
+                          type="text"
+                          name="username"
+                          autocomplete="username"
+                          class="sr-only"
+                          tabindex="-1"
+                          aria-hidden="true"
+                          readonly
+                          .value=${this.currentUserId}
+                        />
                         <input
                           id="system-password"
+                          name="password"
                           type="password"
                           class="input-field"
                           data-testid="password-input"

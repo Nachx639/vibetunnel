@@ -10,6 +10,7 @@ interface ManifestIcon {
 }
 
 interface WebAppManifest {
+  id: string;
   name: string;
   short_name: string;
   start_url: string;
@@ -74,6 +75,7 @@ describe('web app manifest', () => {
 
   it('defines the metadata required for a standalone installation', () => {
     expect(manifest).toMatchObject({
+      id: '/',
       name: 'VibeTunnel',
       short_name: 'VibeTunnel',
       start_url: '/',
@@ -109,5 +111,10 @@ describe('web app manifest', () => {
         expect(png.hasTransparency).toBe(false);
       }
     }
+  });
+
+  it('names the home-screen app VibeTunnel, not the full page title', async () => {
+    const html = await readFile(path.join(assetsDirectory, 'index.html'), 'utf8');
+    expect(html).toContain('<meta name="apple-mobile-web-app-title" content="VibeTunnel" />');
   });
 });

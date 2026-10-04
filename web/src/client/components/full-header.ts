@@ -4,7 +4,7 @@
  * Full-width header for list view with horizontal layout
  */
 import { html } from 'lit';
-import { customElement } from 'lit/decorators.js';
+import { customElement, state } from 'lit/decorators.js';
 import { t } from '../i18n/index.js';
 import { HeaderBase } from './header-base.js';
 import './terminal-icon.js';
@@ -13,6 +13,8 @@ import './theme-toggle-icon.js';
 
 @customElement('full-header')
 export class FullHeader extends HeaderBase {
+  @state() private userMenuStyle = '';
+
   private get authMethodLabel(): string {
     switch (this.authMethod) {
       case 'password':
@@ -110,7 +112,12 @@ export class FullHeader extends HeaderBase {
       <div class="user-menu-container relative flex-shrink-0">
         <button
           class="font-mono text-sm px-3 py-2 text-text border border-border hover:bg-bg-tertiary hover:text-text rounded-lg transition-all duration-200 flex items-center gap-2"
-          @click=${this.toggleUserMenu}
+          @click=${(e: Event) => {
+            // Fixed position: the header row clips overflow, which hid this menu.
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            this.userMenuStyle = `top: ${rect.bottom + 4}px; right: ${window.innerWidth - rect.right}px;`;
+            this.toggleUserMenu();
+          }}
           title=${t('header.userMenu')}
         >
           <span class="hidden sm:inline">${this.currentUser}</span>
@@ -137,7 +144,8 @@ export class FullHeader extends HeaderBase {
           this.showUserMenu
             ? html`
               <div
-                class="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg py-1 z-50 min-w-36"
+                class="fixed bg-surface border border-border rounded-lg shadow-lg py-1 z-50 min-w-36"
+                style=${this.userMenuStyle}
               >
                 <div
                   class="px-3 py-2 text-sm text-text-muted border-b border-border"

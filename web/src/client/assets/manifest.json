@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "VibeTunnel",
   "short_name": "VibeTunnel",
   "description": "Interactive terminal sessions in your browser with real-time streaming and mobile support",
