@@ -44,7 +44,6 @@
  * ```
  */
 
-import { once } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
@@ -182,7 +181,7 @@ export class AsciinemaWriter {
 
       const canWrite = this.writeStream.write(headerLine);
       if (!canWrite) {
-        await once(this.writeStream, 'drain');
+        await this.waitForDrain();
       }
 
       // Move bytes from pending to written
@@ -378,7 +377,7 @@ export class AsciinemaWriter {
 
       const canWrite = this.writeStream.write(jsonLine);
       if (!canWrite) {
-        await once(this.writeStream, 'drain');
+        await this.waitForDrain();
       }
 
       // Move bytes from pending to written
@@ -413,7 +412,7 @@ export class AsciinemaWriter {
     const canWrite = this.writeStream.write(eventLine);
     if (!canWrite) {
       _logger.debug('Write stream backpressure detected, waiting for drain');
-      await once(this.writeStream, 'drain');
+      await this.waitForDrain();
     }
 
     // Move bytes from pending to written
@@ -427,24 +426,24 @@ export class AsciinemaWriter {
     // off the write path, and once more on close().
     this.scheduleFsync();
 
-    // Validate position periodically (the write has drained to the fd, so stat sees it)
+    // Validate the position every 1 MB, as the next task of the write queue so that no write
+    // runs while it compares (beside the queue, writes landed between its stat and its read of
+    // bytesWritten, and its "recovery" moved the tracked position by megabytes under load, so
+    // pruning offsets drifted from the file).
     if (
       this.bytesWritten - this.lastValidatedPosition > 1024 * 1024 &&
       !this.validationInProgress
     ) {
-      // Every 1MB, but only if not already validating
-      // Schedule validation to run after current write completes
-      // This ensures we don't block the write queue but still propagate critical errors
       this.validationInProgress = true;
-      setImmediate(() => {
-        this.validateFilePosition()
-          .catch((err) => {
-            // Log validation errors but don't crash the server
-            _logger.error('Position validation failed:', err);
-          })
-          .finally(() => {
-            this.validationInProgress = false;
-          });
+      this.writeQueue.enqueue(async () => {
+        try {
+          await this.validateFilePosition();
+        } catch (err) {
+          // Log validation errors but don't crash the server
+          _logger.error('Position validation failed:', err);
+        } finally {
+          this.validationInProgress = false;
+        }
       });
     }
   }
@@ -629,14 +628,39 @@ export class AsciinemaWriter {
    * Get elapsed time since start in seconds
    */
   private fsyncTimer: NodeJS.Timeout | null = null;
+  private closing = false;
+
+  /**
+   * Wait for the stream to take more data. Also settles when the stream is closed or destroyed
+   * without an 'error' (a bare `once(stream, 'drain')` then waited forever, the queue stopped,
+   * and the PTY paused for backpressure was never resumed); rejects on 'error' as `once` did.
+   */
+  private waitForDrain(): Promise<void> {
+    const stream = this.writeStream;
+    if (stream.destroyed || stream.closed || !stream.writableNeedDrain) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const settle = (error?: Error) => {
+        stream.off('drain', onDrain);
+        stream.off('close', onDrain);
+        stream.off('error', settle);
+        if (error) reject(error);
+        else resolve();
+      };
+      const onDrain = () => settle();
+      stream.on('drain', onDrain);
+      stream.on('close', onDrain);
+      stream.on('error', settle);
+    });
+  }
 
   /** Flush to disk at most once a second, off the write path (only a crash would lose it). */
   private scheduleFsync(): void {
-    if (this.fsyncTimer || this.fd === null) return;
+    if (this.fsyncTimer || this.fd === null || this.closing) return;
     this.fsyncTimer = setTimeout(() => {
       this.fsyncTimer = null;
       const fd = this.fd;
-      if (fd === null || this.writeStream.destroyed) return;
+      // Not once close() started: it syncs itself, then the fd is closed and may be reused.
+      if (fd === null || this.closing || this.writeStream.destroyed) return;
       fs.fsync(fd, (err) => {
         if (err) _logger.debug(`fsync failed for ${this.filePath}:`, err);
       });
@@ -651,9 +675,9 @@ export class AsciinemaWriter {
   /**
    * Validate that our tracked position matches the actual file size
    */
+  /** Runs as a write-queue task: every earlier write has drained to the fd, no other runs. */
   private async validateFilePosition(): Promise<void> {
-    // Wait for write queue to complete before validating
-    await this.writeQueue.drain();
+    await this.waitForDrain();
 
     try {
       const stats = await fs.promises.stat(this.filePath);
@@ -710,6 +734,7 @@ export class AsciinemaWriter {
    * Close the writer and finalize the file
    */
   async close(): Promise<void> {
+    this.closing = true;
     // Flush any remaining UTF-8 buffer through the queue
     if (this.utf8Buffer.length > 0) {
       // Force write any remaining data using lossy conversion
