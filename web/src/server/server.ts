@@ -11,6 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocketServer } from 'ws';
+import { cellsToText } from '../shared/terminal-text-formatter.js';
 import { ServerEventType } from '../shared/types.js';
 import { apiSocketServer } from './api-socket-server.js';
 import type { AuthenticatedRequest } from './middleware/auth.js';
@@ -27,6 +28,7 @@ import { createPushRoutes } from './routes/push.js';
 import { createRemoteRoutes } from './routes/remotes.js';
 import { createRepositoryRoutes } from './routes/repositories.js';
 import { createSessionRoutes } from './routes/sessions.js';
+import { createShareApiRoutes, createShareViewRoutes } from './routes/share.js';
 import { createTestNotificationRouter } from './routes/test-notification.js';
 import { createTmuxRoutes } from './routes/tmux.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
@@ -42,6 +44,7 @@ import { NgrokService } from './services/ngrok-service.js';
 import { PushNotificationService } from './services/push-notification-service.js';
 import { RemoteRegistry } from './services/remote-registry.js';
 import { SessionMonitor } from './services/session-monitor.js';
+import { ShareStore, sharesFileFor } from './services/share-store.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
@@ -140,6 +143,8 @@ interface Config {
   ngrokRegion: string | null;
   // Cloudflare tunnel configuration
   enableCloudflare: boolean;
+  // Read-only share links (also config.json `shareLinks`)
+  shareLinks: boolean;
 }
 
 /**
@@ -211,6 +216,8 @@ Options:
   --enable-ssh-keys     Enable SSH key authentication UI and functionality
   --disallow-user-password  Disable password auth, SSH keys only (auto-enables --enable-ssh-keys)
   --no-auth             Disable authentication (auto-login as current user)
+  --share-links         Allow read-only share links of a session (/share/<token>, no login;
+                        off by default, or set "shareLinks": true in config.json)
   --allow-local-bypass  Allow localhost connections to bypass authentication
   --local-auth-token <token>  Token for localhost authentication bypass
   --enable-tailscale-serve  Enable Tailscale Serve integration (auto-manages proxy and auth)
@@ -321,6 +328,8 @@ function parseArgs(): Config {
     ngrokRegion: null as string | null,
     // Cloudflare tunnel configuration
     enableCloudflare: false,
+    // Read-only share links (also config.json `shareLinks`)
+    shareLinks: false,
   };
 
   // Check for help flag first
@@ -350,6 +359,8 @@ function parseArgs(): Config {
       config.enableSSHKeys = true; // Auto-enable SSH keys
     } else if (args[i] === '--no-auth') {
       config.noAuth = true;
+    } else if (args[i] === '--share-links') {
+      config.shareLinks = true;
     } else if (args[i] === '--hq') {
       config.isHQMode = true;
     } else if (args[i] === '--hq-url' && i + 1 < args.length) {
@@ -637,6 +648,36 @@ export async function createApp(): Promise<AppInstance> {
   const configService = new ConfigService();
   configService.startWatching();
   logger.debug('Initialized configuration service');
+
+  // Read-only share links of a session (services/share-store.ts, routes/share.ts). Off unless
+  // `--share-links` or config.json "shareLinks": true; read on every request, so the switch
+  // applies without a restart. shares.json is read only once the feature is first used.
+  const shareStore = new ShareStore({ file: sharesFileFor(CONTROL_DIR) });
+  let shareStoreLoaded = false;
+  const shareLinksEnabled = (): boolean => {
+    const on = config.shareLinks || configService.getConfig().shareLinks === true;
+    if (on && !shareStoreLoaded) {
+      shareStoreLoaded = true;
+      shareStore.load();
+    }
+    return on;
+  };
+  const shareRoutesConfig = {
+    store: shareStore,
+    isEnabled: shareLinksEnabled,
+    sessionExists: (sessionId: string) => ptyManager.getSession(sessionId) !== null,
+    readScreen: async (sessionId: string) => {
+      const session = ptyManager.getSession(sessionId);
+      if (!session) return null;
+      const snapshot = await terminalManager.getBufferSnapshot(sessionId);
+      return {
+        title: session.name || session.id,
+        running: session.status === 'running',
+        text: cellsToText(snapshot.cells, false).replace(/\s+$/u, ''),
+        cols: snapshot.cols,
+      };
+    },
+  };
 
   // Initialize push notification services
   let vapidManager: VapidManager | null = null;
@@ -1194,6 +1235,7 @@ export async function createApp(): Promise<AppInstance> {
     '/api',
     createConfigRoutes({
       configService,
+      shareLinksEnabled,
     })
   );
   logger.debug('Mounted config routes');
@@ -1228,6 +1270,9 @@ export async function createApp(): Promise<AppInstance> {
 
   // Mount test notification router
   app.use('/api', createTestNotificationRouter({ sessionMonitor, pushNotificationService }));
+
+  // Create, list and revoke share links (behind the login above; 403 while share links are off)
+  app.use('/api', createShareApiRoutes(shareRoutesConfig));
   logger.debug('Mounted test notification routes');
 
   // Initialize control socket
@@ -1392,6 +1437,10 @@ export async function createApp(): Promise<AppInstance> {
       ws.close();
     }
   });
+
+  // Public read-only view of a shared session: its own small page, no login, no API. While
+  // share links are off it falls through to the 404 below, as if it were not mounted.
+  app.use(createShareViewRoutes(shareRoutesConfig));
 
   // Serve index.html for client-side routes (but not API routes)
   app.get('/', (_req, res) => {

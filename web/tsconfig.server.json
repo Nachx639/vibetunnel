@@ -13,6 +13,16 @@
     "inlineSourceMap": true,
     "inlineSources": true
   },
+  "files": [
+    "src/client/i18n/locales/en.ts",
+    "src/client/i18n/locales/ar.ts",
+    "src/client/i18n/locales/bn.ts",
+    "src/client/i18n/locales/es.ts",
+    "src/client/i18n/locales/fr.ts",
+    "src/client/i18n/locales/hi.ts",
+    "src/client/i18n/locales/pt-BR.ts",
+    "src/client/i18n/locales/zh-CN.ts"
+  ],
   "include": [
     "src/server/**/*",
     "src/shared/**/*",

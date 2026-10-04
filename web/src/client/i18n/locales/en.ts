@@ -917,6 +917,31 @@ export const en = {
   'switcher.quickLabel': 'Quick switch session',
   'switcher.quickPlaceholder': 'Switch session… (type to filter)',
   'switcher.noMatches': 'No matching sessions',
+  // Read-only share links (session-view/share-sheet.ts; viewer page: server/routes/share.ts)
+  'share.menu': 'Share (read-only)',
+  'share.title': 'Share read-only',
+  'share.explain':
+    'Anyone who has the link and can reach this server sees this session live, without being able to type into it, until the link expires or you revoke it.',
+  'share.newLink': 'New link, valid for',
+  'share.d15': '15 min',
+  'share.d60': '1 hour',
+  'share.d480': '8 hours',
+  'share.copy': 'Copy',
+  'share.copied': 'Copied ✓',
+  'share.share': 'Share…',
+  'share.revoke': 'Revoke',
+  'share.expiresIn': 'Expires in {time}',
+  'share.minutes': '{n} min',
+  'share.hours': '{n} h',
+  'share.error': 'Couldn’t create the link',
+  'share.loading': 'Loading…',
+  'shareViewer.title': 'Shared session',
+  'shareViewer.live': 'Live',
+  'shareViewer.ended': 'The session ended',
+  'shareViewer.readOnly': 'Read only',
+  'shareViewer.expiresIn': 'expires in {time}',
+  'shareViewer.expired': 'This link has expired or was revoked.',
+  'shareViewer.offline': 'Offline, retrying…',
 };
 
 export type MessageKey = keyof typeof en;

@@ -35,11 +35,15 @@ export interface AppConfig {
   repositoryBasePath: string;
   serverConfigured?: boolean;
   quickStartCommands?: QuickStartCommand[];
+  /** Read-only share links are on (config.json `shareLinks` or `--share-links`). */
+  shareLinks: boolean;
   notificationPreferences?: NotificationPreferences;
 }
 
 interface ConfigRouteOptions {
   configService: ConfigService;
+  /** Whether read-only share links are on; when missing, config.json `shareLinks` alone. */
+  shareLinksEnabled?: () => boolean;
 }
 
 /**
@@ -47,7 +51,7 @@ interface ConfigRouteOptions {
  */
 export function createConfigRoutes(options: ConfigRouteOptions): Router {
   const router = Router();
-  const { configService } = options;
+  const { configService, shareLinksEnabled } = options;
 
   /**
    * Get application configuration
@@ -63,6 +67,7 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         repositoryBasePath: repositoryBasePath,
         serverConfigured: true, // Always configured when server is running
         quickStartCommands: vibeTunnelConfig.quickStartCommands,
+        shareLinks: shareLinksEnabled ? shareLinksEnabled() : vibeTunnelConfig.shareLinks === true,
         notificationPreferences: configService.getNotificationPreferences(),
       };
 

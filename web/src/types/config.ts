@@ -25,6 +25,11 @@ export interface VibeTunnelConfig {
   version: number;
   quickStartCommands: QuickStartCommand[];
   repositoryBasePath?: string;
+  /**
+   * Read-only share links (`/share/<token>`): lets a logged-in user hand out a link that shows
+   * one session's screen without the login. Off when missing; `--share-links` also turns it on.
+   */
+  shareLinks?: boolean;
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

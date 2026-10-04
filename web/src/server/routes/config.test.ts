@@ -58,6 +58,7 @@ describe('Config Routes', () => {
       expect(response.body).toEqual({
         repositoryBasePath: '/home/user/repos',
         serverConfigured: true,
+        shareLinks: false,
         quickStartCommands: defaultConfig.quickStartCommands,
       });
 
@@ -76,8 +77,33 @@ describe('Config Routes', () => {
       expect(response.body).toEqual({
         repositoryBasePath: '~/Documents',
         serverConfigured: true,
+        shareLinks: false,
         quickStartCommands: defaultConfig.quickStartCommands,
       });
+    });
+
+    it('reports share links from config.json, off when missing', async () => {
+      mockConfigService.getConfig = vi.fn(() => ({ ...defaultConfig, shareLinks: true }));
+      const response = await request(app).get('/api/config');
+      expect(response.body.shareLinks).toBe(true);
+    });
+
+    it('reports share links from the server switch when one is given', async () => {
+      const withSwitch = express();
+      withSwitch.use(
+        '/api',
+        createConfigRoutes({ configService: mockConfigService, shareLinksEnabled: () => true })
+      );
+      expect((await request(withSwitch).get('/api/config')).body.shareLinks).toBe(true);
+    });
+
+    it('does not let PUT /api/config turn share links on', async () => {
+      await request(app).put('/api/config').send({ shareLinks: true, repositoryBasePath: '/x' });
+      const calls = [
+        ...vi.mocked(mockConfigService.updateConfig).mock.calls,
+        ...vi.mocked(mockConfigService.updateRepositoryBasePath).mock.calls,
+      ];
+      expect(JSON.stringify(calls)).not.toContain('shareLinks');
     });
 
     it('should handle config service errors', async () => {
@@ -317,6 +343,7 @@ describe('Config Routes', () => {
         expect(response.body).toEqual({
           repositoryBasePath: '/home/user/repos',
           serverConfigured: true,
+          shareLinks: false,
           quickStartCommands: defaultConfig.quickStartCommands,
           notificationPreferences,
         });
