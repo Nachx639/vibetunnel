@@ -424,4 +424,120 @@ describe('FileBrowser', () => {
       expect(urls).toContain('/api/fs/browse?path=%2Fsrv%2Fapp&showHidden=false&gitFilter=all');
     });
   });
+
+  describe('filter', () => {
+    it('narrows the listing by name and clears when entering another folder', async () => {
+      const file = (name: string, type: 'file' | 'directory' = 'file') => ({
+        name,
+        path: name,
+        type,
+        size: 1,
+        modified: '',
+      });
+      fetchMock.mockResponse('/api/fs/browse?path=%2Fhome%2Fuser&showHidden=false&gitFilter=all', {
+        path: '/home/user',
+        fullPath: '/home/user',
+        gitStatus: null,
+        files: [file('src', 'directory'), file('README.md'), file('package.json')],
+      });
+      fetchMock.mockResponse('/api/fs/browse?path=src&showHidden=false&gitFilter=all', {
+        path: '/home/user/src',
+        fullPath: '/home/user/src',
+        gitStatus: null,
+        files: [file('index.ts')],
+      });
+      element.visible = true;
+      await element.updateComplete;
+      await waitForAsync();
+      await element.updateComplete;
+
+      const input = element.querySelector('input[type="search"]') as HTMLInputElement;
+      input.value = 'READ';
+      input.dispatchEvent(new Event('input'));
+      await element.updateComplete;
+      const names = () =>
+        [...element.querySelectorAll('span.truncate')].map((n) => n.textContent?.trim());
+      expect(names()).toEqual(['README.md']);
+
+      input.value = 'sr';
+      input.dispatchEvent(new Event('input'));
+      await element.updateComplete;
+      (element.querySelector('span.truncate') as HTMLElement).click();
+      await waitForAsync();
+      await element.updateComplete;
+      expect(names()).toEqual(['index.ts']);
+      expect((element.querySelector('input[type="search"]') as HTMLInputElement).value).toBe('');
+    });
+  });
+
+  describe('sort by recent', () => {
+    it('lists the most recently modified entries first', async () => {
+      const entry = (name: string, modified: string) => ({
+        name,
+        path: name,
+        type: 'file' as const,
+        size: 1,
+        modified,
+      });
+      fetchMock.mockResponse('/api/fs/browse?path=%2Fhome%2Fuser&showHidden=false&gitFilter=all', {
+        path: '/home/user',
+        fullPath: '/home/user',
+        gitStatus: null,
+        files: [
+          entry('a.ts', '2025-01-01T00:00:00Z'),
+          entry('b.ts', '2025-03-01T00:00:00Z'),
+          entry('c.ts', '2025-02-01T00:00:00Z'),
+        ],
+      });
+      element.visible = true;
+      await element.updateComplete;
+      await waitForAsync();
+      await element.updateComplete;
+      const names = () =>
+        [...element.querySelectorAll('span.truncate')].map((n) => n.textContent?.trim());
+      expect(names()).toEqual(['a.ts', 'b.ts', 'c.ts']);
+
+      const recent = [...element.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Recent'
+      );
+      recent?.click();
+      await element.updateComplete;
+      expect(names()).toEqual(['b.ts', 'c.ts', 'a.ts']);
+    });
+  });
+
+  describe('defaults', () => {
+    it('opened without a session, starts where it always did (the server folder, ".")', async () => {
+      element.session = null;
+      element.visible = true;
+      await element.updateComplete;
+      await waitForAsync();
+      const browse = fetchMock
+        .getCalls()
+        .map((call) => String(call[0]))
+        .filter((url) => url.startsWith('/api/fs/browse'));
+      expect(new URL(browse[0], 'http://vt.test').searchParams.get('path')).toBe('.');
+    });
+
+    it('sorts by name until Recent is chosen, and remembers the choice', async () => {
+      element.visible = true;
+      await element.updateComplete;
+      const recent = () =>
+        [...element.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Recent');
+      expect(recent()?.getAttribute('aria-pressed')).toBe('false');
+      expect(localStorage.getItem('vibetunnel.fileBrowser.sort')).toBeNull();
+
+      recent()?.click();
+      await element.updateComplete;
+      expect(localStorage.getItem('vibetunnel.fileBrowser.sort')).toBe('recent');
+
+      const again = await fixture<FileBrowser>(
+        html`<file-browser .visible=${true} .mode=${'browse'}></file-browser>`
+      );
+      const recentAgain = [...again.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Recent'
+      );
+      expect(recentAgain?.getAttribute('aria-pressed')).toBe('true');
+    });
+  });
 });

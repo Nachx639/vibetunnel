@@ -12,7 +12,7 @@ import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { createRef, ref } from 'lit/directives/ref.js';
 import type { Session } from '../../shared/types.js';
-import { LocaleController, t } from '../i18n/index.js';
+import { getLocale, LocaleController, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 import { Z_INDEX } from '../utils/constants.js';
 import {
@@ -29,6 +29,35 @@ import './monaco-editor.js';
 import './modal-wrapper.js';
 
 const logger = createLogger('file-browser');
+
+const SORT_STORAGE_KEY = 'vibetunnel.fileBrowser.sort';
+
+function readStoredSort(): 'name' | 'recent' {
+  try {
+    return localStorage.getItem(SORT_STORAGE_KEY) === 'recent' ? 'recent' : 'name';
+  } catch {
+    return 'name';
+  }
+}
+
+/** "5 min ago"-style label in the UI language, for the Recent sort. */
+function formatModifiedAgo(modified: string, now = Date.now()): string {
+  const time = Date.parse(modified);
+  if (Number.isNaN(time)) return '';
+  const seconds = Math.round((time - now) / 1000);
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ['year', 31536000],
+    ['month', 2592000],
+    ['day', 86400],
+    ['hour', 3600],
+    ['minute', 60],
+  ];
+  const format = new Intl.RelativeTimeFormat(getLocale(), { numeric: 'auto', style: 'narrow' });
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
+  }
+  return format.format(0, 'second');
+}
 
 // On a phone there's no room for horizontal scrolling or a folding gutter: wrap long lines so
 // code and markdown read top to bottom.
@@ -125,6 +154,8 @@ export class FileBrowser extends LitElement {
   // the login gate /api/fs/raw answers 401; fetch it with auth and show a blob URL instead.
   @state() private imageObjectUrl = '';
   @state() private copyFeedback: '' | 'copied' | 'failed' = '';
+  @state() private filterQuery = '';
+  @state() private sortBy: 'name' | 'recent' = readStoredSort();
   private copyFeedbackTimer?: ReturnType<typeof setTimeout>;
 
   private editorRef = createRef<HTMLElement>();
@@ -201,6 +232,7 @@ export class FileBrowser extends LitElement {
         logger.debug(`received ${data.files?.length || 0} files`);
         // Use the absolute path (fullPath) instead of the potentially relative path
         this.currentPath = data.fullPath || data.path;
+        if (data.fullPath !== this.currentFullPath) this.filterQuery = '';
         this.currentFullPath = data.fullPath;
         this.files = data.files || [];
         this.gitStatus = data.gitStatus;
@@ -319,6 +351,26 @@ export class FileBrowser extends LitElement {
       logger.error('error loading diff:', error);
     } finally {
       this.previewLoading = false;
+    }
+  }
+
+  /** Files in the current directory narrowed by the filter box (name substring, any case). */
+  private get visibleFiles(): FileInfo[] {
+    const query = this.filterQuery.trim().toLowerCase();
+    const files = query
+      ? this.files.filter((file) => file.name.toLowerCase().includes(query))
+      : this.files;
+    if (this.sortBy !== 'recent') return files;
+    // Newest first, folders mixed in: "what did the agent just touch?"
+    return [...files].sort((a, b) => (Date.parse(b.modified) || 0) - (Date.parse(a.modified) || 0));
+  }
+
+  private toggleSort() {
+    this.sortBy = this.sortBy === 'recent' ? 'name' : 'recent';
+    try {
+      localStorage.setItem(SORT_STORAGE_KEY, this.sortBy);
+    } catch {
+      // Private mode / blocked storage: the choice just won't persist
     }
   }
 
@@ -771,7 +823,37 @@ export class FileBrowser extends LitElement {
                   >
                     ${t('files.hidden')}
                   </button>
+                  <button
+                    class="btn-secondary text-xs px-2 py-1 font-mono ${tap} ${
+                      this.sortBy === 'recent' ? 'bg-primary text-bg' : ''
+                    }"
+                    @click=${this.toggleSort}
+                    title=${t('files.sortRecent.title')}
+                    aria-pressed=${this.sortBy === 'recent'}
+                  >
+                    ${t('files.sortRecent')}
+                  </button>
                 </div>
+              </div>
+              <div class="bg-bg-secondary border-b border-border/50 px-3 py-2">
+                <input
+                  type="search"
+                  enterkeyhint="search"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  autocomplete="off"
+                  spellcheck="false"
+                  class="w-full bg-bg border border-border/50 rounded px-2 py-1 font-mono focus:outline-none focus:border-primary ${
+                    // iOS zooms the page when focusing an input under 16px
+                    this.isMobile ? 'text-base min-h-[44px]' : 'text-sm'
+                  }"
+                  placeholder=${t('files.filter')}
+                  aria-label=${t('files.filter')}
+                  .value=${this.filterQuery}
+                  @input=${(e: Event) => {
+                    this.filterQuery = (e.target as HTMLInputElement).value;
+                  }}
+                />
               </div>
 
               <!-- File list content -->
@@ -800,7 +882,12 @@ export class FileBrowser extends LitElement {
                           `
                           : ''
                       }
-                      ${this.files.map(
+                      ${
+                        this.filterQuery.trim() && this.visibleFiles.length === 0
+                          ? html`<div class="p-3 text-sm text-text-muted">${t('files.filterEmpty')}</div>`
+                          : ''
+                      }
+                      ${this.visibleFiles.map(
                         (file) => html`
                           <div
                             class="p-3 hover:bg-light cursor-pointer transition-colors flex items-center gap-2 min-w-0 ${tap}
@@ -838,6 +925,13 @@ export class FileBrowser extends LitElement {
                               title=${file.isSymlink ? t('files.symlinkTitle', { name: file.name }) : file.name}
                               >${file.name}</span
                             >
+                            ${
+                              this.sortBy === 'recent'
+                                ? html`<span class="flex-shrink-0 text-xs text-text-muted"
+                                    >${formatModifiedAgo(file.modified)}</span
+                                  >`
+                                : ''
+                            }
                             <span class="flex-shrink-0"
                               >${renderGitStatusBadge(file.gitStatus)}</span
                             >
@@ -1034,6 +1128,9 @@ export class FileBrowser extends LitElement {
 
   private handleKeyDown = (e: KeyboardEvent) => {
     if (!this.visible) return;
+    // Enter/⌘C inside the filter or path field belong to that field
+    const target = e.target as HTMLElement | null;
+    const inField = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
 
     if (e.key === 'Escape') {
       // Only handle escape when editing path - modal-wrapper handles the general escape
@@ -1047,11 +1144,12 @@ export class FileBrowser extends LitElement {
       e.key === 'Enter' &&
       this.selectedFile &&
       this.selectedFile.type === 'file' &&
-      !this.editingPath
+      !this.editingPath &&
+      !inField
     ) {
       e.preventDefault();
       this.insertPathIntoTerminal();
-    } else if ((e.metaKey || e.ctrlKey) && e.key === 'c' && this.selectedFile) {
+    } else if ((e.metaKey || e.ctrlKey) && e.key === 'c' && this.selectedFile && !inField) {
       e.preventDefault();
       this.handleCopyToClipboard(this.absolutePathOf(this.selectedFile));
     }
