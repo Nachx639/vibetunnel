@@ -10,7 +10,10 @@ import express, { type Router } from 'express';
 export const CSP_REPORT_PATH = '/api/csp-report';
 export const CSP_HEADER = 'Content-Security-Policy-Report-Only';
 export const APP_CSP = [
-  "script-src 'self'",
+  // The terminal compiles WebAssembly (ghostty-vt.wasm). Without 'wasm-unsafe-eval' every
+  // terminal page reports, and enforcing would break the terminal. It allows WebAssembly
+  // compilation only, not eval() or string timers.
+  "script-src 'self' 'wasm-unsafe-eval'",
   // Monaco's worker stub is `new Worker('data:,')` (utils/monaco-loader.ts): reported when a
   // .ts file is opened. Making a worker already takes script, which stays 'self'.
   "worker-src 'self' data: blob:",

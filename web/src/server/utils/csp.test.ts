@@ -5,9 +5,10 @@ import { APP_CSP, CSP_REPORT_PATH, createCspReportRoutes, cspReportLogLine } fro
 
 describe('the app pages CSP', () => {
   it('allows no inline script and reports to the server', () => {
-    expect(APP_CSP).toContain("script-src 'self'");
+    expect(APP_CSP).toContain("script-src 'self' 'wasm-unsafe-eval'");
     expect(APP_CSP).toContain("worker-src 'self' data: blob:");
     expect(APP_CSP).not.toContain('unsafe-inline');
+    expect(APP_CSP).not.toMatch(/'unsafe-eval'/);
     expect(APP_CSP).toContain(`report-uri ${CSP_REPORT_PATH}`);
   });
 
