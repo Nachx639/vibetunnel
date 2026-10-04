@@ -469,7 +469,7 @@ describe('SessionList', () => {
   });
 
   describe('running order', () => {
-    it('puts sessions waiting for you first, then working ones, when agents report status', async () => {
+    it('puts sessions waiting for you first when agents report status', async () => {
       const list = element as unknown as { usePhoneRows: () => boolean };
       vi.spyOn(list, 'usePhoneRows').mockReturnValue(true);
       const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -492,7 +492,25 @@ describe('SessionList', () => {
             HTMLElement & { session: { id: string } }
           >
         ).map((row) => row.session.id);
-      expect(ids()).toEqual(['waiting', 'working', 'newest', 'oldest']);
+      expect(ids()).toEqual(['waiting', 'newest', 'working', 'oldest']);
+
+      // A reply starting or ending doesn't move rows: only needing the user does.
+      const withStatus = (id: string, status?: string) =>
+        element.sessions.map((session) =>
+          session.id === id
+            ? { ...session, claudeStatus: status ? ({ status } as never) : undefined }
+            : session
+        );
+      element.sessions = withStatus('working', 'idle');
+      element.sessions = withStatus('newest', 'busy');
+      await element.updateComplete;
+      expect(ids()).toEqual(['waiting', 'newest', 'working', 'oldest']);
+      element.sessions = withStatus('oldest', 'waiting');
+      await element.updateComplete;
+      expect(ids()).toEqual(['waiting', 'oldest', 'newest', 'working']);
+      element.sessions = withStatus('waiting', 'busy');
+      await element.updateComplete;
+      expect(ids()).toEqual(['oldest', 'newest', 'working', 'waiting']);
 
       // Without agent status (agent chat off) the order is newest first, as before.
       element.sessions = element.sessions.map(({ claudeStatus: _, ...session }) => session);
