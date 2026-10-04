@@ -11,6 +11,14 @@ import type { RemoteRegistry } from './remote-registry.js';
 
 const logger = createLogger('control-dir-watcher');
 
+/**
+ * Session directories are named by session id (letters, digits, "-", "_"). Anything else in the
+ * control dir is not a session: with a custom control dir not named "control" the server log
+ * sits inside it, and each rotation (log.txt -> log.txt.1) was reported as a removed session,
+ * and in HQ mode sent to HQ.
+ */
+const SESSION_DIR_NAME = /^[a-zA-Z0-9_-]+$/;
+
 interface ControlDirWatcherConfig {
   controlDir: string;
   remoteRegistry: RemoteRegistry | null;
@@ -53,6 +61,7 @@ export class ControlDirWatcher {
   }
 
   private async handleFileChange(filename: string): Promise<void> {
+    if (!SESSION_DIR_NAME.test(filename)) return;
     const sessionPath = path.join(this.config.controlDir, filename);
     const sessionJsonPath = path.join(sessionPath, 'session.json');
 
