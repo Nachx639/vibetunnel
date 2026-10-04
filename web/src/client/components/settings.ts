@@ -14,6 +14,7 @@ import { ServerConfigService } from '../services/server-config-service.js';
 import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
 import { createLogger } from '../utils/logger.js';
 import { getPhoneUi, type PhoneUi, setPhoneUi } from '../utils/phone-ui.js';
+import { isPtySizeReclaimEnabled, setPtySizeReclaimEnabled } from '../utils/pty-size-reclaim.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
 import { isQuickSwitcherEnabled, setQuickSwitcherEnabled } from './session-quick-switcher.js';
@@ -50,6 +51,7 @@ export class Settings extends LitElement {
   @state() private themeMode: ThemeMode = getThemeMode();
   @state() private phoneUi: PhoneUi = getPhoneUi();
   @state() private quickSwitcher = isQuickSwitcherEnabled();
+  @state() private reclaimPtySize = isPtySizeReclaimEnabled();
   @state() private accent = getAccent();
 
   private permissionChangeUnsubscribe?: () => void;
@@ -893,6 +895,34 @@ export class Settings extends LitElement {
               <span
                 class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
                   this.quickSwitcher ? 'translate-x-5' : 'translate-x-0.5'
+                }"
+              ></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <label class="text-primary font-medium" id="reclaim-pty-size-label">${t('settings.reclaimPtySize')}</label>
+              <p class="text-muted text-xs mt-1">${t('settings.reclaimPtySize.description')}</p>
+            </div>
+            <button
+              role="switch"
+              aria-checked=${this.reclaimPtySize ? 'true' : 'false'}
+              aria-labelledby="reclaim-pty-size-label"
+              data-testid="settings-reclaim-pty-size"
+              class="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-bg ${
+                this.reclaimPtySize ? 'bg-primary' : 'bg-border'
+              }"
+              @click=${() => {
+                this.reclaimPtySize = !this.reclaimPtySize;
+                setPtySizeReclaimEnabled(this.reclaimPtySize);
+              }}
+            >
+              <span
+                class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+                  this.reclaimPtySize ? 'translate-x-5' : 'translate-x-0.5'
                 }"
               ></span>
             </button>

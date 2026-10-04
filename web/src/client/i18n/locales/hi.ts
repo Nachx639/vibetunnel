@@ -1062,4 +1062,7 @@ export const hi: Messages = {
   'claudeWaiting.goal': 'लक्ष्य का प्रस्ताव',
   'claudeWaiting.sandbox': 'नेटवर्क एक्सेस का अनुरोध',
   'claudeWaiting.worker': 'सब-एजेंट का अनुरोध',
+  'settings.reclaimPtySize': 'टर्मिनल का आकार वापस लें',
+  'settings.reclaimPtySize.description':
+    'किसी दूसरे डिवाइस ने सत्र का आकार बदला हो, तो इसे इस्तेमाल करते ही यह उसे अपनी स्क्रीन के आकार पर लौटा देता है। टर्मिनल विंडो में vt से शुरू किए गए सत्रों पर लागू नहीं।',
 };

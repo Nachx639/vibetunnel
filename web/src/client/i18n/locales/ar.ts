@@ -1060,4 +1060,7 @@ export const ar: Messages = {
   'claudeWaiting.goal': 'اقتراح هدف',
   'claudeWaiting.sandbox': 'طلب وصول إلى الشبكة',
   'claudeWaiting.worker': 'طلب من وكيل فرعي',
+  'settings.reclaimPtySize': 'استعادة حجم الطرفية',
+  'settings.reclaimPtySize.description':
+    'إذا غيّر جهاز آخر حجم جلسة، يعيدها هذا الجهاز إلى حجم شاشته فور استخدامه. لا ينطبق على الجلسات التي بدأت بـ vt في نافذة طرفية.',
 };

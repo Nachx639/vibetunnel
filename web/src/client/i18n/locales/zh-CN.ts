@@ -1051,4 +1051,7 @@ export const zhCN: Messages = {
   'claudeWaiting.goal': '目标提议',
   'claudeWaiting.sandbox': '网络访问请求',
   'claudeWaiting.worker': '子代理请求',
+  'settings.reclaimPtySize': '收回终端尺寸',
+  'settings.reclaimPtySize.description':
+    '其他设备调整了会话尺寸后，你一使用本设备，它就会把会话调回本屏幕的尺寸。不适用于在终端窗口中用 vt 启动的会话。',
 };

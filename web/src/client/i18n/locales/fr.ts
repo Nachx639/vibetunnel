@@ -1100,4 +1100,7 @@ export const fr: Messages = {
   'claudeWaiting.goal': 'Proposition d’objectif',
   'claudeWaiting.sandbox': 'Demande d’accès au réseau',
   'claudeWaiting.worker': 'Demande d’un sous-agent',
+  'settings.reclaimPtySize': 'Reprendre la taille du terminal',
+  'settings.reclaimPtySize.description':
+    'Si un autre appareil a redimensionné une session, celui-ci la remet à la taille de son écran dès que vous l’utilisez. Pas pour les sessions lancées avec vt dans une fenêtre de terminal.',
 };

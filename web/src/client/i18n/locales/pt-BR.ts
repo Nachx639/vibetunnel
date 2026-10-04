@@ -1088,4 +1088,7 @@ export const ptBR: Messages = {
   'claudeWaiting.goal': 'Proposta de objetivo',
   'claudeWaiting.sandbox': 'Pedido de acesso à rede',
   'claudeWaiting.worker': 'Pedido de um subagente',
+  'settings.reclaimPtySize': 'Retomar o tamanho do terminal',
+  'settings.reclaimPtySize.description':
+    'Se outro dispositivo redimensionou uma sessão, este a ajusta de novo à sua tela assim que você o usa. Não vale para sessões abertas com vt em uma janela de terminal.',
 };

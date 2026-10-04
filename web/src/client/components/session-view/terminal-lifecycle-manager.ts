@@ -10,12 +10,30 @@ import { HttpMethod } from '../../../shared/types.js';
 import { authClient } from '../../services/auth-client.js';
 import { terminalSocketClient } from '../../services/terminal-socket-client.js';
 import { createLogger } from '../../utils/logger.js';
+import { isPtySizeReclaimEnabled } from '../../utils/pty-size-reclaim.js';
 import type { TerminalThemeId } from '../../utils/terminal-themes.js';
 import type { Terminal } from '../terminal.js';
 import type { ConnectionManager } from './connection-manager.js';
 import type { InputManager } from './input-manager.js';
 
 const logger = createLogger('terminal-lifecycle-manager');
+
+/** How long after a client's last touch it counts as the one in use (see reclaimPtySize). */
+const RECLAIM_ACTIVITY_MS = 60_000;
+/** The wait after the PTY's last size change before taking it back. */
+const RECLAIM_SETTLE_MS = 500;
+/** How soon the same size is asked for again when the PTY kept another one. */
+const RECLAIM_RETRY_MS = 10_000;
+
+/**
+ * Whether this client may take the PTY's size back from another one (see reclaimPtySize). Not
+ * for a forwarded session (`vt` in a terminal window, id `fwd_…`): its size belongs to that
+ * window, which the phone would shrink and garble, the two resizing in turns.
+ */
+export function takesBackPtySize(session: Pick<Session, 'id'> | null | undefined): boolean {
+  if (!session) return false;
+  return !session.id.startsWith('fwd_');
+}
 
 export interface TerminalEventHandlers {
   handleSessionExit: (e: Event) => void;
@@ -39,6 +57,10 @@ export class TerminalLifecycleManager {
   private resizeTimeout: number | null = null;
   private lastResizeWidth = 0;
   private lastResizeHeight = 0;
+  private ptySize: { cols: number; rows: number } | null = null;
+  private lastActivityAt = 0;
+  private reclaimTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastReclaim: { attempt: string; at: number } | null = null;
   private domElement: Element | null = null;
   private eventHandlers: TerminalEventHandlers | null = null;
   private stateCallbacks: TerminalStateCallbacks | null = null;
@@ -203,6 +225,7 @@ export class TerminalLifecycleManager {
     }
 
     this.resizeTimeout = window.setTimeout(async () => {
+      this.resizeTimeout = null;
       // Only send resize request if dimensions actually changed
       if (cols === this.lastResizeWidth && rows === this.lastResizeHeight) {
         logger.debug(`skipping redundant resize request: ${cols}x${rows}`);
@@ -211,32 +234,97 @@ export class TerminalLifecycleManager {
 
       // Send resize request to backend if session is active
       if (this.session && this.session.status !== 'exited') {
-        try {
-          logger.debug(
-            `sending resize request: ${cols}x${rows} (was ${this.lastResizeWidth}x${this.lastResizeHeight})`
-          );
-
-          const sent = terminalSocketClient.resize(this.session.id, cols, rows);
-          if (!sent) {
-            const response = await fetch(`/api/sessions/${this.session.id}/resize`, {
-              method: HttpMethod.POST,
-              headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeader() },
-              body: JSON.stringify({ cols: cols, rows: rows }),
-            });
-
-            if (!response.ok) {
-              logger.warn(`failed to resize session: ${response.status}`);
-              return;
-            }
-          }
-
-          this.lastResizeWidth = cols;
-          this.lastResizeHeight = rows;
-        } catch (error) {
-          logger.warn('failed to send resize request', error);
-        }
+        logger.debug(
+          `sending resize request: ${cols}x${rows} (was ${this.lastResizeWidth}x${this.lastResizeHeight})`
+        );
+        await this.sendResize(cols, rows);
       }
     }, 250) as unknown as number; // 250ms debounce delay
+  }
+
+  /**
+   * The PTY's size as the stream reports it. Another client may have resized it; while this
+   * one is in use, it takes the PTY back to its own size (see reclaimPtySize).
+   */
+  handlePtySize(size: { cols: number; rows: number }) {
+    this.ptySize = size;
+    this.scheduleReclaim();
+  }
+
+  /**
+   * The user touched or typed in this session, or brought it back into view: the PTY should
+   * have this client's size again if another client changed it meanwhile.
+   */
+  noteUserActivity() {
+    this.lastActivityAt = Date.now();
+    this.scheduleReclaim();
+  }
+
+  /**
+   * A client only sends its size when its own terminal changes, so after another client
+   * resized the PTY it keeps a terminal of its old size, into which the app draws for the
+   * other one (a phone at 45 columns under a PTY at 53: the app's longer rows lose their tails
+   * on the phone, and its menus cannot be answered there). With `reclaimPtySize` on, the
+   * client in use (touched in the last minute, and visible) sends its size again, a moment
+   * after the PTY's last change so its own resizes' echoes settle first. Only on use: two open
+   * clients that always took the PTY back would resize it in turns forever. Never where
+   * another terminal owns the size (takesBackPtySize).
+   */
+  private scheduleReclaim() {
+    if (!isPtySizeReclaimEnabled()) return;
+    if (this.reclaimTimer) clearTimeout(this.reclaimTimer);
+    this.reclaimTimer = setTimeout(() => {
+      this.reclaimTimer = null;
+      void this.reclaimPtySize();
+    }, RECLAIM_SETTLE_MS);
+  }
+
+  private async reclaimPtySize() {
+    const pty = this.ptySize;
+    const cols = this.lastResizeWidth;
+    const rows = this.lastResizeHeight;
+    if (!isPtySizeReclaimEnabled()) return;
+    if (!pty || cols <= 0 || rows <= 0 || this.resizeTimeout) return;
+    if (!this.session || this.session.status === 'exited') return;
+    if (!takesBackPtySize(this.session)) return;
+    if (pty.cols === cols && pty.rows === rows) return;
+    const now = Date.now();
+    if (now - this.lastActivityAt > RECLAIM_ACTIVITY_MS) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    // Once per size the PTY has: a server that keeps its size gets no request on every tap.
+    const attempt = `${pty.cols}x${pty.rows}>${cols}x${rows}`;
+    if (this.lastReclaim?.attempt === attempt && now - this.lastReclaim.at < RECLAIM_RETRY_MS) {
+      return;
+    }
+    this.lastReclaim = { attempt, at: now };
+    logger.log(`PTY is ${pty.cols}x${pty.rows} from another client; taking back ${cols}x${rows}`);
+    await this.sendResize(cols, rows);
+  }
+
+  private async sendResize(cols: number, rows: number): Promise<boolean> {
+    if (!this.session) return false;
+    try {
+      const sent = terminalSocketClient.resize(this.session.id, cols, rows);
+      if (!sent) {
+        const response = await fetch(`/api/sessions/${this.session.id}/resize`, {
+          method: HttpMethod.POST,
+          headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeader() },
+          body: JSON.stringify({ cols: cols, rows: rows }),
+        });
+
+        if (!response.ok) {
+          logger.warn(`failed to resize session: ${response.status}`);
+          return false;
+        }
+      }
+
+      this.lastResizeWidth = cols;
+      this.lastResizeHeight = rows;
+      return true;
+    } catch (error) {
+      logger.warn('failed to send resize request', error);
+      return false;
+    }
   }
 
   handleTerminalPaste(e: Event) {
@@ -285,6 +373,11 @@ export class TerminalLifecycleManager {
       clearTimeout(this.resizeTimeout);
       this.resizeTimeout = null;
     }
+    if (this.reclaimTimer) {
+      clearTimeout(this.reclaimTimer);
+      this.reclaimTimer = null;
+    }
+    this.ptySize = null;
 
     if (this.terminal && this.eventHandlers) {
       this.terminal.removeEventListener(

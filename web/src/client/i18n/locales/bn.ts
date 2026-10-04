@@ -1064,4 +1064,7 @@ export const bn: Messages = {
   'claudeWaiting.goal': 'লক্ষ্যের প্রস্তাব',
   'claudeWaiting.sandbox': 'নেটওয়ার্ক অ্যাক্সেসের অনুরোধ',
   'claudeWaiting.worker': 'সাব-এজেন্টের অনুরোধ',
+  'settings.reclaimPtySize': 'টার্মিনালের মাপ ফিরিয়ে নিন',
+  'settings.reclaimPtySize.description':
+    'অন্য কোনো ডিভাইস সেশনের মাপ বদলালে, এটি ব্যবহার করামাত্র সেশনটি আবার এই স্ক্রিনের মাপে আনে। টার্মিনাল উইন্ডোতে vt দিয়ে চালু করা সেশনে নয়।',
 };

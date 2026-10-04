@@ -1083,6 +1083,9 @@ export const en = {
   'claudeWaiting.goal': 'Goal proposal',
   'claudeWaiting.sandbox': 'Network access request',
   'claudeWaiting.worker': 'Subagent request',
+  'settings.reclaimPtySize': 'Take the terminal size back',
+  'settings.reclaimPtySize.description':
+    'When another device resized a session, this one sizes it to its own screen again as soon as you use it. Not for sessions started in a terminal window with vt.',
 };
 
 export type MessageKey = keyof typeof en;

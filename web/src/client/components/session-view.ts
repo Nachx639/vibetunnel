@@ -226,6 +226,9 @@ export class SessionView extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this.addEventListener('pointerdown', this.handleUserActivity, true);
+    this.addEventListener('keydown', this.handleUserActivity, true);
+    document.addEventListener('visibilitychange', this.handleUserActivity);
     // Only a phone that chose agent chat mode before asks the server on opening; everyone
     // else asks when chat mode is turned on.
     if (this.uiStateManager.hasChatModePreference()) this.refreshAgentChat(true);
@@ -433,6 +436,7 @@ export class SessionView extends LitElement {
     this.terminalLifecycleManager.setDomElement(this);
     // The chat and the composer read the menu again at once (see ClaudeChatView.ptyCols).
     this.connectionManager.setOnPtySize((size) => {
+      this.terminalLifecycleManager.handlePtySize(size);
       this.ptyCols = size.cols;
     });
 
@@ -493,6 +497,9 @@ export class SessionView extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.removeEventListener('pointerdown', this.handleUserActivity, true);
+    this.removeEventListener('keydown', this.handleUserActivity, true);
+    document.removeEventListener('visibilitychange', this.handleUserActivity);
 
     // Remove orientation listeners
     if (this.boundHandleOrientationChange) {
@@ -935,6 +942,12 @@ export class SessionView extends LitElement {
 
     this.scheduleMobileHardwareFocus();
   }
+
+  /** A touch, a key, or the page shown again: this client is the one in use. */
+  private handleUserActivity = () => {
+    if (document.visibilityState === 'hidden') return;
+    this.terminalLifecycleManager?.noteUserActivity();
+  };
 
   /**
    * How the terminal laid out its last lines, for reading Claude's menus off them, and the
