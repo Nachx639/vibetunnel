@@ -6,6 +6,7 @@ import {
   RECOMMENDED_NOTIFICATION_PREFERENCES,
 } from '../../types/config.js';
 import { t } from '../i18n/index.js';
+import { isIOSDevice, isStandaloneApp } from '../utils/ios-install';
 import { createLogger } from '../utils/logger';
 import { authClient } from './auth-client';
 import { serverConfigService } from './server-config-service';
@@ -448,35 +449,13 @@ export class PushNotificationService {
       return false;
     }
 
-    // iOS Safari PWA specific detection
-    // iOS Safari supports push notifications only in standalone PWA mode (iOS 16.4+)
-    if (this.isIOSSafari()) {
-      // Check if running in standalone mode (PWA installed)
-      return this.isStandalone();
+    // iOS (any browser, iPadOS desktop mode included) supports push only in the installed
+    // web app opened from the Home Screen (iOS 16.4+).
+    if (isIOSDevice()) {
+      return isStandaloneApp();
     }
 
     return true;
-  }
-
-  /**
-   * Check if running on iOS (Safari or PWA)
-   */
-  private isIOSSafari(): boolean {
-    const userAgent = navigator.userAgent.toLowerCase();
-    const isIOS = /iphone|ipad|ipod/.test(userAgent);
-    return isIOS;
-  }
-
-  /**
-   * Check if running in standalone mode (PWA installed)
-   */
-  private isStandalone(): boolean {
-    // Check if running in standalone mode
-    return (
-      window.matchMedia('(display-mode: standalone)').matches ||
-      ('standalone' in window.navigator &&
-        (window.navigator as Navigator & { standalone?: boolean }).standalone === true)
-    );
   }
 
   /**

@@ -59,8 +59,6 @@ export const es: Messages = {
   'settings.guidance.server': 'El servicio de notificaciones push del servidor no está disponible',
   'settings.guidance.subscription': 'Primero activa las notificaciones en los ajustes',
   'settings.guidance.vapid': 'Las claves VAPID no están bien configuradas',
-  'settings.ios.installHint':
-    'Toca el botón Compartir en Safari y elige "Añadir a pantalla de inicio" para activar las notificaciones push.',
   'settings.ios.installRequired':
     'Para recibir notificaciones push, instala esta app en tu pantalla de inicio.',
   'settings.notificationBehavior': 'Comportamiento de las notificaciones',
@@ -877,4 +875,22 @@ export const es: Messages = {
   'pwa.offlineBody': 'VibeTunnel se reconectará en cuanto se pueda volver a llegar al servidor.',
   'pwa.offlineRetrying': 'Reintentando…',
   'pwa.offlineRetryNow': 'Reintentar ahora',
+
+  // Notifications: Home Screen install steps on iPhone/iPad
+  'settings.ios.step.shareSafari':
+    'Toca Compartir (el cuadrado con la flecha hacia arriba) en la barra de Safari',
+  'settings.ios.step.shareChrome': 'Toca Compartir (el icono de la barra de direcciones)',
+  'settings.ios.step.shareOther': 'Toca Compartir en el menú del navegador',
+  'settings.ios.step.add': 'Elige «Añadir a pantalla de inicio» y toca Añadir',
+  'settings.ios.step.addChrome':
+    'Elige «Añadir a pantalla de inicio» (Chrome necesita iOS 16.4 o posterior)',
+  'settings.ios.step.open':
+    'Abre VibeTunnel desde la pantalla de inicio y activa aquí las notificaciones',
+  'settings.ios.safariHint':
+    '¿No ves «Añadir a pantalla de inicio»? Copia esta dirección y ábrela en Safari:',
+  'settings.ios.address.label': 'Dirección de la app',
+  'settings.ios.address.copy': 'Copiar',
+  'settings.ios.address.copied': 'Copiada ✓',
+  'settings.ios.address.copyFailed':
+    'No se ha podido copiar: selecciona la dirección y cópiala a mano',
 };

@@ -58,8 +58,6 @@ export const bn: Messages = {
   'settings.guidance.server': 'সার্ভারের পুশ বিজ্ঞপ্তি পরিষেবা উপলভ্য নয়',
   'settings.guidance.subscription': 'অনুগ্রহ করে আগে সেটিংসে বিজ্ঞপ্তি চালু করুন',
   'settings.guidance.vapid': 'VAPID কী সঠিকভাবে কনফিগার করা নেই',
-  'settings.ios.installHint':
-    'পুশ বিজ্ঞপ্তি চালু করতে Safari-তে শেয়ার বোতামে ট্যাপ করে "হোম স্ক্রিনে যোগ করুন" বেছে নিন।',
   'settings.ios.installRequired': 'পুশ বিজ্ঞপ্তির জন্য এই অ্যাপটি আপনার হোম স্ক্রিনে ইনস্টল করতে হবে।',
   'settings.notificationBehavior': 'বিজ্ঞপ্তির আচরণ',
   'settings.notifications': 'বিজ্ঞপ্তি',
@@ -854,4 +852,18 @@ export const bn: Messages = {
   'pwa.offlineBody': 'সার্ভার আবার পাওয়া গেলেই VibeTunnel আবার সংযুক্ত হবে।',
   'pwa.offlineRetrying': 'আবার চেষ্টা করা হচ্ছে…',
   'pwa.offlineRetryNow': 'এখনই আবার চেষ্টা করুন',
+
+  // Notifications: Home Screen install steps on iPhone/iPad
+  'settings.ios.step.shareSafari': 'Safari-র টুলবারে শেয়ার (উপরে তীরসহ বর্গ) ট্যাপ করুন',
+  'settings.ios.step.shareChrome': 'শেয়ার ট্যাপ করুন (অ্যাড্রেস বারের আইকন)',
+  'settings.ios.step.shareOther': 'ব্রাউজারের মেনুতে শেয়ার ট্যাপ করুন',
+  'settings.ios.step.add': '"হোম স্ক্রিনে যোগ করুন" বেছে নিন, তারপর যোগ করুন-এ ট্যাপ করুন',
+  'settings.ios.step.addChrome':
+    '"হোম স্ক্রিনে যোগ করুন" বেছে নিন (Chrome-এর জন্য iOS 16.4 বা পরের সংস্করণ লাগবে)',
+  'settings.ios.step.open': 'হোম স্ক্রিন থেকে VibeTunnel খুলুন এবং এখানে বিজ্ঞপ্তি চালু করুন',
+  'settings.ios.safariHint': '"হোম স্ক্রিনে যোগ করুন" দেখছেন না? এই ঠিকানা কপি করে Safari-তে খুলুন:',
+  'settings.ios.address.label': 'অ্যাপের ঠিকানা',
+  'settings.ios.address.copy': 'কপি',
+  'settings.ios.address.copied': 'কপি হয়েছে ✓',
+  'settings.ios.address.copyFailed': 'কপি করা যায়নি: ঠিকানা বেছে নিয়ে হাতে কপি করুন',
 };

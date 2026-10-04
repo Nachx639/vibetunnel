@@ -9,6 +9,7 @@ const push = vi.hoisted(() => ({
   permission: false,
   subscription: null as { endpoint: string } | null,
   forceRefresh: vi.fn(async () => {}),
+  supported: true,
 }));
 
 vi.mock('../services/push-notification-service.js', () => ({
@@ -22,7 +23,7 @@ vi.mock('../services/push-notification-service.js', () => ({
     forceRefreshSubscription: push.forceRefresh,
     onPermissionChange: vi.fn(() => () => {}),
     onSubscriptionChange: vi.fn(() => () => {}),
-    isSupported: vi.fn(() => true),
+    isSupported: vi.fn(() => push.supported),
     isSubscribed: vi.fn(() => false),
     getServerStatus: vi.fn(async () => ({ enabled: true, configured: true })),
   },
@@ -50,6 +51,7 @@ describe('Settings', () => {
     push.permission = false;
     push.subscription = null;
     push.forceRefresh.mockClear();
+    push.supported = true;
     component = new Settings();
     component.visible = true;
     document.body.append(component);
@@ -87,6 +89,66 @@ describe('Settings', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(push.forceRefresh).not.toHaveBeenCalled();
       early.remove();
+    });
+  });
+
+  const renderWithUserAgent = async (userAgent: string) => {
+    component.remove();
+    push.supported = false;
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(userAgent);
+    component = new Settings();
+    component.visible = true;
+    document.body.append(component);
+    await component.updateComplete;
+  };
+
+  describe('notifications on iPhone', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('walks through Share, Add to Home Screen and reopening when not installed', async () => {
+      await renderWithUserAgent(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1'
+      );
+      const steps = [
+        ...component.querySelectorAll('[data-testid="settings-ios-install"] li > span:last-child'),
+      ].map((li) => li.textContent?.trim());
+      expect(steps).toEqual([
+        "Tap Share (the square with an up arrow) in Safari's toolbar",
+        'Choose "Add to Home Screen", then tap Add',
+        'Open VibeTunnel from your Home Screen and turn notifications on here',
+      ]);
+      expect(
+        component.querySelector('[data-testid="settings-ios-install"] svg path')?.namespaceURI
+      ).toBe('http://www.w3.org/2000/svg');
+    });
+
+    it('in Chrome: install steps, not "unsupported", with the address to open in Safari', async () => {
+      await renderWithUserAgent(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0.6723.90 Mobile/15E148 Safari/604.1'
+      );
+      const install = component.querySelector('[data-testid="settings-ios-install"]');
+      expect(install).not.toBeNull();
+      expect(component.textContent).not.toContain('not supported');
+      const steps = [...(install?.querySelectorAll('li > span:last-child') ?? [])].map((li) =>
+        li.textContent?.trim()
+      );
+      expect(steps[0]).toBe('Tap Share (the icon in the address bar)');
+      expect(steps[1]).toContain('iOS 16.4');
+      const address = install?.querySelector('app-address-copy') as HTMLElement & {
+        updateComplete: Promise<unknown>;
+      };
+      await address.updateComplete;
+      expect(address.querySelector('[data-testid="app-address-value"]')?.textContent).toBe(
+        window.location.origin
+      );
+      expect(address.textContent).toContain('open it in Safari');
+    });
+
+    it('a desktop browser keeps the plain "not supported" message', async () => {
+      await renderWithUserAgent(
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
+      );
+      expect(component.querySelector('[data-testid="settings-ios-install"]')).toBeNull();
     });
   });
 

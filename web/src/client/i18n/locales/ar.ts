@@ -57,8 +57,6 @@ export const ar: Messages = {
   'settings.guidance.server': 'خدمة الإشعارات الفورية غير متاحة على الخادم',
   'settings.guidance.subscription': 'يُرجى تفعيل الإشعارات في الإعدادات أولًا',
   'settings.guidance.vapid': 'مفاتيح VAPID غير مُعدّة بشكل صحيح',
-  'settings.ios.installHint':
-    'اضغط على زر المشاركة في Safari واختر «إضافة إلى الشاشة الرئيسية» لتفعيل الإشعارات الفورية.',
   'settings.ios.installRequired': 'تتطلب الإشعارات الفورية تثبيت هذا التطبيق على الشاشة الرئيسية.',
   'settings.notificationBehavior': 'سلوك الإشعارات',
   'settings.notifications': 'الإشعارات',
@@ -851,4 +849,19 @@ export const ar: Messages = {
   'pwa.offlineBody': 'سيعيد VibeTunnel الاتصال بمجرد أن يصبح الخادم متاحًا مجددًا.',
   'pwa.offlineRetrying': 'جارٍ إعادة المحاولة…',
   'pwa.offlineRetryNow': 'أعد المحاولة الآن',
+
+  // Notifications: Home Screen install steps on iPhone/iPad
+  'settings.ios.step.shareSafari': 'اضغط على مشاركة (المربع ذو السهم للأعلى) في شريط Safari',
+  'settings.ios.step.shareChrome': 'اضغط على مشاركة (الأيقونة في شريط العنوان)',
+  'settings.ios.step.shareOther': 'اضغط على مشاركة في قائمة المتصفح',
+  'settings.ios.step.add': 'اختر «إضافة إلى الشاشة الرئيسية» ثم اضغط إضافة',
+  'settings.ios.step.addChrome':
+    'اختر "إضافة إلى الشاشة الرئيسية" (يتطلب Chrome نظام iOS 16.4 أو أحدث)',
+  'settings.ios.step.open': 'افتح VibeTunnel من الشاشة الرئيسية وفعّل الإشعارات من هنا',
+  'settings.ios.safariHint':
+    'لا يظهر "إضافة إلى الشاشة الرئيسية"؟ انسخ هذا العنوان وافتحه في Safari:',
+  'settings.ios.address.label': 'عنوان التطبيق',
+  'settings.ios.address.copy': 'نسخ',
+  'settings.ios.address.copied': 'تم النسخ ✓',
+  'settings.ios.address.copyFailed': 'تعذّر النسخ: حدّد العنوان وانسخه يدويًا',
 };

@@ -60,8 +60,6 @@ export const fr: Messages = {
   'settings.guidance.server': "Le service de notifications push du serveur n'est pas disponible",
   'settings.guidance.subscription': "Activez d'abord les notifications dans les réglages",
   'settings.guidance.vapid': 'Les clés VAPID ne sont pas correctement configurées',
-  'settings.ios.installHint':
-    "Touchez le bouton de partage dans Safari puis choisissez « Sur l'écran d'accueil » pour activer les notifications push.",
   'settings.ios.installRequired':
     "Les notifications push nécessitent d'installer cette app sur votre écran d'accueil.",
   'settings.notificationBehavior': 'Comportement des notifications',
@@ -886,4 +884,22 @@ export const fr: Messages = {
   'pwa.offlineBody': 'VibeTunnel se reconnectera dès que le serveur sera de nouveau joignable.',
   'pwa.offlineRetrying': 'Nouvelle tentative…',
   'pwa.offlineRetryNow': 'Réessayer',
+
+  // Notifications: Home Screen install steps on iPhone/iPad
+  'settings.ios.step.shareSafari':
+    'Touchez Partager (le carré avec une flèche vers le haut) dans la barre de Safari',
+  'settings.ios.step.shareChrome': 'Touchez Partager (l’icône dans la barre d’adresse)',
+  'settings.ios.step.shareOther': 'Touchez Partager dans le menu du navigateur',
+  'settings.ios.step.add': 'Choisissez « Sur l’écran d’accueil », puis touchez Ajouter',
+  'settings.ios.step.addChrome':
+    'Choisissez « Sur l’écran d’accueil » (Chrome exige iOS 16.4 ou ultérieur)',
+  'settings.ios.step.open':
+    'Ouvrez VibeTunnel depuis l’écran d’accueil et activez les notifications ici',
+  'settings.ios.safariHint':
+    'Pas de « Sur l’écran d’accueil » ? Copiez cette adresse et ouvrez-la dans Safari :',
+  'settings.ios.address.label': 'Adresse de l’app',
+  'settings.ios.address.copy': 'Copier',
+  'settings.ios.address.copied': 'Copiée ✓',
+  'settings.ios.address.copyFailed':
+    'Copie impossible : sélectionnez l’adresse et copiez-la à la main',
 };

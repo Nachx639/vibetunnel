@@ -12,9 +12,11 @@ import {
 import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
 import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
+import { iosBrowser, needsIOSHomeScreenInstall } from '../utils/ios-install.js';
 import { createLogger } from '../utils/logger.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
+import { iosInstallSteps } from './ios-install-steps.js';
 import './language-picker.js';
 import './quick-keys-editor.js';
 
@@ -494,20 +496,6 @@ export class Settings extends LitElement {
     }
   }
 
-  private isIOSSafari(): boolean {
-    const userAgent = navigator.userAgent.toLowerCase();
-    const isIOS = /iphone|ipad|ipod/.test(userAgent);
-    return isIOS;
-  }
-
-  private isStandalone(): boolean {
-    return (
-      window.matchMedia('(display-mode: standalone)').matches ||
-      ('standalone' in window.navigator &&
-        (window.navigator as Navigator & { standalone?: boolean }).standalone === true)
-    );
-  }
-
   render() {
     if (!this.visible) return html``;
 
@@ -558,8 +546,10 @@ export class Settings extends LitElement {
   }
 
   private renderNotificationSettings() {
-    const isIOSSafari = this.isIOSSafari();
-    const isStandalone = this.isStandalone();
+    // Any iOS browser tab (Safari, Chrome, Firefox, Edge, iPadOS desktop mode): push only
+    // works once VibeTunnel is on the Home Screen, whatever isSupported() says. Chrome on
+    // iOS showed "not supported" with no way forward.
+    const needsInstall = needsIOSHomeScreenInstall();
     const canTest = this.permission === 'granted' && this.subscription;
 
     return html`
@@ -570,21 +560,14 @@ export class Settings extends LitElement {
         </div>
         
         ${
-          !this.isNotificationsSupported
-            ? html`
+          needsInstall
+            ? this.renderIOSInstallSteps()
+            : !this.isNotificationsSupported
+              ? html`
               <div class="p-4 bg-status-warning/10 border border-status-warning rounded-lg">
                 ${
-                  isIOSSafari && !isStandalone
+                  !window.isSecureContext
                     ? html`
-                      <p class="text-sm text-status-warning mb-2">
-                        ${t('settings.ios.installRequired')}
-                      </p>
-                      <p class="text-xs text-status-warning opacity-80">
-                        ${t('settings.ios.installHint')}
-                      </p>
-                    `
-                    : !window.isSecureContext
-                      ? html`
                       <p class="text-sm text-status-warning mb-2">
                         ⚠️ ${t('settings.secure.required')}
                       </p>
@@ -598,7 +581,7 @@ export class Settings extends LitElement {
                         <br>• http://127.0.0.1:${window.location.port || '4020'}
                       </p>
                     `
-                      : html`
+                    : html`
                       <p class="text-sm text-status-warning">
                         ${t('settings.unsupported')}
                       </p>
@@ -606,7 +589,7 @@ export class Settings extends LitElement {
                 }
               </div>
             `
-            : html`
+              : html`
               <!-- Main toggle -->
               <div class="flex items-center justify-between p-4 bg-bg-tertiary rounded-lg border border-border/50">
                 <div class="flex-1">
@@ -696,6 +679,35 @@ export class Settings extends LitElement {
               }
             `
         }
+      </div>
+    `;
+  }
+
+  /** iPhone/iPad in a browser tab: push only works once VibeTunnel is on the Home Screen. */
+  private renderIOSInstallSteps() {
+    const browser = iosBrowser();
+    const steps = iosInstallSteps(browser);
+    return html`
+      <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-ios-install">
+        <p class="text-sm text-primary font-medium mb-3">${t('settings.ios.installRequired')}</p>
+        <ol class="space-y-3">
+          ${steps.map(
+            (step, index) => html`
+              <li class="flex items-center gap-3">
+                <span
+                  class="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-bg text-xs font-bold flex items-center justify-center"
+                  aria-hidden="true"
+                  >${index + 1}</span
+                >
+                <svg class="w-6 h-6 flex-shrink-0 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  ${step.icon}
+                </svg>
+                <span class="text-sm text-text min-w-0">${step.text}</span>
+              </li>
+            `
+          )}
+        </ol>
+        <app-address-copy class="block mt-4" .browser=${browser}></app-address-copy>
       </div>
     `;
   }

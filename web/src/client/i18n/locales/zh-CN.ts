@@ -56,8 +56,6 @@ export const zhCN: Messages = {
   'settings.guidance.server': '服务器推送通知服务不可用',
   'settings.guidance.subscription': '请先在设置中启用通知',
   'settings.guidance.vapid': 'VAPID 密钥配置不正确',
-  'settings.ios.installHint':
-    '在 Safari 中轻点“分享”按钮，然后选择“添加到主屏幕”，即可启用推送通知。',
   'settings.ios.installRequired': '需要将此应用添加到主屏幕才能使用推送通知。',
   'settings.notificationBehavior': '通知方式',
   'settings.notifications': '通知',
@@ -843,4 +841,17 @@ export const zhCN: Messages = {
   'pwa.offlineBody': '服务器恢复可访问后，VibeTunnel 会自动重新连接。',
   'pwa.offlineRetrying': '正在重试…',
   'pwa.offlineRetryNow': '立即重试',
+
+  // Notifications: Home Screen install steps on iPhone/iPad
+  'settings.ios.step.shareSafari': '轻点 Safari 工具栏中的“共享”（带向上箭头的方框）',
+  'settings.ios.step.shareChrome': '轻点“共享”（地址栏中的图标）',
+  'settings.ios.step.shareOther': '在浏览器菜单中轻点“共享”',
+  'settings.ios.step.add': '选择“添加到主屏幕”，然后轻点“添加”',
+  'settings.ios.step.addChrome': '选择“添加到主屏幕”（Chrome 需要 iOS 16.4 或更高版本）',
+  'settings.ios.step.open': '从主屏幕打开 VibeTunnel，然后在这里开启通知',
+  'settings.ios.safariHint': '没有“添加到主屏幕”？复制此地址并在 Safari 中打开：',
+  'settings.ios.address.label': '应用地址',
+  'settings.ios.address.copy': '复制',
+  'settings.ios.address.copied': '已复制 ✓',
+  'settings.ios.address.copyFailed': '无法复制：请选中地址手动复制',
 };

@@ -61,8 +61,6 @@ export const en = {
   'settings.guidance.server': 'Server push notification service is not available',
   'settings.guidance.subscription': 'Please enable notifications in settings first',
   'settings.guidance.vapid': 'VAPID keys are not properly configured',
-  'settings.ios.installHint':
-    'Tap the share button in Safari and select "Add to Home Screen" to enable push notifications.',
   'settings.ios.installRequired':
     'Push notifications require installing this app to your home screen.',
   'settings.notificationBehavior': 'Notification Behavior',
@@ -872,6 +870,19 @@ export const en = {
   'pwa.offlineBody': 'VibeTunnel will reconnect as soon as the server is reachable again.',
   'pwa.offlineRetrying': 'Retrying…',
   'pwa.offlineRetryNow': 'Retry now',
+
+  // Notifications: Home Screen install steps on iPhone/iPad
+  'settings.ios.step.shareSafari': "Tap Share (the square with an up arrow) in Safari's toolbar",
+  'settings.ios.step.shareChrome': 'Tap Share (the icon in the address bar)',
+  'settings.ios.step.shareOther': "Tap Share in your browser's menu",
+  'settings.ios.step.add': 'Choose "Add to Home Screen", then tap Add',
+  'settings.ios.step.addChrome': 'Choose "Add to Home Screen" (Chrome needs iOS 16.4 or later)',
+  'settings.ios.step.open': 'Open VibeTunnel from your Home Screen and turn notifications on here',
+  'settings.ios.safariHint': 'No "Add to Home Screen"? Copy this address and open it in Safari:',
+  'settings.ios.address.label': 'App address',
+  'settings.ios.address.copy': 'Copy',
+  'settings.ios.address.copied': 'Copied ✓',
+  'settings.ios.address.copyFailed': "Couldn't copy: select the address and copy it by hand",
 };
 
 export type MessageKey = keyof typeof en;
