@@ -102,6 +102,10 @@ npm run dev -- --enable-tailscale-serve
 - Identity headers are automatically validated
 - No risk of header spoofing from external sources
 
+**Custom tailscale binary:** set `VIBETUNNEL_TAILSCALE_BIN=/path/to/tailscale` to use that
+binary instead of searching the usual install locations and `PATH` (custom installs; the test
+suite points it at a fake binary so tests never touch the developer's real Tailscale).
+
 **Best for:** Easy, secure remote access through Tailscale network
 
 ## User Avatar System
