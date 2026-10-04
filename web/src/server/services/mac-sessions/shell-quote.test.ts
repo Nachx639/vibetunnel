@@ -4,7 +4,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MAC_SHARE_CORPUS, MAC_SHARE_REJECTED } from '../../../test/fixtures/mac-share-corpus.js';
-import { findShells, type TestShell } from '../../../test/helpers/test-shells.js';
+import {
+  findShells,
+  REQUIRED_TEST_SHELLS,
+  type TestShell,
+} from '../../../test/helpers/test-shells.js';
 import {
   quoteFish,
   quotePosix,
@@ -90,8 +94,10 @@ describe('quoting', () => {
 describe('quoting through real shells', () => {
   const shells = findShells();
 
-  it('finds zsh and bash at least', () => {
-    expect(shells.map((shell) => shell.label)).toEqual(expect.arrayContaining(['zsh', 'bash']));
+  it('finds bash, and zsh on macOS', () => {
+    expect(shells.map((shell) => shell.label)).toEqual(
+      expect.arrayContaining([...REQUIRED_TEST_SHELLS])
+    );
   });
 
   for (const shell of shells) {
@@ -125,8 +131,8 @@ describe('quoting through real shells', () => {
     });
   }
 
-  it('zsh with RC_QUOTES, EXTENDED_GLOB and NO_NOMATCH changes nothing', () => {
-    const zsh = shells.find((shell) => shell.label === 'zsh');
+  const zsh = shells.find((shell) => shell.label === 'zsh');
+  it.skipIf(!zsh)('zsh with RC_QUOTES, EXTENDED_GLOB and NO_NOMATCH changes nothing', () => {
     if (!zsh) throw new Error('zsh missing');
     const options = 'setopt RC_QUOTES EXTENDED_GLOB NO_NOMATCH EQUALS';
     // The control: with RC_QUOTES, '' inside quotes is a quote.

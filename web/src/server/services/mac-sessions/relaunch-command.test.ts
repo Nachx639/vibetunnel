@@ -4,7 +4,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MAC_SHARE_CORPUS } from '../../../test/fixtures/mac-share-corpus.js';
-import { findShells, type TestShell } from '../../../test/helpers/test-shells.js';
+import {
+  findShells,
+  REQUIRED_TEST_SHELLS,
+  type TestShell,
+} from '../../../test/helpers/test-shells.js';
 import {
   buildRelaunchCommand,
   MAX_RELAUNCH_LINE_BYTES,
@@ -431,8 +435,10 @@ describe('relaunch line through real shells', () => {
     return made;
   }
 
-  it('finds zsh and bash at least', () => {
-    expect(shells.length).toBeGreaterThanOrEqual(2);
+  it('finds bash, and zsh on macOS', () => {
+    expect(shells.map((shell) => shell.label)).toEqual(
+      expect.arrayContaining([...REQUIRED_TEST_SHELLS])
+    );
   });
 
   for (const shell of shells) {

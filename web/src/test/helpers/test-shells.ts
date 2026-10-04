@@ -9,6 +9,13 @@ export interface TestShell {
   fish: boolean;
 }
 
+/**
+ * The shells a machine must have for the real-shell tests to mean something: macOS always
+ * ships zsh and bash, Linux CI runners only bash (zsh tests are skipped there).
+ */
+export const REQUIRED_TEST_SHELLS: readonly string[] =
+  process.platform === 'darwin' ? ['zsh', 'bash'] : ['bash'];
+
 /** zsh, bash, sh, dash, ksh and fish, the ones installed (fish is optional on macOS). */
 export function findShells(): TestShell[] {
   const candidates: TestShell[] = [
