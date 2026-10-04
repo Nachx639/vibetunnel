@@ -45,7 +45,10 @@ import { SessionMonitor } from './services/session-monitor.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
+import { createInflightRequests, type InflightRequests } from './utils/inflight-requests.js';
 import { closeLogger, createLogger, initLogger, setDebugMode } from './utils/logger.js';
+import { closeConnectionsForShutdown } from './utils/shutdown-connections.js';
+import { waitForFreePort } from './utils/startup-port.js';
 import { VapidManager } from './utils/vapid-manager.js';
 import { getVersionInfo, printVersionBanner } from './version.js';
 import { controlUnixHandler } from './websocket/control-unix-handler.js';
@@ -104,6 +107,8 @@ export function setShuttingDown(value: boolean): void {
 interface Config {
   port: number | null;
   bind: string | null;
+  /** Seconds to wait for a busy port at startup (--port-wait); 0 exits at once. */
+  portWaitSeconds: number;
   enableSSHKeys: boolean;
   disallowUserPassword: boolean;
   noAuth: boolean;
@@ -208,6 +213,8 @@ Options:
   --version             Show version information
   --port <number>       Server port (default: 4020 or PORT env var)
   --bind <address>      Bind address (default: 0.0.0.0, all interfaces)
+  --port-wait <seconds> If the port is busy at start, wait up to this long for it
+                        (default: 0, exit with code 9 at once)
   --enable-ssh-keys     Enable SSH key authentication UI and functionality
   --disallow-user-password  Disable password auth, SSH keys only (auto-enables --enable-ssh-keys)
   --no-auth             Disable authentication (auto-login as current user)
@@ -278,6 +285,15 @@ Examples:
 `);
 }
 
+/** The port and address the main server listens on (the startup check uses the same). */
+function listenPortFor(config: Config): number {
+  return config.port !== null ? config.port : Number(process.env.PORT) || 4020;
+}
+
+function bindAddressFor(config: Config): string {
+  return config.bind || '0.0.0.0';
+}
+
 // Parse command line arguments
 function parseArgs(): Config {
   const args = process.argv.slice(2);
@@ -285,6 +301,7 @@ function parseArgs(): Config {
   const config = {
     port: null as number | null,
     bind: null as string | null,
+    portWaitSeconds: 0,
     enableSSHKeys: false,
     disallowUserPassword: false,
     noAuth: false,
@@ -343,6 +360,10 @@ function parseArgs(): Config {
     } else if (args[i] === '--bind' && i + 1 < args.length) {
       config.bind = args[i + 1];
       i++; // Skip the bind value in next iteration
+    } else if (args[i] === '--port-wait' && i + 1 < args.length) {
+      const seconds = Number(args[i + 1]);
+      config.portWaitSeconds = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+      i++;
     } else if (args[i] === '--enable-ssh-keys') {
       config.enableSSHKeys = true;
     } else if (args[i] === '--disallow-user-password') {
@@ -519,6 +540,7 @@ interface AppInstance {
   hqClient: HQClient | null;
   controlDirWatcher: ControlDirWatcher | null;
   pushNotificationService: PushNotificationService | null;
+  inflightRequests: InflightRequests;
 }
 
 // Track if app has been created
@@ -559,6 +581,11 @@ export async function createApp(): Promise<AppInstance> {
   const app = express();
   const server = createServer(app);
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
+
+  // First of all middleware, so it sees every request: a shutdown lets the ones that change
+  // something finish (closeConnectionsForShutdown).
+  const inflightRequests = createInflightRequests();
+  app.use(inflightRequests.middleware);
 
   // Add security headers with Helmet
   app.use(
@@ -1428,7 +1455,7 @@ export async function createApp(): Promise<AppInstance> {
 
   // Start server function
   const startServer = () => {
-    const requestedPort = config.port !== null ? config.port : Number(process.env.PORT) || 4020;
+    const requestedPort = listenPortFor(config);
 
     logger.log(`Starting server on port ${requestedPort}`);
 
@@ -1467,7 +1494,7 @@ export async function createApp(): Promise<AppInstance> {
     logger.log(`Starting server on port ${requestedPort}`);
     // Use the requested bind address - don't force localhost just because Tailscale is enabled
     // The Mac app will handle binding logic based on actual Tailscale Serve status
-    const bindAddress = config.bind || '0.0.0.0';
+    const bindAddress = bindAddressFor(config);
     server.listen(requestedPort, bindAddress, () => {
       const address = server.address();
       const actualPort =
@@ -1692,6 +1719,7 @@ export async function createApp(): Promise<AppInstance> {
     hqClient,
     controlDirWatcher,
     pushNotificationService,
+    inflightRequests,
   };
 }
 
@@ -1715,6 +1743,32 @@ export async function startVibeTunnelServer() {
   }
   serverStarted = true;
 
+  // Check the port before anything touches the control dir: a second server on a running
+  // one's port used to set up its control dir and unlink the running server's control socket,
+  // then die on EADDRINUSE. Exit 9 (the same code as a port conflict at listen time) leaves
+  // everything untouched. --port-wait <seconds> waits for the port instead, so a restart can
+  // outlast its predecessor's shutdown.
+  const startupConfig = parseArgs();
+  if (!startupConfig.showHelp && !startupConfig.showVersion) {
+    const port = listenPortFor(startupConfig);
+    const free = await waitForFreePort(port, bindAddressFor(startupConfig), {
+      waitMs: startupConfig.portWaitSeconds * 1000,
+      onWait: () =>
+        logger.log(
+          chalk.yellow(
+            `Port ${port} is busy: waiting up to ${startupConfig.portWaitSeconds} s for it`
+          )
+        ),
+    });
+    if (!free) {
+      logger.error(
+        `Port ${port} is already in use (another VibeTunnel server?): not starting. ` +
+          'Use --port <number> or stop the existing server.'
+      );
+      process.exit(9);
+    }
+  }
+
   logger.debug('Creating VibeTunnel application instance');
   // Create and configure the app
   const appInstance = await createApp();
@@ -1727,6 +1781,8 @@ export async function startVibeTunnelServer() {
     controlDirWatcher,
     config,
     configService,
+    inflightRequests,
+    wss,
   } = appInstance;
 
   // Update debug mode based on config or environment variable
@@ -1844,6 +1900,10 @@ export async function startVibeTunnelServer() {
         closeLogger();
         process.exit(0);
       });
+      // Keep-alive sockets, event streams and WebSockets would hold close() open until the
+      // forced exit below, so every restart took over 5 s. Uploads and input in flight still
+      // get to finish (up to 4 s).
+      closeConnectionsForShutdown(server, wss, inflightRequests.count);
 
       // Force exit after 5 seconds if graceful shutdown fails
       setTimeout(() => {
