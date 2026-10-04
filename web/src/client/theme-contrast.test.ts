@@ -46,6 +46,8 @@ const PAIRS: Pair[] = [
   ...onSurfaces('text-status-error', 'var(--text-color-status-error)'),
   ...onSurfaces('text-status-success', 'var(--text-color-status-success)'),
   ...onSurfaces('text-status-info', 'var(--text-color-status-info)'),
+  // Icons and the keyboard focus ring.
+  ...onSurfaces('focus ring', v('focus-ring'), 3),
   // On the accent tint (bg-primary-muted: selected items, highlighted rows).
   ...['bg', 'bg-secondary'].flatMap((base) => [
     {

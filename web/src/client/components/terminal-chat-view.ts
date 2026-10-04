@@ -1,6 +1,7 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
+import { a11yBaseStyles } from '../utils/a11y-base-styles.js';
 import { createLogger } from '../utils/logger.js';
 import { reducedMotionStyles } from '../utils/reduced-motion.js';
 
@@ -22,6 +23,7 @@ interface InteractiveOption {
 export class TerminalChatView extends LitElement {
   static styles = [
     reducedMotionStyles,
+    a11yBaseStyles,
     css`
     :host {
       display: block;

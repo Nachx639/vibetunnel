@@ -46,8 +46,9 @@
   /* Labels and icons on the light fills (accent, success, warning): white was 1.8–4.2:1 on
      them; black is ≥ 4.96:1 on every accent, in both themes. */
   --color-on-fill: rgb(0 0 0);
-  /* Placeholders: Tailwind's default was the text at 50%, 3.3:1. */
+  /* Placeholders (Tailwind's default was text at 50%, 3.3:1) and keyboard focus rings. */
   --color-placeholder: var(--color-text-dim);
+  --color-focus-ring: var(--color-primary-text);
 }
 
 /* Tailwind v4 Theme Configuration */
@@ -78,6 +79,7 @@
   --color-status-error-text: var(--color-status-error-text);
   --color-status-success-text: var(--color-status-success-text);
   --color-on-fill: var(--color-on-fill);
+  --color-focus-ring: var(--color-focus-ring);
   /* text-primary, text-status-* and friends as TEXT read the text shades, not the fills
      (Tailwind's text-* checks --text-color-* before --color-*): text-primary labels were
      2.2:1 emerald on white, text-status-warning ones 2.0:1 amber. */
@@ -2800,6 +2802,21 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   50% {
     opacity: 0.35;
   }
+}
+
+/*
+ * Keyboard focus (a hardware keyboard on the iPad or iPhone, Full Keyboard Access, a Mac).
+ * The base :focus-visible glow above is 30% accent: 1.2:1 on the light theme, invisible.
+ * Controls focused from the keyboard get a 2 px ring in the accent's text shade (≥ 4.5:1 on
+ * every surface, both themes) with a 2 px gap, so it shows on accent-filled buttons too. Text
+ * fields keep their own focus look (their caret and border). Unlayered on purpose: it wins
+ * over Tailwind's focus:outline-none; :where() keeps its specificity at zero so a component
+ * that draws its own ring can still replace it. Shadow-DOM components get the same rule
+ * from utils/a11y-base-styles.ts.
+ */
+:where(:focus-visible):where(:not([tabindex='-1'], input, textarea, select, [contenteditable])) {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 /*
