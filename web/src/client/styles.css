@@ -3175,3 +3175,411 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
     animation-iteration-count: infinite !important;
   }
 }
+
+/* Dev-server preview panel (components/preview-panel.ts). Split: on top, the session's
+   input and newest output stay visible below the divider. */
+.pv-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 1900;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+body.preview-split-open session-view .session-view-grid {
+  padding-top: var(--vt-preview-offset, 0px) !important;
+  box-sizing: border-box;
+}
+/* The panel above already clears the notch: the session header needs no inset of its own. */
+body.preview-split-open session-view .session-header-area {
+  padding-top: 0 !important;
+}
+.pv-panel.pv-split {
+  height: var(--pv-split, 55dvh);
+  max-height: calc(100dvh - 220px);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+}
+.pv-panel.pv-full {
+  bottom: 0;
+  height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pv-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px max(4px, env(safe-area-inset-right, 0px)) 4px max(4px, env(safe-area-inset-left, 0px));
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border-light);
+}
+.pv-btn.pv-back {
+  width: auto;
+  gap: 2px;
+  padding: 0 10px 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.pv-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  color: var(--color-text-muted);
+  touch-action: manipulation;
+}
+.pv-btn:disabled {
+  opacity: 0.35;
+}
+.pv-btn:not(:disabled):active,
+.pv-btn:not(:disabled):hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-bright);
+}
+.pv-address-form {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--color-bg-tertiary);
+}
+.pv-port,
+.pv-port-select {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--color-text-dim);
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.pv-address {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 16px; /* below 16px iOS zooms the page on focus */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 0;
+  box-shadow: none;
+  outline: none;
+  padding: 0;
+}
+.pv-address:focus {
+  border: 0;
+  box-shadow: none;
+}
+.pv-address-form:focus-within {
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+.pv-title {
+  flex: 1;
+  font-weight: 600;
+  padding: 0 6px;
+}
+/*
+ * Behind the previewed site: never white. iOS can flash the frame while it repaints after a
+ * tap inside the site; what shows then is this, and no tap highlight is drawn over it.
+ */
+.pv-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--color-bg);
+  -webkit-tap-highlight-color: transparent;
+}
+.pv-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  /*
+   * No color-scheme of its own: it inherits the app's, which is what the site's
+   * prefers-color-scheme reports ("normal" here would turn a dark-mode site light).
+   */
+  -webkit-tap-highlight-color: transparent;
+  /* Its own compositing layer: not re-rastered when something else on the page changes. */
+  transform: translateZ(0);
+}
+.pv-dragging .pv-frame {
+  pointer-events: none;
+}
+/* Split while the keyboard is up for the session: the session gets the whole screen. */
+.pv-panel.pv-kbd-hidden {
+  display: none;
+}
+.pv-note {
+  padding: 16px;
+  font-size: 15px;
+  color: var(--color-text-dim);
+  background: var(--color-bg);
+}
+.pv-port-form {
+  height: 100%;
+  background: var(--color-bg);
+}
+.pv-port-row {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+.pv-port-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text);
+  font-size: 16px;
+}
+.pv-go {
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: var(--color-bg);
+  font-weight: 600;
+}
+.pv-divider {
+  flex-shrink: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-elevated);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: contain;
+  cursor: row-resize;
+}
+.pv-divider span {
+  width: 44px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-text-muted);
+  opacity: 0.6;
+}
+.vt-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  touch-action: manipulation;
+}
+.psr-preview-chip-row {
+  margin-top: 6px;
+}
+.vt-preview-chip-icon {
+  display: none;
+}
+/* Narrow phones: the word "Preview" would squeeze the session title; an icon (same
+   accessible name) gives the title the room. */
+@media (max-width: 400px) {
+  .vt-preview-chip {
+    padding: 4px 7px;
+  }
+  .vt-preview-chip-icon {
+    display: block;
+  }
+  .vt-preview-chip-label {
+    display: none;
+  }
+}
+
+/* Dev-server previews as rows (components/preview-row.ts) and their own view
+   (components/preview-view.ts). */
+.pvr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.pvr-header .pvr-heading {
+  margin: 0;
+}
+/* "+ Add preview": a quiet text button on the section heading. */
+.pvr-add {
+  flex: none;
+  min-height: 32px;
+  padding: 0 8px;
+  margin-right: -8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  touch-action: manipulation;
+}
+.pvr-add:active,
+.pvr-add:hover {
+  background: var(--color-bg-tertiary);
+}
+/* "from: <session>" while that session exists: a link to it. */
+.pvr-from-link {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.pvr-heading {
+  margin: 4px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.pvr-list {
+  margin-bottom: 16px;
+}
+.pvr-avatar {
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bg-tertiary));
+  font-size: 24px;
+}
+.pvr-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--color-text-dim);
+}
+.pvr-from {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pvr-port {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.pvr-state {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+.pvr-state-live {
+  color: var(--color-status-success);
+}
+.pvr-state-down {
+  color: var(--color-status-error);
+}
+.pvr-down .psr-avatar,
+.pvr-down .psr-title,
+.pvr-down .pvr-from {
+  opacity: 0.5;
+}
+.pvr-close {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  font-size: 16px;
+  touch-action: manipulation;
+}
+.pvr-close:active,
+.pvr-close:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text);
+}
+.pvr-highlight {
+  animation: pvr-glow 2.4s ease-out;
+}
+@keyframes pvr-glow {
+  0%,
+  40% {
+    background: var(--color-primary-muted);
+    box-shadow: inset 3px 0 0 var(--color-primary);
+  }
+  100% {
+    background: var(--color-bg);
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+.pv-view {
+  height: 100vh;
+  height: 100dvh;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  border-bottom: 0;
+}
+.pv-back-name {
+  max-width: 34vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pv-down {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.pv-down-icon {
+  font-size: 40px;
+  opacity: 0.5;
+}
+.pv-down-title {
+  font-size: 17px;
+  font-weight: 600;
+}
+.pv-down-body {
+  max-width: 320px;
+  font-size: 15px;
+  color: var(--color-text-dim);
+  margin-bottom: 8px;
+}
+
+/* The preview is already open above the session: its chip in the session header is noise. */
+body.preview-split-open .vt-preview-chip {
+  display: none;
+}
+
+/* Narrow phones: the preview bar doesn't fit and the address would shrink under the reload
+   button. Forward goes (back stays), the session name and buttons tighten. */
+@media (max-width: 400px) {
+  .pv-bar [data-testid='preview-forward'] {
+    display: none;
+  }
+  .pv-back-name {
+    max-width: 22vw;
+  }
+  .pv-bar .pv-btn {
+    width: 34px;
+  }
+  .pv-bar .pv-btn.pv-back {
+    width: auto;
+  }
+}

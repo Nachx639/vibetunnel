@@ -17,6 +17,7 @@ import {
   syncThemeColorMeta,
 } from '../../utils/accent-themes.js';
 import { Z_INDEX } from '../../utils/constants.js';
+import { arePreviewsAvailable } from '../../utils/preview-rows.js';
 import type { Theme } from '../theme-toggle-icon.js';
 
 @customElement('compact-menu')
@@ -59,6 +60,13 @@ export class CompactMenu extends LitElement {
     if (!this.showMenu) {
       this.focusedIndex = -1;
     }
+  }
+
+  private openPreview() {
+    if (!this.session) return;
+    window.dispatchEvent(
+      new CustomEvent('vt-open-preview', { detail: { sessionId: this.session.id } })
+    );
   }
 
   private handleAction(callback?: () => void) {
@@ -283,6 +291,29 @@ export class CompactMenu extends LitElement {
           </svg>
           ${t('menu.browseFiles')}
         </button>
+
+        <!-- Dev-server preview of this session (previews on: vt preview / detected ports) -->
+        ${
+          this.session && arePreviewsAvailable()
+            ? html`
+              <button
+                class="w-full text-left px-4 py-3 text-sm font-mono text-primary hover:bg-surface-hover hover:text-primary flex items-center gap-3 ${this.focusedIndex === menuItemIndex++ ? 'bg-surface-hover text-primary' : ''}"
+                @click=${() => this.handleAction(() => this.openPreview())}
+                data-testid="compact-preview"
+                tabindex="${this.showMenu ? '0' : '-1'}"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18" />
+                </svg>
+                ${t('preview.title')}${
+                  this.session.previewPorts?.length
+                    ? html`<span class="ml-auto text-xs text-text-muted" dir="ltr">:${this.session.previewPorts[0].port}</span>`
+                    : nothing
+                }
+              </button>
+            `
+            : nothing
+        }
         
         <!-- Upload Image -->
         <button

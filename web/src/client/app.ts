@@ -1,7 +1,7 @@
 // Install crypto polyfill first - must be before any code that uses crypto.randomUUID()
 import './utils/crypto-polyfill.js';
 
-import { html, LitElement } from 'lit';
+import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { keyed } from 'lit/directives/keyed.js';
 
@@ -34,12 +34,30 @@ import './components/settings.js';
 import './components/notification-status.js';
 import './components/auth-login.js';
 import './components/ssh-key-manager.js';
+import './components/preview-view.js';
+import {
+  closePreviewPanel,
+  isPreviewPanelOpen,
+  openPreviewPanel,
+} from './components/preview-panel.js';
 
 import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
 import { prunePinned } from './utils/pinned-sessions.js';
+import {
+  fetchPreviewConfig,
+  fetchPreviews,
+  findPreviewByPort,
+  highlightPreviewRow,
+  PREVIEWS_CHANGED_EVENT,
+  type PreviewItem,
+  type PreviewRoute,
+  parsePreviewViewUrl,
+  previewViewPath,
+  setPreviewsAvailable,
+} from './utils/preview-rows.js';
 import { VisibilityPoller } from './utils/visibility-poller.js';
 
 const logger = createLogger('app');
@@ -64,6 +82,21 @@ interface SessionViewElement extends HTMLElement {
   } | null;
 }
 
+/** Previews change rarely: the session poll refreshes them at most this often. */
+const PREVIEWS_REFRESH_MS = 4000;
+/** First load: how long the sessions wait for the previews shown above them. */
+const FIRST_PREVIEWS_WAIT_MS = 1500;
+
+/** The Navigation API where the browser has it (Safari 26+, Chrome): keyed history entries. */
+interface NavigationLike {
+  currentEntry: { key: string } | null;
+  entries(): Array<{ key: string }>;
+  traverseTo(key: string): { finished: Promise<unknown> };
+}
+
+const navigationApi = (): NavigationLike | undefined =>
+  (window as unknown as { navigation?: NavigationLike }).navigation;
+
 @customElement('vibetunnel-app')
 export class VibeTunnelApp extends LitElement {
   // Disable shadow DOM to use Tailwind
@@ -87,7 +120,21 @@ export class VibeTunnelApp extends LitElement {
   @state() private successMessage = '';
   @state() private sessions: Session[] = [];
   @state() private loading = false;
-  @state() private currentView: 'list' | 'session' | 'auth' | 'file-browser' = 'auth';
+  @state() private currentView: 'list' | 'session' | 'auth' | 'file-browser' | 'preview' = 'auth';
+  /**
+   * The preview shown by the 'preview' view (/preview/<id>), and the session it was opened
+   * from (Back returns there; null: Back goes to the list).
+   */
+  @state() private previewTarget: { id: string; path: string; from: string | null } | null = null;
+  /** history.length right after the preview view's entry was pushed (see handlePreviewBack). */
+  private previewHistoryLength = 0;
+  /** The server runs with dev-server previews on (GET /api/preview/config). */
+  @state() private previewsEnabled = false;
+  private previewConfigLoad: Promise<void> | null = null;
+  /** Persistent previews (GET /api/previews): the phone list's "Previews", the chips. */
+  @state() private previews: PreviewItem[] = [];
+  private previewsLoadedAt = 0;
+  private previewsLoad: Promise<void> | null = null;
   @state() private selectedSessionId: string | null = null;
   private loadFailures = 0;
   private everLoaded = false;
@@ -123,7 +170,12 @@ export class VibeTunnelApp extends LitElement {
   /** Polls /api/sessions on the list and session views; paused while the page is hidden. */
   private autoRefresh = new VisibilityPoller({
     task: async () => {
-      if (this.currentView === 'list' || this.currentView === 'session') {
+      if (
+        this.currentView === 'list' ||
+        this.currentView === 'session' ||
+        this.currentView === 'preview'
+      ) {
+        void this.loadPreviews();
         return this.loadSessions();
       }
       return false;
@@ -212,6 +264,12 @@ export class VibeTunnelApp extends LitElement {
     }
   }
 
+  updated(changedProperties: PropertyValues) {
+    super.updated(changedProperties);
+    // The split preview panel belongs to the session on screen.
+    if (this.currentView !== 'session' && isPreviewPanelOpen()) closePreviewPanel();
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
     if (this.hotReloadWs) {
@@ -223,6 +281,10 @@ export class VibeTunnelApp extends LitElement {
     window.removeEventListener('keydown', this.handleKeyDown);
     // Clean up capture toggle listener
     document.removeEventListener('capture-toggled', this.handleCaptureToggled as EventListener);
+    window.removeEventListener('vt-open-preview', this.handleOpenPreview as EventListener);
+    window.removeEventListener('vt-open-preview-view', this.handleOpenPreviewView as EventListener);
+    window.removeEventListener(PREVIEWS_CHANGED_EVENT, this.handlePreviewsChanged);
+    closePreviewPanel();
     // Clean up auto refresh interval
     this.autoRefresh.stop();
     for (const unsubscribe of this.unsubscribeSessionEvents) unsubscribe();
@@ -602,6 +664,12 @@ export class VibeTunnelApp extends LitElement {
     const url = new URL(window.location.href);
     const pathParts = url.pathname.split('/').filter(Boolean);
 
+    const previewRoute = parsePreviewViewUrl(url.pathname, url.search);
+    if (previewRoute) {
+      await this.showPreviewRoute(previewRoute);
+      return;
+    }
+
     // Check for /session/:id pattern
     if (pathParts.length === 2 && pathParts[0] === 'session') {
       const sessionId = pathParts[1];
@@ -818,6 +886,15 @@ export class VibeTunnelApp extends LitElement {
           changed =
             updatedSessions.length !== this.sessions.length ||
             updatedSessions.some((session, index) => session !== this.sessions[index]);
+          // First load: the previews sit above the sessions, and coming a moment later they
+          // would push every row down under the finger. Show both at once, waiting a little
+          // for the previews (nothing to wait for while previews are off).
+          if (!this.initialLoadComplete) {
+            await Promise.race([
+              this.loadPreviews(),
+              new Promise((resolve) => setTimeout(resolve, FIRST_PREVIEWS_WAIT_MS)),
+            ]);
+          }
           if (changed) {
             this.sessions = [...updatedSessions];
             // Clear session cache when sessions update
@@ -954,6 +1031,28 @@ export class VibeTunnelApp extends LitElement {
       this.unsubscribeSessionEvents = [
         serverEventService.on(ServerEventType.SessionStart, refresh),
         serverEventService.on(ServerEventType.SessionExit, refresh),
+        // `vt preview` in a session (previews on): a screen showing it switches to the preview.
+        serverEventService.on(ServerEventType.PreviewOpen, (event) => {
+          if (!event.sessionId || !event.port) return;
+          const sessionId = event.sessionId;
+          const port = event.port;
+          const id = event.previewId;
+          // Its row comes to the top of the list (newest preview first) and glows a moment.
+          void this.loadPreviews(true);
+          refresh();
+          if (!id) return;
+          highlightPreviewRow(id);
+          const showingIt =
+            (this.currentView === 'session' && this.selectedSessionId === sessionId) ||
+            (this.currentView === 'preview' && this.previewTarget?.id === id);
+          if (showingIt) {
+            this.openPreviewView(id, event.path, { from: null });
+            return;
+          }
+          // Not on screen: say so, rather than nothing at all.
+          const name = this.sessions.find((s) => s.id === sessionId)?.name || `:${port}`;
+          this.showSuccess(t('preview.readyToast', { where: name }));
+        }),
       ];
     }
   }
@@ -1631,6 +1730,7 @@ export class VibeTunnelApp extends LitElement {
     if (pathParts.length === 2 && pathParts[0] === 'session') {
       sessionId = pathParts[1];
     }
+    const previewRoute = parsePreviewViewUrl(url.pathname, url.search);
 
     // Only check authentication if we haven't initialized yet
     // This prevents duplicate auth checks during initial load
@@ -1638,6 +1738,12 @@ export class VibeTunnelApp extends LitElement {
       logger.log('🔐 Not authenticated, redirecting to auth view');
       this.currentView = 'auth';
       this.selectedSessionId = null;
+      return;
+    }
+
+    if (previewRoute) {
+      if (this.sessions.length === 0 && this.isAuthenticated) await this.loadSessions();
+      await this.showPreviewRoute(previewRoute);
       return;
     }
 
@@ -1744,8 +1850,229 @@ export class VibeTunnelApp extends LitElement {
   }
 
   private setupNotificationHandlers() {
-    // Listen for notification settings events
+    // Dev-server previews: chips, menu items and rows ask for a preview by these events.
+    window.addEventListener('vt-open-preview', this.handleOpenPreview as EventListener);
+    window.addEventListener('vt-open-preview-view', this.handleOpenPreviewView as EventListener);
+    window.addEventListener(PREVIEWS_CHANGED_EVENT, this.handlePreviewsChanged);
   }
+
+  /** The split panel inside a session (the preview view's "show beside the session"). */
+  private showPreview(sessionId: string, port?: number, path?: string, mode?: 'split' | 'full') {
+    const session = this.sessions.find((s) => s.id === sessionId);
+    openPreviewPanel({
+      sessionId,
+      ports: (session?.previewPorts ?? []).map((entry) => entry.port),
+      port,
+      path,
+      mode,
+      authHeader: () => authClient.getAuthHeader(),
+    });
+  }
+
+  /**
+   * Whether the server runs with previews on, asked once after login. Off (the default), the
+   * app requests nothing else about previews and shows no preview control.
+   */
+  private loadPreviewConfig(): Promise<void> {
+    this.previewConfigLoad ??= fetchPreviewConfig(authClient.getAuthHeader()).then((config) => {
+      this.previewsEnabled = config.enabled;
+      setPreviewsAvailable(config.enabled);
+    });
+    return this.previewConfigLoad;
+  }
+
+  /**
+   * Persistent previews, refreshed with the session poll but at most every few seconds (they
+   * change rarely); `force` after `vt preview` or a row action. Nothing while previews are off.
+   */
+  private async loadPreviews(force = false): Promise<void> {
+    await this.loadPreviewConfig();
+    if (!this.previewsEnabled) return;
+    if (this.previewsLoad) {
+      // A forced load (after a change) must not settle for one that started before it.
+      return force ? this.previewsLoad.then(() => this.loadPreviews(true)) : this.previewsLoad;
+    }
+    if (!force && Date.now() - this.previewsLoadedAt < PREVIEWS_REFRESH_MS)
+      return Promise.resolve();
+    this.previewsLoad = fetchPreviews(authClient.getAuthHeader())
+      .then((items) => {
+        if (!items) return;
+        this.previewsLoadedAt = Date.now();
+        if (JSON.stringify(items) !== JSON.stringify(this.previews)) this.previews = items;
+      })
+      .finally(() => {
+        this.previewsLoad = null;
+      });
+    return this.previewsLoad;
+  }
+
+  private handlePreviewsChanged = () => {
+    void this.loadPreviews(true);
+  };
+
+  /**
+   * A preview's own full-screen view (/preview/<id>): its list row, a session's preview
+   * chip, or `vt preview` on a screen showing that session.
+   *
+   * Back goes where the user came from: opened inside a session, back to that session; from
+   * the list or `vt preview`, back to the list. `from` is in the URL (a reload keeps it) and
+   * the entry is pushed, so Back is a real history step.
+   */
+  private openPreviewView(
+    id: string,
+    path = '/',
+    options: { replace?: boolean; from?: string | null } = {}
+  ) {
+    if (isPreviewPanelOpen()) closePreviewPanel();
+    // Where the user is now: the list, a session, or somewhere Back can't simply return to.
+    const here =
+      this.currentView === 'list'
+        ? null
+        : this.currentView === 'session'
+          ? this.selectedSessionId
+          : undefined;
+    const from =
+      options.from !== undefined
+        ? options.from
+        : here !== undefined
+          ? here
+          : this.currentView === 'preview'
+            ? (this.previewTarget?.from ?? null)
+            : null;
+    // Back is one history step only when the entry before this one is where Back goes.
+    const backIsPrevious = here !== undefined && here === from;
+    const page = path.startsWith('/') ? path : `/${path}`;
+    this.previewTarget = { id, path: page, from };
+    this.currentView = 'preview';
+    const url = previewViewPath(id, page, from);
+    if (`${window.location.pathname}${window.location.search}` !== url) {
+      if (options.replace) {
+        window.history.replaceState(window.history.state, '', url);
+      } else {
+        // The entry Back returns to, by key where the browser has keys (see handlePreviewBack).
+        const fromKey = backIsPrevious ? navigationApi()?.currentEntry?.key : undefined;
+        window.history.pushState(
+          backIsPrevious ? { vtPreviewBack: true, vtPreviewFromKey: fromKey } : null,
+          '',
+          url
+        );
+        this.previewHistoryLength = window.history.length;
+      }
+    }
+  }
+
+  /**
+   * "‹ Sessions" / "‹ <session>": back to the entry we came from when we pushed the view, else
+   * straight there. The previewed site's own pages are entries of the same history, in front
+   * of the view's, so one step back would go back a page inside the preview instead of
+   * leaving it. The entry is reached by its key (Navigation API, Safari 26+), or by one step
+   * only while the preview added none, or else by opening the list or session anew.
+   */
+  private handlePreviewBack = (e: CustomEvent<{ sessionId: string | null }>) => {
+    const sessionId = e.detail?.sessionId ?? null;
+    const state = window.history.state as {
+      vtPreviewBack?: boolean;
+      vtPreviewFromKey?: string;
+    } | null;
+    if (state?.vtPreviewBack) {
+      const navigation = navigationApi();
+      const key = state.vtPreviewFromKey;
+      if (navigation && key && navigation.entries().some((entry) => entry.key === key)) {
+        navigation.traverseTo(key).finished.catch(() => this.leavePreview(sessionId));
+        return;
+      }
+      if (window.history.length === this.previewHistoryLength) {
+        window.history.back();
+        return;
+      }
+    }
+    this.leavePreview(sessionId);
+  };
+
+  /** Opens the session the preview came from, or the list. */
+  private leavePreview(sessionId: string | null) {
+    if (sessionId) {
+      void this.handleNavigateToSession(
+        new CustomEvent('navigate-to-session', { detail: { sessionId } })
+      );
+      return;
+    }
+    this.handleNavigateToList();
+  }
+
+  /** The saved preview on this port (that session's own first), fetching the list if needed. */
+  private async previewForPort(port: number, sessionId?: string): Promise<PreviewItem | undefined> {
+    const found = findPreviewByPort(this.previews, port, sessionId);
+    if (found) return found;
+    await this.loadPreviews(true);
+    return findPreviewByPort(this.previews, port, sessionId);
+  }
+
+  /** A route into a preview: `/preview/<id>` (a reload, a shared link, Back/Forward). */
+  private async showPreviewRoute(route: PreviewRoute) {
+    await this.loadPreviewConfig();
+    if (!this.previewsEnabled) {
+      this.showError(t('previewView.missing'));
+      window.history.replaceState(null, '', '/');
+      this.currentView = 'list';
+      return;
+    }
+    this.previewTarget = { id: route.id, path: route.path, from: route.from };
+    this.currentView = 'preview';
+    void this.loadPreviews(true);
+  }
+
+  private handleOpenPreview = (e: CustomEvent<{ sessionId?: string; port?: number }>) => {
+    void this.openSessionPreview(e.detail?.sessionId, e.detail?.port);
+  };
+
+  /** A session's preview chip / ⋮ menu: its saved preview on that port, else ask for one. */
+  private async openSessionPreview(sessionId?: string, requestedPort?: number) {
+    if (!sessionId) return;
+    const session = this.sessions.find((s) => s.id === sessionId);
+    const port = requestedPort ?? session?.previewPorts?.[0]?.port;
+    const knownId =
+      session?.previewPorts?.find((entry) => entry.port === port)?.id ??
+      (port ? findPreviewByPort(this.previews, port, sessionId)?.id : undefined);
+    const item = knownId
+      ? { id: knownId }
+      : port
+        ? await this.previewForPort(port, sessionId)
+        : undefined;
+    if (item) {
+      this.openPreviewView(item.id);
+      return;
+    }
+    // No dev server known yet: the panel asks for a port, inside the session.
+    if (this.currentView === 'session' && this.selectedSessionId === sessionId) {
+      this.showPreview(sessionId);
+      return;
+    }
+    void this.handleNavigateToSession(
+      new CustomEvent('navigate-to-session', { detail: { sessionId } })
+    ).then(() => this.showPreview(sessionId));
+  }
+
+  /** A preview row: from the list (or the sidebar of the session on screen). */
+  private handleOpenPreviewView = (e: CustomEvent<{ id?: string; path?: string }>) => {
+    const { id, path } = e.detail ?? {};
+    if (id) this.openPreviewView(id, path || '/');
+  };
+
+  private handlePreviewBackToSession = (e: CustomEvent<{ sessionId: string }>) => {
+    void this.handleNavigateToSession(
+      new CustomEvent('navigate-to-session', { detail: { sessionId: e.detail.sessionId } })
+    );
+  };
+
+  private handlePreviewSplit = (
+    e: CustomEvent<{ sessionId: string; port: number; path: string }>
+  ) => {
+    const { sessionId, port, path } = e.detail;
+    void this.handleNavigateToSession(
+      new CustomEvent('navigate-to-session', { detail: { sessionId } })
+    ).then(() => this.showPreview(sessionId, port, path, 'split'));
+  };
 
   private handleOpenSettings = () => {
     this.showSettings = true;
@@ -1928,6 +2255,11 @@ export class VibeTunnelApp extends LitElement {
   render() {
     const showSplitView = this.showSplitView;
     const selectedSession = this.selectedSession;
+    // The session a preview was opened from, while it exists (Back returns to it).
+    const previewFromId = this.previewTarget?.from;
+    const previewFrom = previewFromId
+      ? this.sessions.find((session) => session.id === previewFromId)
+      : undefined;
 
     // Reduced logging frequency - only log when view changes
     const shouldLog = this.currentView !== this._lastLoggedView;
@@ -2011,8 +2343,22 @@ export class VibeTunnelApp extends LitElement {
               @open-settings=${this.handleOpenSettings}
             ></auth-login>
           `
-          : this.currentView === 'file-browser'
+          : this.currentView === 'preview' && this.previewTarget
             ? html`
+              <preview-view
+                .previewId=${this.previewTarget.id}
+                .path=${this.previewTarget.path}
+                .item=${this.previews.find((p) => p.id === this.previewTarget?.id) ?? null}
+                .fromSessionId=${previewFrom?.id ?? null}
+                .fromSessionName=${previewFrom ? previewFrom.name || previewFrom.command?.join(' ') || '' : ''}
+                .authClient=${authClient}
+                @preview-back=${this.handlePreviewBack}
+                @preview-go-to-session=${this.handlePreviewBackToSession}
+                @preview-split=${this.handlePreviewSplit}
+              ></preview-view>
+            `
+            : this.currentView === 'file-browser'
+              ? html`
               <!-- Full page file browser view -->
               <file-browser
                 .visible=${true}
@@ -2022,7 +2368,7 @@ export class VibeTunnelApp extends LitElement {
                 @insert-path=${this.handleNavigateToList}
               ></file-browser>
             `
-            : html`
+              : html`
       <!-- Main content with split view support -->
       <div class="${this.mainContainerClasses}">
         <!-- Mobile overlay when sidebar is open -->
@@ -2065,6 +2411,8 @@ export class VibeTunnelApp extends LitElement {
           <div class="${this.showSplitView ? 'flex-1 sidebar-scroll-area' : 'flex-1'} bg-secondary">
             <session-list
               .sessions=${this.sessions}
+              .previews=${this.previews}
+              .previewsEnabled=${this.previewsEnabled}
               .loading=${this.loading}
               .hideExited=${this.hideExited}
               .selectedSessionId=${this.selectedSessionId}

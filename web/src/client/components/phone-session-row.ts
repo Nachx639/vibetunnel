@@ -292,6 +292,51 @@ export class PhoneSessionRow extends LitElement {
     );
   }
 
+  private openPreview() {
+    window.dispatchEvent(
+      new CustomEvent('vt-open-preview', {
+        detail: { sessionId: this.session.id, port: this.session.previewPorts?.[0]?.port },
+      })
+    );
+  }
+
+  /** A dev server runs in this session (previews on): a chip straight to its preview. */
+  private previewTouchedAt = 0;
+  private renderPreviewChip() {
+    const port = this.session.previewPorts?.[0]?.port;
+    if (this.session.status === 'exited' || !port) return nothing;
+    return html`<div class="psr-preview-chip-row">
+      <span
+        class="vt-preview-chip"
+        role="button"
+        tabindex="0"
+        data-testid="psr-preview-chip"
+        @pointerdown=${(e: Event) => e.stopPropagation()}
+        @pointerup=${(e: PointerEvent) => {
+          e.stopPropagation();
+          if (e.pointerType === 'mouse') return;
+          // A scroll of the list that started on the chip ends here too: not a tap.
+          if (endsADrag(e)) return;
+          this.previewTouchedAt = Date.now();
+          swallowNextClick();
+          this.openPreview();
+        }}
+        @click=${(e: Event) => {
+          e.stopPropagation();
+          if (Date.now() - this.previewTouchedAt < 700) return;
+          this.openPreview();
+        }}
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          e.stopPropagation();
+          this.openPreview();
+        }}
+        >${t('preview.title')} <span dir="ltr">:${port}</span></span
+      >
+    </div>`;
+  }
+
   private handleMenuClick = (e: Event) => {
     e.stopPropagation();
     this.openSheet();
@@ -397,6 +442,17 @@ export class PhoneSessionRow extends LitElement {
           <div class="psr-sheet-group">
             <div class="psr-sheet-title"><bdi>${this.displayTitle()}</bdi></div>
             <button @click=${action(() => this.openSession())}>${t('sessions.row.open')}</button>
+            ${
+              !exited && this.session.previewPorts?.length
+                ? html`<button
+                    data-testid="psr-preview"
+                    @pointerup=${touchAction(() => this.openPreview())}
+                    @click=${touchAction(() => this.openPreview())}
+                  >
+                    ${t('preview.title')} · :${this.session.previewPorts[0].port}
+                  </button>`
+                : nothing
+            }
             ${
               exited
                 ? nothing
@@ -622,6 +678,7 @@ export class PhoneSessionRow extends LitElement {
             <div class="psr-preview">
               <span class="psr-path" dir="ltr">${formatPathForDisplay(session.workingDir)}</span>
             </div>
+            ${this.renderPreviewChip()}
           </div>
         </div>
         <button

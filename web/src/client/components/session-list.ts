@@ -25,6 +25,7 @@ import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import type { Worktree } from '../services/git-service.js';
 import './phone-session-row.js';
+import './preview-row.js';
 import './session-card.js';
 import './inline-edit.js';
 import './session-list/compact-session-card.js';
@@ -42,6 +43,18 @@ import { formatPathForDisplay } from '../utils/path-utils.js';
 import { PHONE_UI_CHANGED_EVENT, usesCompactPhoneUi } from '../utils/phone-ui.js';
 import { loadPinned, pinnedFirst, setPinned } from '../utils/pinned-sessions.js';
 import { endsADrag } from '../utils/pointer-drag.js';
+import {
+  addPreview,
+  announcePreviewsChanged,
+  fetchPreviewCandidates,
+  isPreviewRowHighlighted,
+  PREVIEW_HIGHLIGHT_MS,
+  type PreviewCandidate,
+  type PreviewItem,
+  previewCandidateLabel,
+  previewLabel,
+  sortPreviews,
+} from '../utils/preview-rows.js';
 import { holdSheetFocus } from '../utils/sheet-a11y.js';
 
 const logger = createLogger('session-list');
@@ -102,6 +115,10 @@ export class SessionList extends LitElement {
   @property({ type: String }) selectedSessionId: string | null = null;
   @property({ type: Boolean }) compactMode = false;
   @property({ type: String }) activeSessionId: string | null = null;
+  /** Dev-server previews are on for this server (`--preview-port`): their section shows. */
+  @property({ type: Boolean }) previewsEnabled = false;
+  /** Persistent previews (GET /api/previews), fetched by the app with the sessions. */
+  @property({ attribute: false }) previews: PreviewItem[] = [];
 
   @state() private cleaningExited = false;
   @state() private repoFollowMode = new Map<string, string | undefined>();
@@ -123,9 +140,146 @@ export class SessionList extends LitElement {
     this.addEventListener('keydown', this.handleKeyDown);
     // Add click outside listener for dropdowns
     document.addEventListener('click', this.handleClickOutside);
+    window.addEventListener('vt-preview-highlight', this.handlePreviewHighlight);
   }
 
   private handlePhoneUiChanged = () => this.requestUpdate();
+
+  /** `vt preview`: the row glows for a moment (and is already first: newest preview on top). */
+  private handlePreviewHighlight = () => {
+    this.requestUpdate();
+    setTimeout(() => this.requestUpdate(), PREVIEW_HIGHLIGHT_MS + 50);
+  };
+
+  /** Rows deleted here, hidden until the next poll no longer lists them. */
+  @state() private deletedPreviews = new Set<string>();
+
+  private handlePreviewDeleted = (e: CustomEvent<{ id: string }>) => {
+    this.deletedPreviews = new Set(this.deletedPreviews).add(e.detail.id);
+  };
+
+  private addingPreview = false;
+
+  /**
+   * "+ Add preview": the web servers listening on the server's computer, one tap each (so a
+   * phone user doesn't have to remember the port), then "Other port or URL…" to type one.
+   */
+  private async openAddPreviewSheet() {
+    if (this.addingPreview) return;
+    this.addingPreview = true;
+    let candidates: PreviewCandidate[] = [];
+    try {
+      candidates = (await fetchPreviewCandidates(this.authClient?.getAuthHeader() ?? {})) ?? [];
+    } finally {
+      this.addingPreview = false;
+    }
+    if (!this.isConnected) return;
+    this.showSheet(t(candidates.length ? 'previewRows.serversTitle' : 'previewRows.noServers'), [
+      ...candidates.map((candidate) => ({
+        label: previewCandidateLabel(candidate),
+        mono: true,
+        run: () => void this.addPreviewTarget(String(candidate.port)),
+      })),
+      // An action, not a server: no `mono`, like "Other folder…" in the folder sheets.
+      { label: t('previewRows.otherTarget'), run: () => this.promptAddPreview() },
+    ]);
+  }
+
+  /** "Other port or URL…": a port or a localhost URL, typed, no session needed. */
+  private promptAddPreview() {
+    const target = window.prompt(t('previewRows.addPrompt'), '')?.trim();
+    if (target) void this.addPreviewTarget(target);
+  }
+
+  private async addPreviewTarget(target: string) {
+    if (this.addingPreview) return;
+    this.addingPreview = true;
+    try {
+      const result = await addPreview(target, this.authClient?.getAuthHeader() ?? {});
+      if (result.error) {
+        this.dispatchEvent(
+          new CustomEvent('error', {
+            detail: t('previewRows.addFailed', { error: result.error }),
+          })
+        );
+      }
+      announcePreviewsChanged();
+    } finally {
+      this.addingPreview = false;
+    }
+  }
+
+  private addTouchedAt = 0;
+
+  /**
+   * "Previews": one row per saved preview, above the sessions (they outlive the session that
+   * opened them). Previews are few and a different kind of thing (a page, not a
+   * conversation); mixed into the sessions' state order they'd move around. Pinned first,
+   * then the newest. The heading's "+" offers the servers on the computer, or a port or
+   * localhost URL typed; in the sidebar opened from a session the section shows only when
+   * there is something in it. Nothing at all while the server has previews off.
+   */
+  private renderPreviewSection(query = '') {
+    if (!this.previewsEnabled) return nothing;
+    const q = query.trim().toLowerCase();
+    const all = sortPreviews(this.previews ?? []).filter(
+      (item) => !this.deletedPreviews.has(item.id)
+    );
+    const rows = all.filter(
+      (item) =>
+        !q ||
+        `${previewLabel(item)} ${item.title ?? ''} ${item.sessionName ?? ''} ${item.port}`
+          .toLowerCase()
+          .includes(q)
+    );
+    if (!rows.length && (this.compactMode || q)) return nothing;
+    const add = (e: Event) => {
+      e.stopPropagation();
+      if (e.type === 'pointerup') {
+        if ((e as PointerEvent).pointerType === 'mouse') return;
+        // A scroll that started on the button ends here too: not a tap.
+        if (endsADrag(e as PointerEvent)) return;
+        this.addTouchedAt = Date.now();
+        swallowNextClick();
+      } else if (Date.now() - this.addTouchedAt < 700) {
+        return;
+      }
+      void this.openAddPreviewSheet();
+    };
+    return html`
+      <div class="pvr-header">
+        <h3 class="pvr-heading" data-testid="preview-rows-heading">${t('previewRows.heading')}</h3>
+        <button
+          class="pvr-add"
+          type="button"
+          data-testid="preview-add"
+          @pointerup=${add}
+          @click=${add}
+        >
+          ${t('previewRows.add')}
+        </button>
+      </div>
+      ${
+        rows.length
+          ? html`<div
+              class="psr-list pvr-list"
+              data-testid="preview-rows"
+              @preview-deleted=${this.handlePreviewDeleted}
+            >
+              ${repeat(
+                rows,
+                (item) => item.id,
+                (item) => html`<preview-row
+                  .item=${item}
+                  .authClient=${this.authClient}
+                  .highlighted=${isPreviewRowHighlighted(item.id)}
+                ></preview-row>`
+              )}
+            </div>`
+          : html`<div class="pvr-list"></div>`
+      }
+    `;
+  }
 
   updated(changedProperties: Map<string | number | symbol, unknown>) {
     super.updated(changedProperties);
@@ -183,6 +337,7 @@ export class SessionList extends LitElement {
     this.closeSheet();
     this.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('click', this.handleClickOutside);
+    window.removeEventListener('vt-preview-highlight', this.handlePreviewHighlight);
   }
 
   private handleClickOutside = (e: MouseEvent) => {
@@ -1181,6 +1336,11 @@ export class SessionList extends LitElement {
           : ''
       }
       ${
+        // Also in the sidebar opened from inside a session (compact): that's where the user
+        // looks while working.
+        this.renderPreviewSection(query)
+      }
+      ${
         query.trim() && !running.length && !exited.length
           ? html`<div class="phone-search-empty">${t('sessions.searchEmpty')}</div>`
           : ''
@@ -1267,7 +1427,9 @@ export class SessionList extends LitElement {
   private renderPhoneEmpty(exitedCount: number) {
     this.loadQuickStarts();
     const tools = this.quickStartList();
+    // Saved previews outlive their sessions: still there with no session running.
     return html`
+      ${this.previews?.length ? this.renderPreviewSection() : nothing}
       <div class="phone-empty" data-testid="phone-empty">
         <h2>${t('empty.title')}</h2>
         <p>${t('empty.subtitle')}</p>

@@ -4,7 +4,7 @@
  * Header bar for session view with navigation, session info, status, and controls.
  * Includes back button, sidebar toggle, session details, and terminal controls.
  */
-import { html, LitElement } from 'lit';
+import { html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../../shared/types.js';
 import { LocaleController, t } from '../../i18n/index.js';
@@ -15,8 +15,10 @@ import '../keyboard-capture-indicator.js';
 import '../git-status-badge.js';
 import { authClient } from '../../services/auth-client.js';
 import { isAIAssistantSession, sendAIPrompt } from '../../utils/ai-sessions.js';
+import { swallowNextClick } from '../../utils/ghost-click.js';
 import { createLogger } from '../../utils/logger.js';
 import { usesCompactPhoneUi } from '../../utils/phone-ui.js';
+import { endsADrag } from '../../utils/pointer-drag.js';
 import { closeSessionSwitcher, openSessionSwitcher } from './session-switcher-sheet.js';
 import './compact-menu.js';
 import '../theme-toggle-icon.js';
@@ -167,6 +169,43 @@ export class SessionHeader extends LitElement {
       return 'bg-bg-muted';
     }
     return this.session.status === 'running' ? 'bg-status-success' : 'bg-status-warning';
+  }
+
+  private previewTouchedAt = 0;
+
+  /** A dev server runs in this session (previews on): one tap to its preview. */
+  private renderPreviewChip() {
+    const ports = this.session?.previewPorts;
+    if (!this.session || !ports?.length) return nothing;
+    const sessionId = this.session.id;
+    const open = () =>
+      window.dispatchEvent(
+        new CustomEvent('vt-open-preview', { detail: { sessionId, port: ports[0].port } })
+      );
+    return html`<button
+      class="vt-preview-chip flex-shrink-0"
+      data-testid="preview-chip"
+      aria-label=${t('preview.title')}
+      title=${`${t('preview.title')} · localhost:${ports[0].port}`}
+      @pointerup=${(e: PointerEvent) => {
+        if (e.pointerType === 'mouse') return;
+        // A drag that started on the chip ends here too: not a tap.
+        if (endsADrag(e)) return;
+        this.previewTouchedAt = Date.now();
+        swallowNextClick();
+        open();
+      }}
+      @click=${() => {
+        if (Date.now() - this.previewTouchedAt < 700) return;
+        open();
+      }}
+    >
+      <svg class="vt-preview-chip-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18" />
+      </svg>
+      <span class="vt-preview-chip-label">${t('preview.title')}</span>
+    </button>`;
   }
 
   render() {
@@ -383,7 +422,10 @@ export class SessionHeader extends LitElement {
               );
             }}
           ></keyboard-capture-indicator>
-          
+
+          <!-- A dev server runs in this session: one tap to its preview -->
+          ${this.renderPreviewChip()}
+
           <!-- Responsive button container -->
           ${
             this.useCompactMenu || this.isMobile
