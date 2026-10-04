@@ -17,6 +17,18 @@ import type { InputManager } from './input-manager.js';
 
 const logger = createLogger('terminal-lifecycle-manager');
 
+/** The wait before a new size goes to the PTY, coalescing the resizes in between. */
+export const RESIZE_DEBOUNCE_MS = 250;
+/**
+ * The same for a phone's soft keyboard going up or down (height only). The terminal already
+ * shows the new rows locally, the bottom kept in place (terminal-grow.ts), so this only decides
+ * when the app redraws for them: once, after the keyboard's resizes have settled. It was 400 ms,
+ * which with the app's round trip left Claude's frame stale ~500 ms after the keyboard went
+ * down. Any viewport resize meanwhile restarts the wait (keyboardStillMoving), so a keyboard
+ * animation still ends in a single resize.
+ */
+export const KEYBOARD_RESIZE_DEBOUNCE_MS = 150;
+
 export interface TerminalEventHandlers {
   handleSessionExit: (e: Event) => void;
   handleTerminalResize: (e: Event) => void;
@@ -37,6 +49,9 @@ export class TerminalLifecycleManager {
   private terminalMaxCols = 0;
   private terminalTheme: TerminalThemeId = 'auto';
   private resizeTimeout: number | null = null;
+  /** The pending PTY resize, run again later by keyboardStillMoving. */
+  private pendingResize: (() => Promise<void>) | null = null;
+  private pendingResizeDelay = 0;
   private lastResizeWidth = 0;
   private lastResizeHeight = 0;
   private localSizeDiverged = false;
@@ -193,8 +208,9 @@ export class TerminalLifecycleManager {
     // Height-only changes on mobile come from the soft keyboard opening/closing. They must
     // reach the PTY: if the client shows fewer rows than the PTY has, full-screen TUIs such
     // as Claude Code draw below the visible area and the overflow piles up on the last row.
-    // Wait a bit longer so the keyboard animation settles into a single resize.
-    const debounceMs = isMobile && isHeightOnlyChange ? 400 : 250;
+    // Each new size restarts the wait, so a keyboard animation makes a single resize.
+    const debounceMs =
+      isMobile && isHeightOnlyChange ? KEYBOARD_RESIZE_DEBOUNCE_MS : RESIZE_DEBOUNCE_MS;
     logger.debug(`scheduling resize ${cols}x${rows} in ${debounceMs}ms (source: ${source})`);
 
     // The local terminal may shrink and grow back within the debounce window (keyboard shown
@@ -204,11 +220,7 @@ export class TerminalLifecycleManager {
       this.localSizeDiverged = true;
     }
 
-    if (this.resizeTimeout) {
-      clearTimeout(this.resizeTimeout);
-    }
-
-    this.resizeTimeout = window.setTimeout(async () => {
+    this.schedulePtyResize(debounceMs, async () => {
       if (!this.session || this.session.status === 'exited') return;
 
       if (cols === this.lastResizeWidth && rows === this.lastResizeHeight) {
@@ -225,8 +237,34 @@ export class TerminalLifecycleManager {
       if (await this.sendResize(cols, rows)) {
         this.localSizeDiverged = false;
       }
-    }, debounceMs) as unknown as number;
+    });
   }
+
+  /** Runs `send` after `delay` ms, in place of a resize still waiting. */
+  private schedulePtyResize(delay: number, send: () => Promise<void>) {
+    if (this.resizeTimeout) clearTimeout(this.resizeTimeout);
+    this.pendingResize = send;
+    this.pendingResizeDelay = delay;
+    this.resizeTimeout = window.setTimeout(() => {
+      this.resizeTimeout = null;
+      this.pendingResize = null;
+      window.visualViewport?.removeEventListener('resize', this.keyboardStillMoving);
+      void send();
+    }, delay) as unknown as number;
+    window.visualViewport?.addEventListener('resize', this.keyboardStillMoving);
+  }
+
+  /**
+   * The visual viewport changed again while a resize waits (the keyboard still animating, at
+   * the same row count): the wait starts over, so the app redraws once, for where it lands.
+   */
+  private keyboardStillMoving = () => {
+    if (!this.resizeTimeout || !this.pendingResize) {
+      window.visualViewport?.removeEventListener('resize', this.keyboardStillMoving);
+      return;
+    }
+    this.schedulePtyResize(this.pendingResizeDelay, this.pendingResize);
+  };
 
   private async sendResize(cols: number, rows: number): Promise<boolean> {
     if (!this.session) return false;
@@ -301,6 +339,8 @@ export class TerminalLifecycleManager {
       clearTimeout(this.resizeTimeout);
       this.resizeTimeout = null;
     }
+    this.pendingResize = null;
+    window.visualViewport?.removeEventListener('resize', this.keyboardStillMoving);
 
     if (this.terminal && this.eventHandlers) {
       this.terminal.removeEventListener(

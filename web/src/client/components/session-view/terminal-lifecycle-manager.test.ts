@@ -4,7 +4,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '../../../shared/types.js';
 import { terminalSocketClient } from '../../services/terminal-socket-client.js';
-import { TerminalLifecycleManager } from './terminal-lifecycle-manager.js';
+import {
+  KEYBOARD_RESIZE_DEBOUNCE_MS,
+  TerminalLifecycleManager,
+} from './terminal-lifecycle-manager.js';
 
 const resizeEvent = (cols: number, rows: number, isHeightOnlyChange: boolean) =>
   new CustomEvent('terminal-resize', {
@@ -53,6 +56,51 @@ describe('TerminalLifecycleManager resize forwarding on mobile', () => {
       ['s1', 48, 45],
       ['s1', 48, 46],
     ]);
+  });
+
+  it('sends a keyboard resize once, 150 ms after the last of its changes', async () => {
+    await manager.handleTerminalResize(resizeEvent(48, 16, false));
+    await vi.runAllTimersAsync();
+    resize.mockClear();
+
+    // The keyboard going down in steps: each new size restarts the wait.
+    await manager.handleTerminalResize(resizeEvent(48, 30, true));
+    await vi.advanceTimersByTimeAsync(KEYBOARD_RESIZE_DEBOUNCE_MS - 10);
+    await manager.handleTerminalResize(resizeEvent(48, 46, true));
+    await vi.advanceTimersByTimeAsync(KEYBOARD_RESIZE_DEBOUNCE_MS - 1);
+    expect(resize).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(KEYBOARD_RESIZE_DEBOUNCE_MS).toBe(150);
+    expect(resize.mock.calls).toEqual([['s1', 48, 46]]);
+  });
+
+  it('waits for the visual viewport to stop moving before the app redraws', async () => {
+    const viewport = new EventTarget();
+    vi.stubGlobal('visualViewport', viewport);
+    try {
+      await manager.handleTerminalResize(resizeEvent(48, 16, false));
+      await vi.runAllTimersAsync();
+      resize.mockClear();
+
+      // The rows changed with the keyboard's first viewport resize; it is still animating.
+      await manager.handleTerminalResize(resizeEvent(48, 46, true));
+      await vi.advanceTimersByTimeAsync(100);
+      viewport.dispatchEvent(new Event('resize'));
+      await vi.advanceTimersByTimeAsync(100);
+      viewport.dispatchEvent(new Event('resize'));
+      await vi.advanceTimersByTimeAsync(KEYBOARD_RESIZE_DEBOUNCE_MS - 1);
+      expect(resize).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(resize.mock.calls).toEqual([['s1', 48, 46]]);
+
+      // Once sent, a later viewport change sends nothing more.
+      viewport.dispatchEvent(new Event('resize'));
+      await vi.runAllTimersAsync();
+      expect(resize).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('does not resend an unchanged size', async () => {
