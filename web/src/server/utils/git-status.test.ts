@@ -4,7 +4,11 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { promisify } from 'util';
 import { afterEach, describe, expect, it } from 'vitest';
-import { getDetailedGitStatus } from './git-status.js';
+import {
+  clearGitStatusCache,
+  getDetailedGitStatus,
+  getDetailedGitStatusCached,
+} from './git-status.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -128,5 +132,42 @@ describe('getDetailedGitStatus', () => {
 
     expect(status.insertions).toBe(0);
     expect(status.deletions).toBe(0);
+  });
+
+  describe('getDetailedGitStatusCached', () => {
+    afterEach(() => clearGitStatusCache());
+
+    async function repoWithOneFile() {
+      const repoDir = await createTempDir();
+      await git(repoDir, ['init']);
+      await git(repoDir, ['config', 'user.email', 'test@example.com']);
+      await git(repoDir, ['config', 'user.name', 'Test User']);
+      await git(repoDir, ['commit', '--allow-empty', '-m', 'initial']);
+      await writeFile(join(repoDir, 'a.txt'), 'one\n');
+      return repoDir;
+    }
+
+    it('dedupes concurrent callers and reuses a fresh result', async () => {
+      const repoDir = await repoWithOneFile();
+      const first = getDetailedGitStatusCached(repoDir);
+      const second = getDetailedGitStatusCached(repoDir);
+      expect(second).toBe(first);
+      expect((await first).added).toBe(1);
+
+      // Within the TTL a new untracked file is not visible yet...
+      await writeFile(join(repoDir, 'b.txt'), 'two\n');
+      expect((await getDetailedGitStatusCached(repoDir, 60_000)).added).toBe(1);
+      // ...but maxAgeMs 0 forces a fresh run, which also refreshes the cache.
+      expect((await getDetailedGitStatusCached(repoDir, 0)).added).toBe(2);
+      expect((await getDetailedGitStatusCached(repoDir, 60_000)).added).toBe(2);
+    });
+
+    it('recomputes once the TTL has passed', async () => {
+      const repoDir = await repoWithOneFile();
+      expect((await getDetailedGitStatusCached(repoDir, 50)).added).toBe(1);
+      await writeFile(join(repoDir, 'b.txt'), 'two\n');
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect((await getDetailedGitStatusCached(repoDir, 50)).added).toBe(2);
+    });
   });
 });

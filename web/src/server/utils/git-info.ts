@@ -52,6 +52,7 @@ async function getMainRepositoryPath(workingDir: string): Promise<string | undef
 // Cache for Git info to avoid calling git commands too frequently
 const gitInfoCache = new Map<string, { info: GitInfo; timestamp: number }>();
 const CACHE_TTL = 5000; // 5 seconds
+const gitInfoInFlight = new Map<string, Promise<GitInfo>>();
 
 /**
  * Detect Git repository information for a given directory
@@ -63,6 +64,18 @@ export async function detectGitInfo(workingDir: string): Promise<GitInfo> {
     return cached.info;
   }
 
+  // GET /sessions asks for every session without git info at once, and sessions share
+  // directories (~, a project): without this, each one spawned its own 2-5 git processes for
+  // the same directory every time the cache expired.
+  let pending = gitInfoInFlight.get(workingDir);
+  if (!pending) {
+    pending = readGitInfo(workingDir).finally(() => gitInfoInFlight.delete(workingDir));
+    gitInfoInFlight.set(workingDir, pending);
+  }
+  return pending;
+}
+
+async function readGitInfo(workingDir: string): Promise<GitInfo> {
   try {
     // Check if the directory is in a Git repository
     const { stdout: repoPath } = await execFile('git', ['rev-parse', '--show-toplevel'], {

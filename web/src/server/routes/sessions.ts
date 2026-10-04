@@ -11,7 +11,7 @@ import type { RemoteRegistry } from '../services/remote-registry.js';
 import { tailscaleServeService } from '../services/tailscale-serve-service.js';
 import type { TerminalManager } from '../services/terminal-manager.js';
 import { detectGitInfo } from '../utils/git-info.js';
-import { getDetailedGitStatus } from '../utils/git-status.js';
+import { getDetailedGitStatusCached } from '../utils/git-status.js';
 import { createLogger } from '../utils/logger.js';
 import { resolveAbsolutePath } from '../utils/path-utils.js';
 import { generateSessionName } from '../utils/session-naming.js';
@@ -531,7 +531,7 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       }
 
       // Get detailed git status for the session's working directory
-      const gitStatus = await getDetailedGitStatus(session.workingDir);
+      const gitStatus = await getDetailedGitStatusCached(session.workingDir);
 
       res.json(gitStatus);
     } catch (error) {

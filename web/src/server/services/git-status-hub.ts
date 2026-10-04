@@ -7,7 +7,7 @@
 
 import * as chokidar from 'chokidar';
 import { accessSync } from 'fs';
-import { type GitStatusCounts, getDetailedGitStatus } from '../utils/git-status.js';
+import { type GitStatusCounts, getDetailedGitStatusCached } from '../utils/git-status.js';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('git-status-hub');
@@ -93,7 +93,8 @@ export class GitStatusHub {
 
       if (watcherInfo.debounceTimer) clearTimeout(watcherInfo.debounceTimer);
       watcherInfo.debounceTimer = setTimeout(() => {
-        this.checkAndBroadcastStatus(watcherInfo);
+        // A file just changed: never serve a result computed before it.
+        this.checkAndBroadcastStatus(watcherInfo, 0);
       }, 300);
     };
 
@@ -137,9 +138,13 @@ export class GitStatusHub {
     this.watchers.delete(sessionId);
   }
 
-  private async checkAndBroadcastStatus(watcherInfo: WatcherInfo): Promise<void> {
+  private async checkAndBroadcastStatus(
+    watcherInfo: WatcherInfo,
+    maxAgeMs?: number
+  ): Promise<void> {
     try {
-      const status = await getDetailedGitStatus(watcherInfo.workingDir);
+      // Sessions sharing a directory share one git run per poll window.
+      const status = await getDetailedGitStatusCached(watcherInfo.workingDir, maxAgeMs);
       if (!this.hasStatusChanged(watcherInfo.lastStatus, status)) return;
 
       watcherInfo.lastStatus = status;
