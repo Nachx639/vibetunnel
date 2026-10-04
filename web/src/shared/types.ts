@@ -137,6 +137,9 @@ export interface Session extends SessionInfo {
     lastActivityAt?: string;
   };
 
+  /** Exited Claude session whose conversation can be resumed (`claude --resume`; agent chat). */
+  claudeResumable?: boolean;
+
   // Source information (for HQ mode)
   source?: 'local' | 'remote';
   remoteId?: string;

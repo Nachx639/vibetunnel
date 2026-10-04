@@ -18,6 +18,8 @@ import type { AuthenticatedRequest } from './middleware/auth.js';
 import { createAuthMiddleware } from './middleware/auth.js';
 import { PtyManager } from './pty/index.js';
 import { createAuthRoutes } from './routes/auth.js';
+import { createAwaySummaryRoutes } from './routes/away-summary.js';
+import { createClaudeHistoryRoutes } from './routes/claude-history.js';
 import { createConfigRoutes } from './routes/config.js';
 import { createFileRoutes } from './routes/files.js';
 import { createFilesystemRoutes } from './routes/filesystem.js';
@@ -59,6 +61,7 @@ import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { LARGE_REPLAY_MAX_BYTES, TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
 import { agentChatEnabled } from './utils/agent-chat.js';
+import { claudeHistoryBlock } from './utils/claude-history-switch.js';
 import { closeLogger, createLogger, initLogger, setDebugMode } from './utils/logger.js';
 import { VapidManager } from './utils/vapid-manager.js';
 import { getVersionInfo, printVersionBanner } from './version.js';
@@ -279,6 +282,8 @@ Environment Variables:
   VIBETUNNEL_MAC_SESSIONS_HIDE_IN Comma-separated folders: "On this computer" leaves out what
                         runs inside them (adds to config.json's macSessionsHideIn)
   VIBETUNNEL_TMUX_BIN   tmux binary to use (default: Homebrew, /usr/bin or PATH)
+  VIBETUNNEL_CLAUDE_HISTORY 0 or 1: Claude conversation history on the phone off or on,
+                        whatever config.json's claudeHistory says (never with --no-auth)
   PUSH_CONTACT_EMAIL    Contact email for VAPID configuration
   NGROK_AUTHTOKEN       Ngrok auth token (used with --ngrok)
 
@@ -1246,6 +1251,9 @@ export async function createApp(): Promise<AppInstance> {
     tmuxVersion: () => tmuxVersion(),
     controlPath: CONTROL_DIR,
   });
+  // Claude conversations running outside this server's sessions right now: neither History nor
+  // a resume may open one of those a second time. Read only when one of them asks.
+  const liveConversations = () => macSessionsScanner.liveClaudeConversations();
 
   // Mount routes
   app.use(
@@ -1256,6 +1264,7 @@ export async function createApp(): Promise<AppInstance> {
       remoteRegistry,
       isHQMode: config.isHQMode,
       agentChatEnabled: () => agentChatEnabled(configService.getConfig()),
+      liveClaudeConversations: liveConversations,
     })
   );
   logger.debug('Mounted session routes');
@@ -1273,6 +1282,30 @@ export async function createApp(): Promise<AppInstance> {
   logger.debug('Mounted Mac sessions routes');
   // A session that ended may have held a tmux session open (Disconnect): the next poll scans.
   ptyManager.on('sessionExited', () => macSessionsScanner.invalidate());
+
+  // Claude history (docs/features/claude-history.md): off unless config.json `claudeHistory`
+  // or VIBETUNNEL_CLAUDE_HISTORY, and never on a --no-auth server.
+  app.use(
+    '/api',
+    createClaudeHistoryRoutes({
+      blocked: () => claudeHistoryBlock(configService.getConfig(), { noAuth: config.noAuth }),
+      liveConversations: async () => {
+        // With "On this computer" on, a fresh scan names them, so the phone can read or open
+        // them there.
+        if (macSessionsNow().enabled) await macSessionsScanner.scan().catch(() => undefined);
+        return liveConversations();
+      },
+    })
+  );
+  // "While you were away": what an agent session did since the user last looked (agent chat).
+  app.use(
+    '/api',
+    createAwaySummaryRoutes({
+      ptyManager,
+      enabled: () => agentChatEnabled(configService.getConfig()),
+    })
+  );
+  logger.debug('Mounted Claude history and away summary routes');
 
   app.use(
     '/api',
@@ -1305,6 +1338,7 @@ export async function createApp(): Promise<AppInstance> {
     createConfigRoutes({
       configService,
       macSessions: macSessionsStart,
+      noAuth: config.noAuth,
     })
   );
   logger.debug('Mounted config routes');
@@ -1516,6 +1550,11 @@ export async function createApp(): Promise<AppInstance> {
 
   // Handle /worktrees route by serving the same index.html
   app.get('/worktrees', (_req, res) => {
+    res.sendFile(path.join(publicPath, 'index.html'));
+  });
+
+  // Phone mission control (the Agents tab) is a client-side route too
+  app.get('/agents', (_req, res) => {
     res.sendFile(path.join(publicPath, 'index.html'));
   });
 

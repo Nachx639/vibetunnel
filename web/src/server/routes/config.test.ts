@@ -73,6 +73,7 @@ describe('Config Routes', () => {
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
         agentChat: false,
+        claudeHistory: false,
         ...macSessionsDefaults,
       });
 
@@ -93,6 +94,7 @@ describe('Config Routes', () => {
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
         agentChat: false,
+        claudeHistory: false,
         ...macSessionsDefaults,
       });
     });
@@ -134,6 +136,33 @@ describe('Config Routes', () => {
       expect(response.status).toBe(200);
       const written = vi.mocked(mockConfigService.updateConfig).mock.calls.map((c) => c[0]);
       for (const config of written) expect(config).not.toHaveProperty('agentChat', true);
+    });
+  });
+
+  describe('claudeHistory', () => {
+    const saved = process.env.VIBETUNNEL_CLAUDE_HISTORY;
+    afterEach(() => {
+      if (saved === undefined) delete process.env.VIBETUNNEL_CLAUDE_HISTORY;
+      else process.env.VIBETUNNEL_CLAUDE_HISTORY = saved;
+    });
+
+    it('is off unless turned on, and never reported on under --no-auth', async () => {
+      delete process.env.VIBETUNNEL_CLAUDE_HISTORY;
+      expect((await request(app).get('/api/config')).body.claudeHistory).toBe(false);
+      mockConfigService.getConfig = vi.fn(() => ({ ...defaultConfig, claudeHistory: true }));
+      expect((await request(app).get('/api/config')).body.claudeHistory).toBe(true);
+      const noAuth = express();
+      noAuth.use(
+        '/api',
+        createConfigRoutes({ configService: mockConfigService, macSessions: macOnly, noAuth: true })
+      );
+      expect((await request(noAuth).get('/api/config')).body.claudeHistory).toBe(false);
+    });
+
+    it('cannot be turned on from the web UI', async () => {
+      await request(app).put('/api/config').send({ claudeHistory: true, repositoryBasePath: '/x' });
+      const written = vi.mocked(mockConfigService.updateConfig).mock.calls.map((c) => c[0]);
+      for (const config of written) expect(config).not.toHaveProperty('claudeHistory', true);
     });
   });
 
@@ -362,6 +391,7 @@ describe('Config Routes', () => {
           serverConfigured: true,
           quickStartCommands: defaultConfig.quickStartCommands,
           agentChat: false,
+          claudeHistory: false,
           notificationPreferences,
           ...macSessionsDefaults,
         });

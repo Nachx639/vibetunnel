@@ -33,6 +33,8 @@ import type { ProcessTable } from '../claude-chat.js';
 import { paneLabel } from '../tmux-manager.js';
 import {
   type AgentFinderDeps,
+  type LiveConversation,
+  liveClaudeConversations,
   MacAgentFinder,
   type MacAgentState,
   type PlacedAgent,
@@ -88,6 +90,17 @@ export type MacSessionTarget =
       cwd?: string;
       claudeDir?: string;
     };
+
+/**
+ * The ids the latest scan gave an agent process: its conversation, and for one in a tmux pane,
+ * its tmux session (with its name) and the window it is in.
+ */
+export interface ListedAgentIds {
+  chatId: string;
+  tmuxId?: string;
+  tmuxName?: string;
+  windowIndex?: number;
+}
 
 /** The VibeTunnel sessions the scanner needs to know: the running ones own their processes. */
 export type ScannerSession = Pick<SessionInfo, 'id' | 'pid' | 'status'>;
@@ -170,6 +183,9 @@ export class MacSessionsScanner {
   private inFlight: { generation: number; promise: Promise<MacSessionsResponse> } | null = null;
   private generation = 0;
   private index = new Map<string, MacSessionTarget>();
+  /** `${pid}|${lstart}` of each agent listed → its ids (History's live marks). */
+  private agentIds = new Map<string, ListedAgentIds>();
+  private lastSockets = new Map<number, string>();
 
   constructor(private readonly deps: MacSessionsScannerDeps) {
     this.now = deps.now ?? Date.now;
@@ -224,6 +240,7 @@ export class MacSessionsScanner {
     if (!settings.enabled) {
       this.last = null;
       this.index = new Map();
+      this.agentIds = new Map();
       return {
         enabled: false,
         ...(settings.reason ? { reason: settings.reason } : {}),
@@ -273,6 +290,25 @@ export class MacSessionsScanner {
     return this.target(id);
   }
 
+  /** The ids the latest scan gave an agent process (pid and ps lstart). */
+  idsForProcess(pid: number, lstart: string): ListedAgentIds | undefined {
+    return this.agentIds.get(`${pid}|${lstart}`);
+  }
+
+  /**
+   * Claude conversations live outside VibeTunnel right now (History never resumes them). Runs
+   * even with Mac Sessions off, but only when History lists conversations or a resume is asked
+   * for: it reads Claude's session files and the shared ps, nothing else.
+   */
+  async liveClaudeConversations(): Promise<Map<string, LiveConversation>> {
+    const table = await this.deps.table();
+    const ctx = this.ownershipContext(this.deps.vtSessions(), this.lastSockets);
+    return liveClaudeConversations(table, ctx, {
+      claudeDir: this.finders().agents.claudeDir(),
+      ids: (pid, lstart) => this.idsForProcess(pid, lstart),
+    });
+  }
+
   private async run(settings: MacSessionsSettings, now: number): Promise<MacSessionsResponse> {
     // Before anything runs: under vitest, without injected dependencies, this refuses.
     const finders = this.finders();
@@ -291,6 +327,7 @@ export class MacSessionsScanner {
     }
     warnings.push(...discovery.warnings);
     if (!table.extended) warnings.push({ code: 'scan-partial', detail: 'ps' });
+    this.lastSockets = discovery.sockets;
 
     const ctx = this.ownershipContext(this.deps.vtSessions(), discovery.sockets);
     let agents: PaneAgent[] = [];
@@ -306,6 +343,7 @@ export class MacSessionsScanner {
     }
 
     const index = new Map<string, MacSessionTarget>();
+    const agentIds = new Map<string, ListedAgentIds>();
     const servers = new Map(discovery.servers.map((server) => [server.pid, server]));
     const inPanes = new Map<string, PaneAgent[]>();
     const alone: PaneAgent[] = [];
@@ -325,10 +363,10 @@ export class MacSessionsScanner {
 
     const items: MacSessionItem[] = [];
     for (const server of discovery.servers) {
-      items.push(...this.tmuxRows(server, table, ctx, tmux, inPanes, index));
+      items.push(...this.tmuxRows(server, table, ctx, tmux, inPanes, index, agentIds));
     }
     for (const entry of alone) {
-      items.push(this.agentRow(entry, discovery, index));
+      items.push(this.agentRow(entry, discovery, index, agentIds));
     }
 
     const shown = this.visible(items, settings);
@@ -343,6 +381,7 @@ export class MacSessionsScanner {
       if (item.kind === 'tmux') for (const agent of item.agents) listedIds.add(agent.chatId);
     }
     this.index = new Map([...index].filter(([id]) => listedIds.has(id)));
+    this.agentIds = new Map([...agentIds].filter(([, ids]) => listedIds.has(ids.chatId)));
 
     return {
       enabled: true,
@@ -365,7 +404,8 @@ export class MacSessionsScanner {
     ctx: OwnershipContext,
     tmux: TmuxAvailability,
     inPanes: Map<string, PaneAgent[]>,
-    index: Map<string, MacSessionTarget>
+    index: Map<string, MacSessionTarget>,
+    agentIds: Map<string, ListedAgentIds>
   ): MacTmuxSession[] {
     const sessions = new Map<string, TmuxServer['panes']>();
     for (const pane of server.panes) {
@@ -408,6 +448,12 @@ export class MacSessionsScanner {
           agentStart: agent.lstart,
           agent: agent.agent,
           ...(agent.cwd || pane.path ? { cwd: agent.cwd || pane.path } : {}),
+        });
+        agentIds.set(`${agent.pid}|${agent.lstart}`, {
+          chatId,
+          tmuxId: id,
+          tmuxName: first.sessionName,
+          windowIndex: pane.windowIndex,
         });
         agents.push({
           agent: agent.agent,
@@ -489,9 +535,11 @@ export class MacSessionsScanner {
   private agentRow(
     { agent, state }: PaneAgent,
     discovery: TmuxDiscovery,
-    index: Map<string, MacSessionTarget>
+    index: Map<string, MacSessionTarget>,
+    agentIds: Map<string, ListedAgentIds>
   ): MacAgentSession {
     const id = `a-${agent.pid}-${agent.startSec}`;
+    agentIds.set(`${agent.pid}|${agent.lstart}`, { chatId: id });
     index.set(id, {
       kind: 'agent',
       pid: agent.pid,

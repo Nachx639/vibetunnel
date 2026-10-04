@@ -185,6 +185,26 @@ export interface MacSessionsErrorBody {
   details?: string;
 }
 
+/**
+ * A Claude conversation running right now outside this VibeTunnel's sessions (a terminal tab,
+ * a tmux pane, another VibeTunnel instance's session), never resumed here: `live` on each such
+ * conversation of GET /api/claude/conversations, and in the 409 that refuses `claude --resume`
+ * of it (POST /api/sessions).
+ */
+export interface MacLiveConversation {
+  where: 'tmux' | 'terminal';
+  /** The app of the terminal it runs in; "VibeTunnel" in another VibeTunnel's session. */
+  app?: string;
+  /**
+   * While "On this computer" lists it: its read-only conversation (a Mac session id), and for
+   * a tmux pane its tmux session to open, that session's name and the window it is in.
+   */
+  chatId?: string;
+  tmuxId?: string;
+  tmuxName?: string;
+  windowIndex?: number;
+}
+
 // Client window events. Their detail types live here too, so the client modules that send and
 // handle them don't depend on each other.
 

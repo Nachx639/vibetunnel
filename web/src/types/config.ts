@@ -37,6 +37,12 @@ export interface VibeTunnelConfig {
    */
   agentChat?: boolean;
   /**
+   * Claude history on the phone: every Claude Code conversation from every project, with
+   * resume. Off when missing; VIBETUNNEL_CLAUDE_HISTORY=1|0 overrides it. Never available on a
+   * server started with --no-auth.
+   */
+  claudeHistory?: boolean;
+  /**
    * "On this computer" in the phone's list: the tmux sessions on the user's own tmux servers and
    * the agents running outside VibeTunnel. Missing = off. --mac-sessions, --no-mac-sessions and
    * VIBETUNNEL_MAC_SESSIONS=0|1 override it (services/mac-sessions/settings.ts).

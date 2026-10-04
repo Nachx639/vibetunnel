@@ -15,7 +15,11 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { MacAgentKind, MacAgentStatus } from '../../../shared/mac-sessions.js';
+import type {
+  MacAgentKind,
+  MacAgentStatus,
+  MacLiveConversation,
+} from '../../../shared/mac-sessions.js';
 import { claudeConfigDir } from '../../utils/claude-dir.js';
 import {
   type ClaudeChatMessage,
@@ -48,6 +52,8 @@ import { isGeminiProcessArgs } from '../gemini-process.js';
 import {
   assertRealScanAllowed,
   classifyProcess,
+  hostAppOf,
+  isOwnShieldSocket,
   type OwnershipContext,
   type ProcessOwner,
 } from './process-tree.js';
@@ -348,6 +354,71 @@ export class MacAgentFinder {
     remember(this.threadIds, key, { at: this.now(), id });
     return id;
   }
+}
+
+/** What History and the resume guard send the phone: one type on both sides. */
+export type LiveConversation = MacLiveConversation;
+
+/** Where History says a conversation runs when it is in another VibeTunnel instance's session. */
+const OTHER_VIBETUNNEL_APP = 'VibeTunnel';
+
+/**
+ * Whether a process is this server's: under it, in one of its running sessions, or in its own
+ * shield. History knows those from the sessions it lists. Another instance's shield or `vt`
+ * forwarder runs sessions this server doesn't list.
+ */
+function isThisServers(owner: ProcessOwner, ctx: OwnershipContext): boolean {
+  if (owner.owner !== 'vibetunnel') return false;
+  if (owner.by === 'shield') {
+    return !!owner.socketPath && isOwnShieldSocket(owner.socketPath, ctx.ownShieldSocket);
+  }
+  return owner.by === 'server' || owner.by === 'session';
+}
+
+/**
+ * Claude conversations running right now outside this server's sessions (in a tmux pane,
+ * another terminal, or another VibeTunnel instance's session), by conversation id: History
+ * never resumes one of those, which would make a second writer. Every Claude counts here, with
+ * or without a terminal; `ids` names the ones the latest Mac Sessions scan listed.
+ */
+export async function liveClaudeConversations(
+  table: ProcessTable,
+  ctx: OwnershipContext,
+  options: {
+    claudeDir: string;
+    ids?: (
+      pid: number,
+      lstart: string
+    ) => Pick<LiveConversation, 'chatId' | 'tmuxId' | 'tmuxName' | 'windowIndex'> | undefined;
+  }
+): Promise<Map<string, LiveConversation>> {
+  const live = new Map<string, LiveConversation>();
+  if (!table.extended) return live;
+  for (const file of await readClaudeSessionFiles(table, ctx.uid, options.claudeDir)) {
+    if (!file.sessionId) continue;
+    const owner = classifyProcess(table, file.pid, ctx);
+    if (isThisServers(owner, ctx)) continue;
+    let app: string | null = null;
+    if (owner.owner === 'mac') {
+      app = owner.app;
+    } else if (owner.owner === 'vibetunnel') {
+      // Another instance's: a vt in a terminal window, or one of its shielded sessions.
+      app =
+        owner.by === 'forwarder'
+          ? hostAppOf(table, file.pid, ctx.platform ?? process.platform)
+          : OTHER_VIBETUNNEL_APP;
+    }
+    const ids = options.ids?.(file.pid, file.lstart);
+    live.set(file.sessionId, {
+      where: owner.owner === 'tmux' ? 'tmux' : 'terminal',
+      ...(app ? { app } : {}),
+      ...(ids?.chatId ? { chatId: ids.chatId } : {}),
+      ...(ids?.tmuxId ? { tmuxId: ids.tmuxId } : {}),
+      ...(ids?.tmuxId && ids.tmuxName !== undefined ? { tmuxName: ids.tmuxName } : {}),
+      ...(ids?.tmuxId && ids.windowIndex !== undefined ? { windowIndex: ids.windowIndex } : {}),
+    });
+  }
+  return live;
 }
 
 const ENV_MARKER = /(^|\s)VIBETUNNEL_SESSION_ID=/;

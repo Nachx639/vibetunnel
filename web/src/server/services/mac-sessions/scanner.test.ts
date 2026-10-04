@@ -475,6 +475,12 @@ describe('MacSessionsScanner', () => {
     // VibeTunnel's own Claudes are not Mac sessions, nor one started with vt in a terminal.
     expect(scanner.target(`a-840-${S}`)).toBeUndefined();
     expect(scanner.target(`a-910-${S}`)).toBeUndefined();
+    expect(scanner.idsForProcess(620, 'Fri Oct 2 09:00:00 2026')).toEqual({
+      chatId: `p-600-${S}-0`,
+      tmuxId: `t-600-${S}-0`,
+      tmuxName: '0',
+      windowIndex: 1,
+    });
   });
 
   it('keeps ids and order across scans', async () => {
@@ -675,6 +681,42 @@ describe('MacSessionsScanner', () => {
     clock.now += 1_500;
     expect(await scanner.resolve(`t-600-${S}-9`)).toBeUndefined();
     expect(calls.table).toBe(2);
+  });
+
+  it('tells History which Claude conversations are live outside VibeTunnel', async () => {
+    const scanner = new MacSessionsScanner(deps());
+    await scanner.scan();
+    expect(Object.fromEntries(await scanner.liveClaudeConversations())).toEqual({
+      'conv-a': { where: 'terminal', app: 'Terminal', chatId: `a-530-${S}` },
+      'conv-tmux': {
+        where: 'tmux',
+        chatId: `p-600-${S}-0`,
+        tmuxId: `t-600-${S}-0`,
+        tmuxName: '0',
+        windowIndex: 1,
+      },
+      // The vt claude's session is not one this server lists (another instance's): never a Mac
+      // item, and never resumed here either.
+      'conv-fwd': { where: 'terminal', app: 'Terminal' },
+    });
+    // Also with the section off: no ids then.
+    current = settings({ on: false, enabled: false, reason: 'disabled' });
+    await scanner.scan();
+    expect(Object.fromEntries(await scanner.liveClaudeConversations())).toEqual({
+      'conv-a': { where: 'terminal', app: 'Terminal' },
+      'conv-tmux': { where: 'tmux' },
+      'conv-fwd': { where: 'terminal', app: 'Terminal' },
+    });
+    // One of this server's own sessions: History opens that session instead.
+    const listing = new MacSessionsScanner(
+      deps({
+        vtSessions: () => [
+          ...VT_SESSIONS,
+          { id: 'fwd_1759500000000_905', pid: 910, status: 'running' as const },
+        ],
+      })
+    );
+    expect((await listing.liveClaudeConversations()).has('conv-fwd')).toBe(false);
   });
 
   it('never scans the real machine under vitest', async () => {

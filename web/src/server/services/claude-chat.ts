@@ -313,6 +313,35 @@ function cachedFindTranscript(claudeDir: string, cwd: string, sessionId: string)
   return found;
 }
 
+const resumableCache = new Map<string, { exists: boolean; at: number }>();
+/** "No transcript" is rechecked after a while: a read error must not hide Resume for good. */
+const NOT_RESUMABLE_RECHECK_MS = 60_000;
+
+/**
+ * Whether `claude --resume <sessionId>` can work: Claude Code only writes a transcript once a
+ * conversation has its first message. Asked for exited sessions, where "yes" never changes.
+ * An id that could name a file outside the projects folder is never looked up.
+ */
+export function claudeConversationExists(
+  cwd: string,
+  sessionId: string,
+  claudeDir = claudeConfigDir()
+): boolean {
+  if (!SESSION_ID.test(sessionId)) return false;
+  const key = `${claudeDir}\0${cwd}\0${sessionId}`;
+  const cached = resumableCache.get(key);
+  if (cached && (cached.exists || Date.now() - cached.at < NOT_RESUMABLE_RECHECK_MS)) {
+    return cached.exists;
+  }
+  const exists = findTranscript(claudeDir, cwd, sessionId) !== null;
+  resumableCache.delete(key);
+  resumableCache.set(key, { exists, at: Date.now() });
+  if (resumableCache.size > 2000) {
+    resumableCache.delete(resumableCache.keys().next().value as string);
+  }
+  return exists;
+}
+
 function findTranscript(claudeDir: string, cwd: string, sessionId: string): string | null {
   const projectsDir = path.join(claudeDir, 'projects');
   const direct = path.join(projectsDir, cwd.replace(/[^A-Za-z0-9]/g, '-'), `${sessionId}.jsonl`);

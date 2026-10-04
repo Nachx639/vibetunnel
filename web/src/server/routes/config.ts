@@ -14,6 +14,7 @@ import {
   macSessionsSettings,
 } from '../services/mac-sessions/settings.js';
 import { agentChatEnabled } from '../utils/agent-chat.js';
+import { claudeHistoryBlock } from '../utils/claude-history-switch.js';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('config');
@@ -44,6 +45,11 @@ export interface AppConfig {
   quickStartCommands?: QuickStartCommand[];
   /** Phone chat view of agent conversations (config.json `agentChat` or VIBETUNNEL_AGENT_CHAT). */
   agentChat: boolean;
+  /**
+   * Claude history (config.json `claudeHistory` or VIBETUNNEL_CLAUDE_HISTORY), and never under
+   * --no-auth.
+   */
+  claudeHistory: boolean;
   notificationPreferences?: NotificationPreferences;
   /** "On this computer" in the session list: the switch, forced or from config.json (default off). */
   macSessions: boolean;
@@ -62,6 +68,8 @@ interface ConfigRouteOptions {
   configService: ConfigService;
   /** How the server was started, for the Mac sessions switch (--[no-]mac-sessions, HQ mode). */
   macSessions?: MacSessionsStartOptions;
+  /** The server runs without authentication (--no-auth): Claude history stays off. */
+  noAuth?: boolean;
 }
 
 /**
@@ -87,6 +95,8 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         serverConfigured: true, // Always configured when server is running
         quickStartCommands: vibeTunnelConfig.quickStartCommands,
         agentChat: agentChatEnabled(vibeTunnelConfig),
+        claudeHistory:
+          claudeHistoryBlock(vibeTunnelConfig, { noAuth: options.noAuth === true }) === null,
         notificationPreferences: configService.getNotificationPreferences(),
         macSessions: macSessions.on,
         macSessionsOpenMode: macSessions.openMode,

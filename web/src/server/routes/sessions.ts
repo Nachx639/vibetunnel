@@ -13,16 +13,19 @@ import { cellsToText } from '../../shared/terminal-text-formatter.js';
 import type { ServerStatus, Session, TitleMode } from '../../shared/types.js';
 import { HttpMethod } from '../../shared/types.js';
 import { PtyError, type PtyManager } from '../pty/index.js';
-import { readClaudeStatuses } from '../services/claude-chat.js';
+import { claudeConversationExists, readClaudeStatuses } from '../services/claude-chat.js';
 import {
   INITIAL_INPUT_MAX_LENGTH,
+  type InitialInputAgent,
   type InitialInputOptions,
   typeWhenClaudeReady,
+  typeWhenCodexReady,
 } from '../services/claude-initial-input.js';
-import { readCodexChat } from '../services/codex-chat.js';
+import { isCodexCommand, readCodexChat } from '../services/codex-chat.js';
 import { codexSessionRef } from '../services/codex-process.js';
 import { readGeminiChat } from '../services/gemini-chat.js';
 import { geminiSessionRef } from '../services/gemini-process.js';
+import type { LiveConversation } from '../services/mac-sessions/agents.js';
 import { menuKeyHash } from '../services/menu-key-hash.js';
 import type { RemoteRegistry } from '../services/remote-registry.js';
 import { createScreenMenu } from '../services/screen-menu.js';
@@ -51,6 +54,29 @@ interface SessionRoutesConfig {
    * request, so the switch applies without a restart. Missing means off.
    */
   agentChatEnabled?: () => boolean;
+  /**
+   * Claude conversations running right now outside VibeTunnel (a terminal tab, a tmux pane):
+   * `claude --resume` of one is refused, whoever asks. Asked only when a resume is requested.
+   */
+  liveClaudeConversations?: () => Promise<Map<string, LiveConversation>>;
+}
+
+/** A Claude Code conversation id, as `claude --resume` takes it (never a path or an option). */
+const CLAUDE_CONVERSATION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+/** The conversation `claude --resume <id>` (`-r <id>`, `--resume=<id>`) continues, if any. */
+export function claudeResumeTarget(command: readonly unknown[]): string | null {
+  if (typeof command[0] !== 'string' || path.basename(command[0]) !== 'claude') return null;
+  for (let i = 1; i < command.length; i++) {
+    const arg = command[i];
+    if (typeof arg !== 'string') return null;
+    if (arg.startsWith('--resume=')) return arg.slice('--resume='.length) || null;
+    const next = command[i + 1];
+    if ((arg === '--resume' || arg === '-r') && typeof next === 'string' && next) {
+      return next.startsWith('-') ? null : next;
+    }
+  }
+  return null;
 }
 
 // Helper function to resolve path with default fallback
@@ -183,15 +209,35 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
   });
 
   /**
-   * Types `text` into the session once Claude is back at its prompt, resolving to whether it
-   * was typed (a reply waits for Claude to leave its menu).
+   * Types `text` into the session once its agent is ready at its prompt, resolving to whether
+   * it was typed: an "Ask Claude"/"Ask Codex" message waits for a new session's agent to start
+   * (minutes, while the user answers its dialogs), a reply only for Claude to leave its menu.
    */
   function typeWhenReady(
     sessionId: string,
     text: string,
-    options?: InitialInputOptions
+    options?: InitialInputOptions,
+    agent: InitialInputAgent = 'claude'
   ): Promise<boolean> {
     const running = () => ptyManager.getSession(sessionId)?.status === 'running';
+    const send = (input: { text: string } | { key: 'enter' }) => {
+      if (running()) ptyManager.sendInput(sessionId, input);
+    };
+    const onGiveUp = (reason: string) =>
+      logger.warn(`input for session ${sessionId} not typed: ${reason}`);
+    if (agent === 'codex') {
+      return typeWhenCodexReady(
+        text,
+        {
+          isRunning: running,
+          screenText: async () =>
+            cellsToText((await terminalManager.getBufferSnapshot(sessionId)).cells, false),
+          send,
+          onGiveUp,
+        },
+        options
+      );
+    }
     return typeWhenClaudeReady(
       text,
       {
@@ -202,12 +248,18 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
           return pid ? (await readClaudeStatuses([pid])).get(pid)?.status : undefined;
         },
         dialogOnScreen: async () => (await readScreenChoices(sessionId)) !== null,
-        send: (input) => {
-          if (running()) ptyManager.sendInput(sessionId, input);
-        },
-        onGiveUp: (reason) => logger.warn(`reply for session ${sessionId} not typed: ${reason}`),
+        send,
+        onGiveUp,
       },
       options
+    );
+  }
+
+  /** Types an "Ask Claude"/"Ask Codex" message into a new session once the agent is ready. */
+  function deliverInitialInput(sessionId: string, text: unknown, agent: InitialInputAgent) {
+    if (typeof text !== 'string' || !text.trim()) return;
+    typeWhenReady(sessionId, text, undefined, agent).catch((error) =>
+      logger.error(`initial input for session ${sessionId} failed:`, error)
     );
   }
 
@@ -502,6 +554,26 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
         await addClaudeStatuses(localSessionsWithSource as Session[]);
         await addCodexTitles(localSessionsWithSource as Session[]);
         await addGeminiTitles(localSessionsWithSource as Session[]);
+        // Exited Claude sessions: offer "resume" only when there is a conversation to resume.
+        for (const session of localSessionsWithSource as Session[]) {
+          if (session.status !== 'exited' || !session.claudeSessionId || !session.workingDir) {
+            continue;
+          }
+          // Attached to tmux, the conversation still runs there: resuming it would make a
+          // second writer of it.
+          if (isAttachedToTmux(session)) {
+            session.claudeResumable = false;
+            continue;
+          }
+          try {
+            session.claudeResumable = claudeConversationExists(
+              session.workingDir,
+              session.claudeSessionId
+            );
+          } catch {
+            session.claudeResumable = false;
+          }
+        }
       }
       // The compact phone list shows a shell's last line of output instead of a preview.
       if (req.query?.lastLine === '1') {
@@ -581,6 +653,9 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
   // Create new session (local or on remote)
   router.post('/sessions', async (req, res) => {
     const { command, workingDir, name, remoteId, spawn_terminal, cols, rows, titleMode } = req.body;
+    // "Ask Claude"/"Ask Codex": a first message the server types into the new session once its
+    // agent is ready (agent chat only: readiness comes from the agent's status and screen).
+    const { initialInput, initialInputAgent } = req.body;
     logger.debug(
       `creating new session: command=${JSON.stringify(command)}, remoteId=${remoteId || 'local'}, spawn_terminal=${spawn_terminal}, cols=${cols}, rows=${rows}`
     );
@@ -589,6 +664,28 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       logger.warn('session creation failed: invalid command array');
       return res.status(400).json({ error: 'Command array is required' });
     }
+
+    if (
+      initialInput !== undefined &&
+      (typeof initialInput !== 'string' || initialInput.length > INITIAL_INPUT_MAX_LENGTH)
+    ) {
+      return res.status(400).json({ error: 'initialInput must be a string' });
+    }
+    if (
+      initialInputAgent !== undefined &&
+      initialInputAgent !== 'claude' &&
+      initialInputAgent !== 'codex'
+    ) {
+      return res.status(400).json({ error: 'initialInputAgent must be "claude" or "codex"' });
+    }
+    if (initialInput !== undefined && !config.agentChatEnabled?.()) {
+      return res
+        .status(403)
+        .json({ error: 'initialInput needs agent chat', code: 'agent-chat-off' });
+    }
+    // Which agent's prompt to wait for: as asked, else what the command runs.
+    const inputAgent: InitialInputAgent =
+      initialInputAgent ?? (isCodexCommand(command) ? 'codex' : 'claude');
 
     try {
       // If remoteId is specified and we're in HQ mode, forward to remote
@@ -617,6 +714,8 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
             cols,
             rows,
             titleMode,
+            initialInput,
+            initialInputAgent,
             // Don't forward remoteId to avoid recursion
           }),
           signal: AbortSignal.timeout(10000), // 10 second timeout
@@ -652,6 +751,21 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
             count === 0
               ? 'No machines are registered with this HQ, so no session can be created. Start VibeTunnel on a machine first.'
               : 'A target machine (remoteId) is required in HQ mode.',
+        });
+      }
+
+      // A conversation running outside VibeTunnel right now (a terminal tab, a tmux pane) is
+      // never resumed here, whoever asks: that would make a second writer of it.
+      const resumed = claudeResumeTarget(command);
+      const liveElsewhere =
+        resumed && CLAUDE_CONVERSATION_ID.test(resumed)
+          ? (await config.liveClaudeConversations?.().catch(() => undefined))?.get(resumed)
+          : undefined;
+      if (liveElsewhere) {
+        return res.status(409).json({
+          error: 'live-elsewhere',
+          details: 'This conversation is running outside VibeTunnel right now',
+          live: liveElsewhere,
         });
       }
 
@@ -695,6 +809,7 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
 
             // Return the session ID - client will poll for the session to appear
             logger.log(chalk.green(`terminal spawn requested for session ${sessionId}`));
+            deliverInitialInput(sessionId, initialInput, inputAgent);
             res.json({
               sessionId,
               createdAt: new Date().toISOString(),
@@ -750,6 +865,7 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       logger.log(chalk.green(`WEB session ${sessionId} created (PID: ${sessionInfo.pid})`));
 
       // Stream watcher is set up when clients connect to the stream endpoint
+      deliverInitialInput(sessionId, initialInput, inputAgent);
 
       res.json({ sessionId, createdAt: new Date().toISOString() });
     } catch (error) {

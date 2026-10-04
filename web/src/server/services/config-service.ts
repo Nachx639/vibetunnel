@@ -28,6 +28,7 @@ const ConfigSchema = z.object({
   ),
   repositoryBasePath: z.string().optional(),
   agentChat: z.boolean().optional(),
+  claudeHistory: z.boolean().optional(),
   // Mac sessions: a bad value is dropped and the rest of the file kept.
   macSessions: z.boolean().optional().catch(undefined),
   macSessionsOpenMode: MacOpenModeSchema.optional().catch(undefined),

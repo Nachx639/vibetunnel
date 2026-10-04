@@ -7,6 +7,7 @@ import type { CodexChat, CodexSessionRef } from '../codex-chat.js';
 import { forgetGeminiSession, type GeminiChat, readGeminiChat } from '../gemini-chat.js';
 import {
   type AgentFinderDeps,
+  liveClaudeConversations,
   MacAgentFinder,
   type MacAgentProcess,
   parsePsEnvironment,
@@ -345,6 +346,76 @@ describe('MacAgentFinder', () => {
         forgetGeminiSession(`proc:${agent.pid}:${agent.startSec * 1000}`);
       }
     }
+  });
+
+  it('lists live Claude conversations outside VibeTunnel, with or without a terminal', async () => {
+    const live = await liveClaudeConversations(TABLE, CONTEXT, {
+      claudeDir,
+      ids: (pid, lstart) => {
+        expect(lstart).toBe('Fri Oct 2 09:00:00 2026');
+        if (pid === 530) return { chatId: `a-530-${START_MS / 1000}` };
+        if (pid === 720) {
+          return { chatId: 'p-700-1-0', tmuxId: 't-700-1-0', tmuxName: 'work', windowIndex: 2 };
+        }
+        return undefined;
+      },
+    });
+    expect(Object.fromEntries(live)).toEqual({
+      'conv-a': { where: 'terminal', app: 'Terminal', chatId: `a-530-${START_MS / 1000}` },
+      'conv-bot': { where: 'terminal' },
+      'conv-sdk': { where: 'terminal', app: 'Terminal' },
+      'conv-tmux': {
+        where: 'tmux',
+        chatId: 'p-700-1-0',
+        tmuxId: 't-700-1-0',
+        tmuxName: 'work',
+        windowIndex: 2,
+      },
+    });
+  });
+
+  it("counts a Claude in another VibeTunnel's session as live, never one of this server's", async () => {
+    const OWN_SHIELD = '/Users/me/.vibetunnel/control/.shield-tmux';
+    const table = parseProcessTable(
+      [
+        ps(500, 1, '??', TERMINAL),
+        ps(520, 500, '16/1', '-zsh'),
+        // This server (4000): a session (810) running Claude, and its own shield running another.
+        ps(4000, 1, '??', 'node vibetunnel --port 8080'),
+        ps(810, 4000, '16/20', '-zsh'),
+        ps(820, 810, '16/20', 'claude'),
+        ps(850, 1, '??', `tmux -S ${OWN_SHIELD} new-session -d -s vt-1`),
+        ps(851, 850, '16/21', '-zsh'),
+        ps(852, 851, '16/21', 'claude'),
+        // Another instance's shield (its own control dir), and a vt claude of another instance
+        // in a Terminal tab: neither is one of this server's sessions.
+        ps(900, 1, '??', 'tmux -S /Users/me/other-instance/control/.shield-tmux new-session -d'),
+        ps(910, 900, '16/30', '-zsh'),
+        ps(920, 910, '16/30', 'claude'),
+        ps(930, 520, '16/1', '/Applications/VibeTunnel.app/Contents/Resources/vibetunnel-fwd'),
+        ps(940, 930, '16/31', 'claude'),
+      ].join('\n')
+    );
+    const sessions = path.join(claudeDir, 'sessions');
+    for (const [pid, sessionId] of [
+      [852, 'conv-own-shield'],
+      [920, 'conv-other-shield'],
+      [940, 'conv-other-vt'],
+    ] as const) {
+      fs.writeFileSync(
+        path.join(sessions, `${pid}.json`),
+        JSON.stringify({ pid, sessionId, entrypoint: 'cli', procStart: LSTART })
+      );
+    }
+    const live = await liveClaudeConversations(
+      table,
+      { ...CONTEXT, ownShieldSocket: OWN_SHIELD },
+      { claudeDir }
+    );
+    expect(Object.fromEntries(live)).toEqual({
+      'conv-other-shield': { where: 'terminal', app: 'VibeTunnel' },
+      'conv-other-vt': { where: 'terminal', app: 'Terminal' },
+    });
   });
 });
 
