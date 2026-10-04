@@ -114,6 +114,8 @@ export class FileBrowser extends LitElement {
   // Object URL of the previewed image. `<img src>` can't carry the Bearer header, so behind
   // the login gate /api/fs/raw answers 401; fetch it with auth and show a blob URL instead.
   @state() private imageObjectUrl = '';
+  @state() private copyFeedback: '' | 'copied' | 'failed' = '';
+  private copyFeedbackTimer?: ReturnType<typeof setTimeout>;
 
   private editorRef = createRef<HTMLElement>();
   private pathInputRef = createRef<HTMLInputElement>();
@@ -334,22 +336,32 @@ export class FileBrowser extends LitElement {
     } else {
       logger.error('failed to copy to clipboard');
     }
+    // On a phone there's no other sign the tap did anything
+    this.copyFeedback = success ? 'copied' : 'failed';
+    clearTimeout(this.copyFeedbackTimer);
+    this.copyFeedbackTimer = setTimeout(() => {
+      this.copyFeedback = '';
+    }, 1500);
+  }
+
+  /**
+   * file.path is relative to the server's cwd (e.g. "../../Users/me/x.ts"), useless outside
+   * the server; join the listed directory with the name.
+   */
+  private absolutePathOf(file: FileInfo): string {
+    if (this.currentFullPath && file.name) {
+      return this.currentFullPath.endsWith('/')
+        ? this.currentFullPath + file.name
+        : `${this.currentFullPath}/${file.name}`;
+    }
+    // Fallback to relative path if absolute path construction fails
+    return file.path;
   }
 
   private insertPathIntoTerminal() {
     if (!this.selectedFile) return;
 
-    // Construct absolute path by joining the current directory's full path with the file name
-    let absolutePath: string;
-    if (this.currentFullPath && this.selectedFile.name) {
-      // Join the directory path with the file name
-      absolutePath = this.currentFullPath.endsWith('/')
-        ? this.currentFullPath + this.selectedFile.name
-        : `${this.currentFullPath}/${this.selectedFile.name}`;
-    } else {
-      // Fallback to relative path if absolute path construction fails
-      absolutePath = this.selectedFile.path;
-    }
+    const absolutePath = this.absolutePathOf(this.selectedFile);
 
     // Dispatch event with the absolute file path
     this.dispatchEvent(
@@ -836,10 +848,18 @@ export class FileBrowser extends LitElement {
                                 class="btn-secondary text-xs px-2 py-1 font-mono"
                                 @click=${() =>
                                   this.selectedFile &&
-                                  this.handleCopyToClipboard(this.selectedFile.path)}
+                                  this.handleCopyToClipboard(
+                                    this.absolutePathOf(this.selectedFile)
+                                  )}
                                 title=${`${t('files.copyPath.title')} (⌘C)`}
                               >
-                                ${t('files.copyPath')}
+                                ${
+                                  this.copyFeedback === 'copied'
+                                    ? t('files.copied')
+                                    : this.copyFeedback === 'failed'
+                                      ? t('files.copyFailed')
+                                      : t('files.copyPath')
+                                }
                               </button>
                               ${
                                 this.mode === 'browse'
@@ -912,6 +932,7 @@ export class FileBrowser extends LitElement {
     window.removeEventListener('resize', this.handleResize);
     this.removeTouchHandlers();
     this.revokeImageObjectUrl();
+    clearTimeout(this.copyFeedbackTimer);
   }
 
   private async checkAuthConfig() {
@@ -948,7 +969,7 @@ export class FileBrowser extends LitElement {
       this.insertPathIntoTerminal();
     } else if ((e.metaKey || e.ctrlKey) && e.key === 'c' && this.selectedFile) {
       e.preventDefault();
-      this.handleCopyToClipboard(this.selectedFile.path);
+      this.handleCopyToClipboard(this.absolutePathOf(this.selectedFile));
     }
   };
 

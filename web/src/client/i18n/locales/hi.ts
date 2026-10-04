@@ -613,6 +613,8 @@ export const hi: Messages = {
   'files.backToFiles': 'फ़ाइलों पर वापस जाएं',
   'files.copyPath.title': 'पाथ क्लिपबोर्ड पर कॉपी करें',
   'files.copyPath': 'पाथ कॉपी करें',
+  'files.copied': 'कॉपी हो गया',
+  'files.copyFailed': 'कॉपी नहीं हो सका',
   'files.insertPath.title': 'पाथ टर्मिनल में डालें',
   'files.insertPath': 'पाथ डालें',
   'files.viewFile': 'फ़ाइल देखें',

@@ -369,4 +369,36 @@ describe('FileBrowser', () => {
       expect(revoke).toHaveBeenCalledWith('blob:2'); // A's late image is dropped, not leaked
     });
   });
+
+  describe('copy path', () => {
+    it('copies the absolute path, not the server-cwd-relative one, and says so', async () => {
+      const writeText = vi.fn(async () => {});
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      const internals = element as unknown as {
+        currentFullPath: string;
+        selectedFile: unknown;
+      };
+      element.visible = true;
+      await element.updateComplete;
+      internals.currentFullPath = '/Users/me/project';
+      internals.selectedFile = {
+        name: 'a.ts',
+        path: '../../Users/me/project/a.ts',
+        type: 'file',
+        size: 1,
+        modified: '',
+      };
+      await element.updateComplete;
+
+      const button = [...element.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Copy Path'
+      );
+      button?.click();
+      await waitForAsync();
+      await element.updateComplete;
+
+      expect(writeText).toHaveBeenCalledWith('/Users/me/project/a.ts');
+      expect(button?.textContent?.trim()).toBe('Copied');
+    });
+  });
 });

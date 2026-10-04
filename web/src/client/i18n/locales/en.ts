@@ -632,6 +632,8 @@ export const en = {
   'files.backToFiles': 'Back to files',
   'files.copyPath.title': 'Copy path to clipboard',
   'files.copyPath': 'Copy Path',
+  'files.copied': 'Copied',
+  'files.copyFailed': "Couldn't copy",
   'files.insertPath.title': 'Insert path into terminal',
   'files.insertPath': 'Insert Path',
   'files.viewFile': 'View File',

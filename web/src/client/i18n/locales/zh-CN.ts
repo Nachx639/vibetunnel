@@ -605,6 +605,8 @@ export const zhCN: Messages = {
   'files.backToFiles': '返回文件列表',
   'files.copyPath.title': '将路径复制到剪贴板',
   'files.copyPath': '复制路径',
+  'files.copied': '已复制',
+  'files.copyFailed': '复制失败',
   'files.insertPath.title': '将路径插入终端',
   'files.insertPath': '插入路径',
   'files.viewFile': '查看文件',

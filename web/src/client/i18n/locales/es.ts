@@ -636,6 +636,8 @@ export const es: Messages = {
   'files.backToFiles': 'Volver a archivos',
   'files.copyPath.title': 'Copiar ruta al portapapeles',
   'files.copyPath': 'Copiar ruta',
+  'files.copied': 'Copiado',
+  'files.copyFailed': 'No se pudo copiar',
   'files.insertPath.title': 'Insertar ruta en la terminal',
   'files.insertPath': 'Insertar ruta',
   'files.viewFile': 'Ver archivo',

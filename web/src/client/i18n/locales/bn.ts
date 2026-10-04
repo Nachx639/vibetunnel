@@ -615,6 +615,8 @@ export const bn: Messages = {
   'files.backToFiles': 'ফাইলে ফিরে যান',
   'files.copyPath.title': 'পাথ ক্লিপবোর্ডে কপি করুন',
   'files.copyPath': 'পাথ কপি করুন',
+  'files.copied': 'কপি হয়েছে',
+  'files.copyFailed': 'কপি করা যায়নি',
   'files.insertPath.title': 'টার্মিনালে পাথ বসান',
   'files.insertPath': 'পাথ বসান',
   'files.viewFile': 'ফাইল দেখুন',

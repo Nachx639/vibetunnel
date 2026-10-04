@@ -612,6 +612,8 @@ export const ar: Messages = {
   'files.backToFiles': 'العودة إلى الملفات',
   'files.copyPath.title': 'نسخ المسار إلى الحافظة',
   'files.copyPath': 'نسخ المسار',
+  'files.copied': 'تم النسخ',
+  'files.copyFailed': 'تعذّر النسخ',
   'files.insertPath.title': 'إدراج المسار في الطرفية',
   'files.insertPath': 'إدراج المسار',
   'files.viewFile': 'عرض الملف',

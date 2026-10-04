@@ -634,6 +634,8 @@ export const ptBR: Messages = {
   'files.backToFiles': 'Voltar aos arquivos',
   'files.copyPath.title': 'Copiar caminho para a área de transferência',
   'files.copyPath': 'Copiar caminho',
+  'files.copied': 'Copiado',
+  'files.copyFailed': 'Não foi possível copiar',
   'files.insertPath.title': 'Inserir caminho no terminal',
   'files.insertPath': 'Inserir caminho',
   'files.viewFile': 'Ver arquivo',

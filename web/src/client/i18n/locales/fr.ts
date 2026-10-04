@@ -642,6 +642,8 @@ export const fr: Messages = {
   'files.backToFiles': 'Retour aux fichiers',
   'files.copyPath.title': 'Copier le chemin dans le presse-papiers',
   'files.copyPath': 'Copier le chemin',
+  'files.copied': 'Copié',
+  'files.copyFailed': 'Copie impossible',
   'files.insertPath.title': 'Insérer le chemin dans le terminal',
   'files.insertPath': 'Insérer le chemin',
   'files.viewFile': 'Voir le fichier',
