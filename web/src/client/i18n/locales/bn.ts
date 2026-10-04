@@ -240,7 +240,6 @@ export const bn: Messages = {
   'sessions.loadingList': 'সেশন লোড হচ্ছে...',
   'sessions.cleanupFailed': 'শেষ হওয়া সেশন পরিষ্কার করা যায়নি',
   'sessions.activeSession': 'সক্রিয় সেশন',
-  'sessions.empty.exitedHidden': 'কিছু সেশন শেষ হয়েছে। উপরে "শেষগুলো লুকান" বদলে সেগুলো দেখুন।',
   'sessions.empty.title': 'এখনও কোনো টার্মিনাল সেশন নেই!',
   'sessions.empty.getStartedBefore': 'শুরু করতে আপনার টার্মিনালে',
   'sessions.empty.getStartedAfter': 'কমান্ডটি ব্যবহার করুন:',
@@ -898,4 +897,7 @@ export const bn: Messages = {
   'switcher.quickLabel': 'দ্রুত সেশন বদলান',
   'switcher.quickPlaceholder': 'সেশন বদলান… (ফিল্টার করতে লিখুন)',
   'switcher.noMatches': 'কোনো সেশন মেলেনি',
+  'sessions.empty.allExited': 'এখানের সব সেশন শেষ হয়েছে।',
+  'sessions.newSession': 'নতুন সেশন',
+  'sessions.showExited': 'শেষ হওয়া সেশন দেখান',
 };

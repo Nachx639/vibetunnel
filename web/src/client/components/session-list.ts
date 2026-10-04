@@ -877,7 +877,33 @@ export class SessionList extends LitElement {
                             ${t('sessions.empty.noRunning')}
                           </div>
                           <div class="text-sm text-text-muted">
-                            ${t('sessions.empty.exitedHidden')}
+                            ${t('sessions.empty.allExited')}
+                          </div>
+                          <div class="flex flex-wrap gap-3">
+                            <button
+                              class="btn-primary px-4 py-2 text-sm rounded-lg"
+                              data-testid="all-exited-new-session"
+                              @click=${() =>
+                                this.dispatchEvent(
+                                  new CustomEvent('open-create-dialog', {
+                                    detail: {},
+                                    bubbles: true,
+                                    composed: true,
+                                  })
+                                )}
+                            >
+                              ${t('sessions.newSession')}
+                            </button>
+                            <button
+                              class="btn-secondary px-4 py-2 text-sm rounded-lg"
+                              data-testid="all-exited-show"
+                              @click=${() =>
+                                this.dispatchEvent(
+                                  new CustomEvent('hide-exited-change', { detail: false })
+                                )}
+                            >
+                              ${t('sessions.showExited')}
+                            </button>
                           </div>
                         </div>
                       `

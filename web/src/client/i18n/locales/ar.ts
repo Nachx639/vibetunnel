@@ -239,7 +239,6 @@ export const ar: Messages = {
   'sessions.loadingList': 'جارٍ تحميل الجلسات...',
   'sessions.cleanupFailed': 'تعذّر تنظيف الجلسات المنتهية',
   'sessions.activeSession': 'الجلسة النشطة',
-  'sessions.empty.exitedHidden': 'توجد جلسات منتهية. اعرضها بتبديل "إخفاء المنتهية" في الأعلى.',
   'sessions.empty.title': 'لا توجد جلسات طرفية بعد!',
   'sessions.empty.getStartedBefore': 'ابدأ باستخدام الأمر',
   'sessions.empty.getStartedAfter': 'في الطرفية:',
@@ -895,4 +894,7 @@ export const ar: Messages = {
   'switcher.quickLabel': 'تبديل سريع للجلسة',
   'switcher.quickPlaceholder': 'تبديل الجلسة… (اكتب للتصفية)',
   'switcher.noMatches': 'لا توجد جلسات مطابقة',
+  'sessions.empty.allExited': 'انتهت كل الجلسات هنا.',
+  'sessions.newSession': 'جلسة جديدة',
+  'sessions.showExited': 'إظهار الجلسات المنتهية',
 };

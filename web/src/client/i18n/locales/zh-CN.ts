@@ -237,7 +237,6 @@ export const zhCN: Messages = {
   'sessions.loadingList': '正在加载会话...',
   'sessions.cleanupFailed': '清理已退出的会话失败',
   'sessions.activeSession': '当前会话',
-  'sessions.empty.exitedHidden': '有已退出的会话。切换上方的“隐藏已退出”即可显示。',
   'sessions.empty.title': '还没有终端会话！',
   'sessions.empty.getStartedBefore': '开始使用：在终端中运行',
   'sessions.empty.getStartedAfter': '命令：',
@@ -887,4 +886,7 @@ export const zhCN: Messages = {
   'switcher.quickLabel': '快速切换会话',
   'switcher.quickPlaceholder': '切换会话…（输入以筛选）',
   'switcher.noMatches': '没有匹配的会话',
+  'sessions.empty.allExited': '所有会话都已结束。',
+  'sessions.newSession': '新建会话',
+  'sessions.showExited': '显示已结束的会话',
 };

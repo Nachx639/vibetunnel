@@ -239,7 +239,6 @@ export const hi: Messages = {
   'sessions.loadingList': 'सत्र लोड हो रहे हैं...',
   'sessions.cleanupFailed': 'समाप्त सत्र साफ़ नहीं किए जा सके',
   'sessions.activeSession': 'सक्रिय सत्र',
-  'sessions.empty.exitedHidden': 'कुछ सत्र समाप्त हो चुके हैं। ऊपर "समाप्त छिपाएँ" बदलकर उन्हें दिखाएँ।',
   'sessions.empty.title': 'अभी कोई टर्मिनल सत्र नहीं है!',
   'sessions.empty.getStartedBefore': 'शुरू करने के लिए अपने टर्मिनल में',
   'sessions.empty.getStartedAfter': 'कमांड का उपयोग करें:',
@@ -896,4 +895,7 @@ export const hi: Messages = {
   'switcher.quickLabel': 'सत्र जल्दी बदलें',
   'switcher.quickPlaceholder': 'सत्र बदलें… (फ़िल्टर करने के लिए लिखें)',
   'switcher.noMatches': 'कोई सत्र मेल नहीं खाता',
+  'sessions.empty.allExited': 'यहाँ के सभी सत्र समाप्त हो चुके हैं।',
+  'sessions.newSession': 'नया सत्र',
+  'sessions.showExited': 'समाप्त सत्र दिखाएँ',
 };

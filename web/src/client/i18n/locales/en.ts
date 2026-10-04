@@ -250,8 +250,6 @@ export const en = {
   'sessions.loadingList': 'Loading sessions...',
   'sessions.cleanupFailed': 'Failed to cleanup exited sessions',
   'sessions.activeSession': 'Active Session',
-  'sessions.empty.exitedHidden':
-    'There are exited sessions. Show them by toggling "Hide exited" above.',
   'sessions.empty.title': 'No terminal sessions yet!',
   'sessions.empty.getStartedBefore': 'Get started by using the',
   'sessions.empty.getStartedAfter': 'command in your terminal:',
@@ -917,6 +915,9 @@ export const en = {
   'switcher.quickLabel': 'Quick switch session',
   'switcher.quickPlaceholder': 'Switch session… (type to filter)',
   'switcher.noMatches': 'No matching sessions',
+  'sessions.empty.allExited': 'Every session here has exited.',
+  'sessions.newSession': 'New session',
+  'sessions.showExited': 'Show exited sessions',
 };
 
 export type MessageKey = keyof typeof en;

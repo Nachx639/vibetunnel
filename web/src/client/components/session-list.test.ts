@@ -454,6 +454,24 @@ describe('SessionList', () => {
     });
   });
 
+  describe('all sessions exited', () => {
+    it('offers New session and Show exited sessions instead of a hint', async () => {
+      const create = vi.fn();
+      const show = vi.fn();
+      element.addEventListener('open-create-dialog', create);
+      element.addEventListener('hide-exited-change', show);
+      element.hideExited = true;
+      element.sessions = [createMockSession({ status: 'exited' })];
+      await element.updateComplete;
+
+      expect(element.textContent).toContain('Every session here has exited.');
+      (element.querySelector('[data-testid="all-exited-new-session"]') as HTMLElement).click();
+      (element.querySelector('[data-testid="all-exited-show"]') as HTMLElement).click();
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(show).toHaveBeenCalledWith(expect.objectContaining({ detail: false }));
+    });
+  });
+
   describe('refresh handling', () => {
     it('should emit refresh event when refresh button is clicked', async () => {
       const refreshHandler = vi.fn();

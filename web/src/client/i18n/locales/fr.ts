@@ -252,8 +252,6 @@ export const fr: Messages = {
   'sessions.loadingList': 'Chargement des sessions...',
   'sessions.cleanupFailed': 'Impossible de nettoyer les sessions terminées',
   'sessions.activeSession': 'Session active',
-  'sessions.empty.exitedHidden':
-    'Il y a des sessions terminées. Affichez-les en désactivant « Masquer les terminées » ci-dessus.',
   'sessions.empty.title': 'Aucune session de terminal pour l’instant !',
   'sessions.empty.getStartedBefore': 'Commencez par utiliser la commande',
   'sessions.empty.getStartedAfter': 'dans votre terminal :',
@@ -933,4 +931,7 @@ export const fr: Messages = {
   'switcher.quickLabel': 'Changement rapide de session',
   'switcher.quickPlaceholder': 'Changer de session… (tapez pour filtrer)',
   'switcher.noMatches': 'Aucune session ne correspond',
+  'sessions.empty.allExited': 'Toutes les sessions sont terminées.',
+  'sessions.newSession': 'Nouvelle session',
+  'sessions.showExited': 'Afficher les sessions terminées',
 };

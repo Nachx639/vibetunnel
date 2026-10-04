@@ -250,8 +250,6 @@ export const ptBR: Messages = {
   'sessions.loadingList': 'Carregando sessões...',
   'sessions.cleanupFailed': 'Não foi possível limpar as sessões encerradas',
   'sessions.activeSession': 'Sessão ativa',
-  'sessions.empty.exitedHidden':
-    'Há sessões encerradas. Mostre-as desativando "Ocultar encerradas" acima.',
   'sessions.empty.title': 'Ainda não há sessões de terminal!',
   'sessions.empty.getStartedBefore': 'Comece usando o comando',
   'sessions.empty.getStartedAfter': 'no seu terminal:',
@@ -921,4 +919,7 @@ export const ptBR: Messages = {
   'switcher.quickLabel': 'Troca rápida de sessão',
   'switcher.quickPlaceholder': 'Trocar de sessão… (digite para filtrar)',
   'switcher.noMatches': 'Nenhuma sessão corresponde',
+  'sessions.empty.allExited': 'Todas as sessões foram encerradas.',
+  'sessions.newSession': 'Nova sessão',
+  'sessions.showExited': 'Mostrar sessões encerradas',
 };
