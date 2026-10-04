@@ -2840,6 +2840,26 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 .phone-tool:active {
   transform: scale(0.98);
 }
+/* A quick start whose program is not installed: dimmed, "Not installed" under its name; the
+   big button loses its call-to-action colour. Same in the "+" sheet. */
+.phone-tool.unavailable,
+.psr-sheet-group button.unavailable {
+  opacity: 0.55;
+}
+.phone-tool.primary.unavailable {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  box-shadow: none;
+}
+.phone-tool-note,
+.psr-sheet-note {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
 .psr-avatar-tool {
   background: hsl(var(--tool-hue, 200) 55% 46%);
   color: #fff;

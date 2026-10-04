@@ -31,8 +31,14 @@ import './session-list/compact-session-card.js';
 import './session-list/repository-header.js';
 import './clickable-path.js';
 import './git-status-badge.js';
+import { quickStartProgram } from '../../shared/quick-start.js';
 import { getBaseRepoName } from '../../shared/utils/git.js';
 import type { QuickStartCommand } from '../../types/config.js';
+import {
+  fetchQuickStartAvailability,
+  isQuickStartAvailable,
+  type QuickStartAvailability,
+} from '../services/quick-start-availability.js';
 import { serverConfigService } from '../services/server-config-service.js';
 import { parseCommand } from '../utils/command-utils.js';
 import { Z_INDEX } from '../utils/constants.js';
@@ -55,6 +61,8 @@ const WORKTREE_RETRY_MS = 60_000;
  */
 const PHONE_STARTS_KEY = 'vt-phone-recent-starts';
 const MAX_RECENT_FOLDERS = 6;
+/** How often the phone asks again which quick starts the server can run (it caches 5 min). */
+const QUICK_START_AVAILABILITY_REFRESH_MS = 60_000;
 
 interface PhoneStarts {
   tool?: string;
@@ -1234,8 +1242,29 @@ export class SessionList extends LitElement {
   /** Quick starts from the server config, loaded on first use. */
   @state() private quickStarts: QuickStartCommand[] = [];
   private quickStartsLoaded = false;
+  /**
+   * Quick-start programs the server's machine doesn't have ({ gemini: false }): dimmed, and a
+   * tap says so. {} (everything offered) until the server answers, or when the check is off.
+   */
+  @state() private quickStartAvailability: QuickStartAvailability = {};
+  private quickStartAvailabilityAt = 0;
+
+  private refreshQuickStartAvailability() {
+    if (Date.now() - this.quickStartAvailabilityAt < QUICK_START_AVAILABILITY_REFRESH_MS) return;
+    this.quickStartAvailabilityAt = Date.now();
+    void fetchQuickStartAvailability(this.authClient?.getAuthHeader() ?? {}).then(
+      (availability) => {
+        this.quickStartAvailability = availability;
+      }
+    );
+  }
+
+  private quickStartAvailable(entry: QuickStartCommand): boolean {
+    return isQuickStartAvailable(this.quickStartAvailability, entry.command);
+  }
 
   private loadQuickStarts() {
+    this.refreshQuickStartAvailability();
     if (this.quickStartsLoaded) return;
     this.quickStartsLoaded = true;
     serverConfigService
@@ -1258,9 +1287,19 @@ export class SessionList extends LitElement {
     return (entry.name || entry.command).trim();
   }
 
-  /** A quick start tapped: on to its folder. */
+  /** A quick start tapped: on to its folder, unless its program is not installed. */
   private chooseQuickStart(entry: QuickStartCommand) {
-    this.openFolderSheet(entry);
+    if (this.quickStartAvailable(entry)) {
+      this.openFolderSheet(entry);
+      return;
+    }
+    // Its session would only fail with "command not found": say why nothing starts instead.
+    this.dispatchEvent(
+      new CustomEvent('error', {
+        detail: t('quickStart.notInstalledOnServer', { name: quickStartProgram(entry.command) }),
+        bubbles: true,
+      })
+    );
   }
 
   /** Phone home with nothing running: pick a tool (your quick starts), then a folder. */
@@ -1272,14 +1311,21 @@ export class SessionList extends LitElement {
         <h2>${t('empty.title')}</h2>
         <p>${t('empty.subtitle')}</p>
         <div class="phone-empty-tools">
-          ${tools.map(
-            (entry, index) => html`<button
-              class="phone-tool ${index === 0 ? 'primary' : ''}"
+          ${tools.map((entry, index) => {
+            const available = this.quickStartAvailable(entry);
+            return html`<button
+              class="phone-tool ${index === 0 ? 'primary' : ''} ${available ? '' : 'unavailable'}"
+              aria-disabled=${available ? nothing : 'true'}
               @click=${() => this.chooseQuickStart(entry)}
             >
               ${this.quickStartLabel(entry)}
-            </button>`
-          )}
+              ${
+                available
+                  ? nothing
+                  : html`<span class="phone-tool-note">${t('quickStart.notInstalled')}</span>`
+              }
+            </button>`;
+          })}
           <button class="phone-tool" @click=${() => this.openCreateDialog()}>
             ${t('empty.custom')}
           </button>
@@ -1372,7 +1418,7 @@ export class SessionList extends LitElement {
   /** Action sheet in <body> (the phone sidebar's transform would trap position:fixed). */
   private showSheet(
     title: string,
-    buttons: Array<{ label: string; mono?: boolean; run: () => void }>
+    buttons: Array<{ label: string; mono?: boolean; unavailableNote?: string; run: () => void }>
   ) {
     this.closeSheet();
     // Closing a previous sheet (tool -> folder) already handed focus back to its opener.
@@ -1389,7 +1435,8 @@ export class SessionList extends LitElement {
             <div class="psr-sheet-title">${title}</div>
             ${buttons.map(
               (button) => html`<button
-                class=${button.mono ? 'folder' : ''}
+                class="${button.mono ? 'folder' : ''} ${button.unavailableNote ? 'unavailable' : ''}"
+                aria-disabled=${button.unavailableNote ? 'true' : nothing}
                 @pointerup=${this.sheetAction(() => {
                   this.closeSheet();
                   button.run();
@@ -1400,6 +1447,11 @@ export class SessionList extends LitElement {
                 })}
               >
                 <bdi>${button.label}</bdi>
+                ${
+                  button.unavailableNote
+                    ? html`<span class="psr-sheet-note">${button.unavailableNote}</span>`
+                    : nothing
+                }
               </button>`
             )}
           </div>
@@ -1435,6 +1487,7 @@ export class SessionList extends LitElement {
     this.showSheet(t('newChat.which'), [
       ...this.quickStartList().map((entry) => ({
         label: this.quickStartLabel(entry),
+        unavailableNote: this.quickStartAvailable(entry) ? undefined : t('quickStart.notInstalled'),
         run: () => this.chooseQuickStart(entry),
       })),
       { label: t('empty.custom'), run: () => this.openCreateDialog() },

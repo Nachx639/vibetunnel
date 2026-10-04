@@ -26,6 +26,10 @@ import type { QuickStartCommand } from '../../types/config.js';
 import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import { type GitRepoInfo, GitService } from '../services/git-service.js';
+import {
+  fetchQuickStartAvailability,
+  type QuickStartAvailability,
+} from '../services/quick-start-availability.js';
 import { RemoteService, type RemoteSummary } from '../services/remote-service.js';
 import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
@@ -116,6 +120,8 @@ export class SessionCreateForm extends LitElement {
     { label: 'zsh', command: 'zsh' },
     { label: 'node', command: 'node' },
   ];
+  /** Quick-start programs missing on the server, asked each time the form opens; {} until known. */
+  @state() private quickStartAvailability: QuickStartAvailability = {};
 
   // State properties for UI
   // biome-ignore lint/correctness/noUnusedPrivateClassMembers: Used in template
@@ -416,10 +422,19 @@ export class SessionCreateForm extends LitElement {
         return;
       }
 
+      // This server's own programs: never asked on an HQ, whose sessions run elsewhere.
+      void this.loadQuickStartAvailability();
       await Promise.all([this.checkGitRepository(), this.discoverRepositories()]);
     } catch (error) {
       logger.error('Failed to initialize session form:', error);
     }
+  }
+
+  private async loadQuickStartAvailability() {
+    if (!this.authClient) return;
+    this.quickStartAvailability = await fetchQuickStartAvailability(
+      this.authClient.getAuthHeader()
+    );
   }
 
   private clearLocalRepositoryContext() {
@@ -1479,6 +1494,7 @@ export class SessionCreateForm extends LitElement {
             <!-- Quick Start Section -->
             <quick-start-section
               .commands=${this.quickStartCommands}
+              .availability=${this.quickStartAvailability}
               .selectedCommand=${this.command}
               .disabled=${this.disabled}
               .isCreating=${this.isCreating}

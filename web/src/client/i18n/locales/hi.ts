@@ -896,4 +896,7 @@ export const hi: Messages = {
   'switcher.quickLabel': 'सत्र जल्दी बदलें',
   'switcher.quickPlaceholder': 'सत्र बदलें… (फ़िल्टर करने के लिए लिखें)',
   'switcher.noMatches': 'कोई सत्र मेल नहीं खाता',
+  // Quick-start availability
+  'quickStart.notInstalled': 'इंस्टॉल नहीं है',
+  'quickStart.notInstalledOnServer': 'VibeTunnel चलाने वाले कंप्यूटर पर {name} इंस्टॉल नहीं है',
 };

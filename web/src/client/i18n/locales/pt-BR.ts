@@ -921,4 +921,8 @@ export const ptBR: Messages = {
   'switcher.quickLabel': 'Troca rápida de sessão',
   'switcher.quickPlaceholder': 'Trocar de sessão… (digite para filtrar)',
   'switcher.noMatches': 'Nenhuma sessão corresponde',
+  // Quick-start availability
+  'quickStart.notInstalled': 'Não instalado',
+  'quickStart.notInstalledOnServer':
+    '{name} não está instalado no computador que executa o VibeTunnel',
 };

@@ -917,6 +917,9 @@ export const en = {
   'switcher.quickLabel': 'Quick switch session',
   'switcher.quickPlaceholder': 'Switch session… (type to filter)',
   'switcher.noMatches': 'No matching sessions',
+  // Quick-start availability
+  'quickStart.notInstalled': 'Not installed',
+  'quickStart.notInstalledOnServer': '{name} is not installed on the computer running VibeTunnel',
 };
 
 export type MessageKey = keyof typeof en;

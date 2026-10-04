@@ -741,6 +741,35 @@ describe('SessionList', () => {
       expect(sheetButtons()).toEqual(['zsh', 'claude', 'Other command…']);
     });
 
+    it('dims a quick start the server reports missing, and says why instead of starting it', async () => {
+      const list = element as unknown as {
+        quickStarts: Array<{ name?: string; command: string }>;
+        quickStartsLoaded: boolean;
+        quickStartAvailabilityAt: number;
+        quickStartAvailability: Record<string, boolean>;
+        openToolSheet: () => void;
+        chooseQuickStart: (entry: { command: string }) => void;
+      };
+      list.quickStartsLoaded = true;
+      list.quickStartAvailabilityAt = Date.now();
+      list.quickStarts = [{ command: 'zsh' }, { command: 'gemini --yolo' }];
+      list.quickStartAvailability = { zsh: true, gemini: false };
+      list.openToolSheet();
+      const buttons = [...document.body.querySelectorAll('.psr-sheet-group button')];
+      expect(buttons[1].classList.contains('unavailable')).toBe(true);
+      expect(buttons[1].textContent).toContain('Not installed');
+      expect(buttons[0].classList.contains('unavailable')).toBe(false);
+      document.body.querySelector('.psr-sheet-cancel')?.dispatchEvent(new Event('click'));
+
+      const errors = vi.fn();
+      element.addEventListener('error', errors);
+      list.chooseQuickStart({ command: 'gemini --yolo' });
+      expect(errors.mock.calls[0][0].detail).toBe(
+        'gemini is not installed on the computer running VibeTunnel'
+      );
+      expect(document.body.querySelector('.psr-sheet')).toBeNull();
+    });
+
     it('searches past the hidden finished sessions once the list is long', async () => {
       const list = element as unknown as { usePhoneRows: () => boolean; phoneQuery: string };
       vi.spyOn(list, 'usePhoneRows').mockReturnValue(true);

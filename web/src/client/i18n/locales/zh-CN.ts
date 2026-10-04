@@ -887,4 +887,7 @@ export const zhCN: Messages = {
   'switcher.quickLabel': '快速切换会话',
   'switcher.quickPlaceholder': '切换会话…（输入以筛选）',
   'switcher.noMatches': '没有匹配的会话',
+  // Quick-start availability
+  'quickStart.notInstalled': '未安装',
+  'quickStart.notInstalledOnServer': '运行 VibeTunnel 的电脑上未安装 {name}',
 };

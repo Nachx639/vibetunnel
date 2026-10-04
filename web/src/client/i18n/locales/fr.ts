@@ -933,4 +933,8 @@ export const fr: Messages = {
   'switcher.quickLabel': 'Changement rapide de session',
   'switcher.quickPlaceholder': 'Changer de session… (tapez pour filtrer)',
   'switcher.noMatches': 'Aucune session ne correspond',
+  // Quick-start availability
+  'quickStart.notInstalled': 'Non installé',
+  'quickStart.notInstalledOnServer':
+    '{name} n’est pas installé sur l’ordinateur qui exécute VibeTunnel',
 };

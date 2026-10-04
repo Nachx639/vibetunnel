@@ -895,4 +895,7 @@ export const ar: Messages = {
   'switcher.quickLabel': 'تبديل سريع للجلسة',
   'switcher.quickPlaceholder': 'تبديل الجلسة… (اكتب للتصفية)',
   'switcher.noMatches': 'لا توجد جلسات مطابقة',
+  // Quick-start availability
+  'quickStart.notInstalled': 'غير مثبّت',
+  'quickStart.notInstalledOnServer': '{name} غير مثبّت على الحاسوب الذي يشغّل VibeTunnel',
 };

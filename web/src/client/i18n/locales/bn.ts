@@ -898,4 +898,7 @@ export const bn: Messages = {
   'switcher.quickLabel': 'দ্রুত সেশন বদলান',
   'switcher.quickPlaceholder': 'সেশন বদলান… (ফিল্টার করতে লিখুন)',
   'switcher.noMatches': 'কোনো সেশন মেলেনি',
+  // Quick-start availability
+  'quickStart.notInstalled': 'ইনস্টল করা নেই',
+  'quickStart.notInstalledOnServer': 'VibeTunnel চালানো কম্পিউটারে {name} ইনস্টল করা নেই',
 };
