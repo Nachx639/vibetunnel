@@ -999,4 +999,23 @@ export const hi: Messages = {
   'chat.yesterday': 'कल',
   'chat.yourInput': 'आपका इनपुट',
   'chat.sending': 'भेजा जा रहा है…',
+  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  'chat.dictate': 'डिक्टेट करें (आवाज़ से टेक्स्ट)',
+  'chat.stopDictation': 'बोलकर लिखना बंद करें',
+  'dictation.starting': 'माइक्रोफ़ोन तैयार हो रहा है…',
+  'dictation.listening': 'सुन रहा है… अब बोलें',
+  'dictation.recording': 'रिकॉर्ड हो रहा है… खत्म करने के लिए माइक फिर टैप करें',
+  'dictation.transcribing': 'लिखा जा रहा है…',
+  'dictation.error.unsupported':
+    'यह ब्राउज़र डिक्टेट नहीं कर सकता और सर्वर पर ट्रांसक्रिप्शन इंस्टॉल नहीं है। कीबोर्ड का डिक्टेशन इस्तेमाल करें।',
+  'dictation.error.insecure': 'डिक्टेशन के लिए सुरक्षित कनेक्शन चाहिए (VibeTunnel को https पर खोलें)।',
+  'dictation.error.denied':
+    'माइक्रोफ़ोन या आवाज़ पहचान ब्लॉक है। ब्राउज़र सेटिंग्स में इस साइट के लिए माइक की अनुमति दें।',
+  'dictation.error.no-speech': 'कुछ सुनाई नहीं दिया। माइक टैप करें और थोड़ा ज़ोर से बोलें।',
+  'dictation.error.no-mic': 'कोई माइक्रोफ़ोन नहीं मिला।',
+  'dictation.error.network':
+    'ट्रांसक्राइब करने के लिए सर्वर से संपर्क नहीं हो सका। कनेक्शन जाँचें और फिर कोशिश करें।',
+  'dictation.error.no-audio':
+    'माइक्रोफ़ोन कोई आवाज़ नहीं पकड़ रहा। जाँचें कि यह म्यूट नहीं है या किसी दूसरे ऐप में इस्तेमाल नहीं हो रहा, फिर कोशिश करें।',
+  'dictation.error.failed': 'डिक्टेशन विफल रहा। फिर कोशिश करें।',
 };

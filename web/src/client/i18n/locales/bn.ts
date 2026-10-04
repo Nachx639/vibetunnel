@@ -1001,4 +1001,22 @@ export const bn: Messages = {
   'chat.yesterday': 'গতকাল',
   'chat.yourInput': 'আপনার ইনপুট',
   'chat.sending': 'পাঠানো হচ্ছে…',
+  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  'chat.dictate': 'ডিক্টেট (কণ্ঠস্বর থেকে লেখা)',
+  'chat.stopDictation': 'বলে লেখা থামান',
+  'dictation.starting': 'মাইক্রোফোন প্রস্তুত হচ্ছে…',
+  'dictation.listening': 'শুনছে… এখন বলুন',
+  'dictation.recording': 'রেকর্ড হচ্ছে… শেষ করতে মাইক আবার ট্যাপ করুন',
+  'dictation.transcribing': 'লেখা হচ্ছে…',
+  'dictation.error.unsupported':
+    'এই ব্রাউজার ডিক্টেট করতে পারে না এবং সার্ভারে ট্রান্সক্রিপশন ইনস্টল নেই। কীবোর্ডের ডিক্টেশন ব্যবহার করুন।',
+  'dictation.error.insecure': 'ডিক্টেশনের জন্য নিরাপদ সংযোগ লাগে (VibeTunnel https-এ খুলুন)।',
+  'dictation.error.denied':
+    'মাইক্রোফোন বা ভয়েস শনাক্তকরণ ব্লক করা আছে। ব্রাউজারের সেটিংসে এই সাইটের জন্য মাইকের অনুমতি দিন।',
+  'dictation.error.no-speech': 'কিছু শোনা যায়নি। মাইক ট্যাপ করে একটু জোরে বলুন।',
+  'dictation.error.no-mic': 'কোনো মাইক্রোফোন পাওয়া যায়নি।',
+  'dictation.error.network': 'ট্রান্সক্রাইব করতে সার্ভারে পৌঁছানো যায়নি। সংযোগ দেখে আবার চেষ্টা করুন।',
+  'dictation.error.no-audio':
+    'মাইক্রোফোনে কোনো শব্দ আসছে না। এটি মিউট বা অন্য অ্যাপে ব্যবহৃত নয় তা দেখে আবার চেষ্টা করুন।',
+  'dictation.error.failed': 'ডিক্টেশন ব্যর্থ হয়েছে। আবার চেষ্টা করুন।',
 };

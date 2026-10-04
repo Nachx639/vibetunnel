@@ -998,4 +998,22 @@ export const ar: Messages = {
   'chat.yesterday': 'أمس',
   'chat.yourInput': 'مُدخلك',
   'chat.sending': 'جارٍ الإرسال…',
+  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  'chat.dictate': 'إملاء (تحويل الصوت إلى نص)',
+  'chat.stopDictation': 'إيقاف الإملاء',
+  'dictation.starting': 'جارٍ تجهيز الميكروفون…',
+  'dictation.listening': 'يستمع… تحدّث الآن',
+  'dictation.recording': 'يسجّل… اضغط على الميكروفون مرة أخرى للإنهاء',
+  'dictation.transcribing': 'جارٍ التفريغ…',
+  'dictation.error.unsupported':
+    'لا يستطيع هذا المتصفح الإملاء ولا يوجد تفريغ مثبت على الخادم. استخدم الإملاء في لوحة المفاتيح.',
+  'dictation.error.insecure': 'يحتاج الإملاء إلى اتصال آمن (افتح VibeTunnel عبر https).',
+  'dictation.error.denied':
+    'الميكروفون أو التعرّف على الكلام محظور. اسمح باستخدام الميكروفون لهذا الموقع في إعدادات المتصفح.',
+  'dictation.error.no-speech': 'لم أسمع شيئًا. اضغط على الميكروفون وتحدّث بصوت أعلى قليلًا.',
+  'dictation.error.no-mic': 'لم يُعثر على ميكروفون.',
+  'dictation.error.network': 'تعذّر الوصول إلى الخادم للتفريغ. تحقّق من الاتصال وحاول مجددًا.',
+  'dictation.error.no-audio':
+    'لا يلتقط الميكروفون أي صوت. تأكّد من أنه غير مكتوم ولا يستخدمه تطبيق آخر، ثم حاول مجددًا.',
+  'dictation.error.failed': 'فشل الإملاء. حاول مجددًا.',
 };

@@ -1037,4 +1037,24 @@ export const fr: Messages = {
   'chat.yesterday': 'Hier',
   'chat.yourInput': 'votre saisie',
   'chat.sending': 'Envoi…',
+  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  'chat.dictate': 'Dicter (voix en texte)',
+  'chat.stopDictation': 'Arrêter la dictée',
+  'dictation.starting': 'Préparation du micro…',
+  'dictation.listening': 'Écoute… parlez maintenant',
+  'dictation.recording': 'Enregistrement… touchez à nouveau le micro pour terminer',
+  'dictation.transcribing': 'Transcription…',
+  'dictation.error.unsupported':
+    "Ce navigateur ne peut pas dicter et le serveur n'a pas de transcription installée. Utilisez la dictée du clavier.",
+  'dictation.error.insecure':
+    'La dictée nécessite une connexion sécurisée (ouvrez VibeTunnel en https).',
+  'dictation.error.denied':
+    'Le micro ou la reconnaissance vocale est bloqué. Autorisez le micro pour ce site dans les réglages du navigateur.',
+  'dictation.error.no-speech': 'Rien entendu. Touchez le micro et parlez un peu plus fort.',
+  'dictation.error.no-mic': 'Aucun micro trouvé.',
+  'dictation.error.network':
+    'Impossible de joindre le serveur pour transcrire. Vérifiez la connexion et réessayez.',
+  'dictation.error.no-audio':
+    "Le micro ne capte aucun son. Vérifiez qu'il n'est pas coupé ni utilisé par une autre app, puis réessayez.",
+  'dictation.error.failed': 'La dictée a échoué. Réessayez.',
 };

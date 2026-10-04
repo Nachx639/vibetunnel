@@ -1020,6 +1020,25 @@ export const en = {
   'chat.yesterday': 'Yesterday',
   'chat.yourInput': 'your input',
   'chat.sending': 'Sending…',
+  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  'chat.dictate': 'Dictate (speech to text)',
+  'chat.stopDictation': 'Stop dictation',
+  'dictation.starting': 'Getting the microphone ready…',
+  'dictation.listening': 'Listening… speak now',
+  'dictation.recording': 'Recording… tap the mic again to finish',
+  'dictation.transcribing': 'Transcribing…',
+  'dictation.error.unsupported':
+    "This browser can't dictate and the server has no transcription installed. Use your keyboard's dictation instead.",
+  'dictation.error.insecure': 'Dictation needs a secure connection (open VibeTunnel over https).',
+  'dictation.error.denied':
+    "The microphone or speech recognition is blocked. Allow the microphone for this site in your browser's settings.",
+  'dictation.error.no-speech': "Didn't catch anything. Tap the mic and speak a bit louder.",
+  'dictation.error.no-mic': 'No microphone was found.',
+  'dictation.error.network':
+    "Couldn't reach the server to transcribe. Check the connection and try again.",
+  'dictation.error.no-audio':
+    "The microphone isn't picking up any sound. Check it isn't muted or in use by another app, then try again.",
+  'dictation.error.failed': 'Dictation failed. Try again.',
 };
 
 export type MessageKey = keyof typeof en;

@@ -1,6 +1,13 @@
 import { css, html, LitElement, nothing } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { LocaleController, type MessageKey, t } from '../i18n/index.js';
+import { authClient } from '../services/auth-client.js';
+import {
+  DictationController,
+  type DictationState,
+  dictationErrorKey,
+  serverDictation,
+} from '../utils/dictation.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { endsADrag } from '../utils/pointer-drag.js';
@@ -465,6 +472,56 @@ export class TerminalChatView extends LitElement {
       transform: scale(0.95);
     }
 
+    .dictation-note {
+      margin: 0 0.875rem 0.375rem;
+      padding: 0.375rem 0.625rem;
+      border-radius: 0.625rem;
+      font-size: 0.8125rem;
+      line-height: 1.35;
+    }
+    .dictation-note.active {
+      color: var(--color-status-error);
+      background: color-mix(in srgb, var(--color-status-error) 10%, transparent);
+    }
+    .dictation-note.error {
+      color: rgb(200 205 210);
+      background: rgb(45 50 55);
+    }
+    .mic-spinner {
+      width: 1rem;
+      height: 1rem;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      animation: mic-spin 0.8s linear infinite;
+    }
+    @keyframes mic-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+    .mic-button.listening {
+      color: #fff;
+      background-color: var(--color-status-error);
+      border-color: var(--color-status-error);
+      animation: mic-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes mic-pulse {
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-status-error) 45%, transparent);
+      }
+      50% {
+        box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-status-error) 0%, transparent);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .mic-button.listening,
+      .mic-spinner {
+        animation: none;
+      }
+    }
+
     .chat-message {
       margin-bottom: 1rem;
       display: flex;
@@ -740,11 +797,15 @@ export class TerminalChatView extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.subscribeToTerminalOutput();
+    // Asked only while chat mode is shown (see updated()), never for a hidden view.
+    if (this.active) void this.checkVoice();
   }
 
   disconnectedCallback() {
     clearTimeout(this.longPressTimer);
     clearTimeout(this.composerNoteTimer);
+    this.dictationController.cancel();
+    if (this.dictationNoteTimer) clearTimeout(this.dictationNoteTimer);
     this.unsubscribeFromTerminalOutput();
     this.stopTerminalSync();
     this.clearDelayedTasks();
@@ -888,6 +949,15 @@ export class TerminalChatView extends LitElement {
       this.failedSends.clear();
     }
     super.updated(changedProperties);
+    // This view stays mounted (hidden) outside chat mode and is reused across sessions:
+    // a dictation must not keep the mic on, or drop its text into another session's box.
+    if (
+      (changedProperties.has('active') && !this.active) ||
+      (changedProperties.has('sessionId') && changedProperties.get('sessionId') !== undefined)
+    ) {
+      this.dictationController.cancel();
+    }
+    if (changedProperties.has('active') && this.active) void this.checkVoice();
     if (changedProperties.has('messages')) {
       this.scrollToBottom();
     }
@@ -1512,6 +1582,7 @@ export class TerminalChatView extends LitElement {
               ></chat-attachment-strip>`
             : nothing
         }
+        ${this.renderDictationNote()}
         <!-- Chat input area (WhatsApp style) -->
         <div 
           class="chat-input-container"
@@ -1567,7 +1638,13 @@ export class TerminalChatView extends LitElement {
                   @blur=${() => logger.log('Input blurred')}
                 />`
           }
-          <button
+          ${this.voiceEnabled ? this.renderMicButton() : nothing}
+          ${
+            // In the composer the mic takes the hide-keyboard button's place (the keyboard's
+            // own key hides it there); the plain input keeps both.
+            this.composerOnly && this.voiceEnabled
+              ? nothing
+              : html`<button
             class="keyboard-dismiss-button"
             @click=${this.handleDismissKeyboard}
             title=${t('chat.hideKeyboard')}
@@ -1576,7 +1653,8 @@ export class TerminalChatView extends LitElement {
               <path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/>
               <path d="M12 19l-4 3v-3h-4v-2h16v2h-4v3z" opacity="0.5"/>
             </svg>
-          </button>
+          </button>`
+          }
           <button
             class="send-button"
             @click=${this.handleSend}
@@ -1944,6 +2022,103 @@ export class TerminalChatView extends LitElement {
     textarea.style.height = `${composerHeightFor(textarea.scrollHeight, getComputedStyle(textarea))}px`;
   }
 
+  /**
+   * Dictation (speech to text into the box; the user still presses send). Shown only when the
+   * server has `"voice": true` in config.json, so by default this view is unchanged.
+   */
+  @state() private voiceEnabled = false;
+  @state() private dictation: DictationState = 'idle';
+  @state() private dictationNote = '';
+  private dictationNoteTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private dictationController = new DictationController({
+    getText: () => this.inputElement?.value ?? '',
+    setText: (value) => {
+      const input = this.inputElement;
+      if (!input) return;
+      input.value = value;
+      if (input instanceof HTMLTextAreaElement) this.autoSize(input);
+      if (this.composerOnly) {
+        // The composer keeps the message local until send, like typed text.
+        saveDraft(this.sessionId, value);
+        this.syncComposerEmpty();
+        return;
+      }
+      // The plain input: the same path as typing, the terminal gets the difference.
+      this.lastInputTime = Date.now();
+      this.onPendingInputChange?.(value);
+      this.sendDeltaToTerminal(value);
+    },
+    onState: (state) => {
+      this.dictation = state;
+      if (state !== 'idle') this.showDictationNote('');
+    },
+    onError: (error) => this.showDictationNote(t(dictationErrorKey(error) as MessageKey)),
+    authHeaders: () => authClient.getAuthHeader(),
+  });
+
+  private async checkVoice() {
+    const { enabled } = await serverDictation(() => authClient.getAuthHeader());
+    this.voiceEnabled = enabled;
+  }
+
+  private showDictationNote(note: string) {
+    if (this.dictationNoteTimer) clearTimeout(this.dictationNoteTimer);
+    this.dictationNote = note;
+    if (note) this.dictationNoteTimer = setTimeout(() => (this.dictationNote = ''), 7000);
+  }
+
+  private toggleDictation = () => {
+    void this.dictationController.toggle();
+  };
+
+  private renderMicButton() {
+    const live =
+      this.dictation === 'listening' ||
+      this.dictation === 'recording' ||
+      this.dictation === 'starting';
+    const label = t(this.dictation === 'idle' ? 'chat.dictate' : 'chat.stopDictation');
+    return html`<button
+      class="keyboard-dismiss-button mic-button ${live ? 'listening' : ''}"
+      data-testid="dictate-button"
+      aria-pressed=${this.dictation === 'idle' ? 'false' : 'true'}
+      ?disabled=${this.dictation === 'transcribing'}
+      title=${label}
+      aria-label=${label}
+      @click=${this.toggleDictation}
+    >
+      ${
+        this.dictation === 'transcribing'
+          ? html`<span class="mic-spinner" aria-hidden="true"></span>`
+          : this.dictation === 'idle'
+            ? html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0014 0M12 18v3" /></svg>`
+            : html`<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>`
+      }
+    </button>`;
+  }
+
+  private renderDictationNote() {
+    const state =
+      this.dictation === 'starting'
+        ? t('dictation.starting')
+        : this.dictation === 'listening'
+          ? t('dictation.listening')
+          : this.dictation === 'recording'
+            ? t('dictation.recording')
+            : this.dictation === 'transcribing'
+              ? t('dictation.transcribing')
+              : '';
+    const text = state || this.dictationNote;
+    if (!text) return nothing;
+    return html`<div
+      class="dictation-note ${state ? 'active' : 'error'}"
+      role=${state ? 'status' : 'alert'}
+      data-testid="dictation-note"
+    >
+      ${text}
+    </div>`;
+  }
+
   private handleInputKeydown(e: KeyboardEvent) {
     // Enter that confirms an IME conversion (Japanese, Chinese...) is not a send.
     if (e.isComposing || e.keyCode === 229) return;
@@ -2136,11 +2311,14 @@ export class TerminalChatView extends LitElement {
       const failed = [...this.failedSends].find(
         ([, sent]) => sent.command === command && sent.paths === paths
       );
+      // A dictation still running must not drop its text into the next message.
+      this.dictationController.cancel();
       this.writeComposer({ command, paths, startedAt, id: failed?.[0] });
       return;
     }
 
     if (!command) return;
+    this.dictationController.cancel();
 
     // Add command to chat
     this.addMessage('command', command);
