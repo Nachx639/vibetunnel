@@ -1,11 +1,10 @@
 // Entry point for the app
-import { initializeMonaco } from './utils/monaco-loader.js';
 import './services/push-notification-service.js';
 import './utils/offline-notification-manager.js';
 import './app.js';
 
-// Initialize Monaco Editor on startup
-initializeMonaco().catch(console.error);
+// Monaco (~4.3 MB of JS) is loaded on demand by <monaco-editor> the first time a file is opened;
+// loading it at startup made every phone download and parse it before the session list.
 
 // Initialize push notification service
 // This will register the service worker and set up push notifications

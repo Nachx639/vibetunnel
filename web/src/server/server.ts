@@ -898,31 +898,29 @@ export async function createApp(): Promise<AppInstance> {
   app.use(
     express.static(publicPath, {
       extensions: ['html'], // This allows /logs to resolve to /logs.html
-      maxAge: isDevelopment ? 0 : '1d', // No cache in dev, 1 day in production
-      etag: !isDevelopment, // Disable ETag in development
-      lastModified: !isDevelopment, // Disable Last-Modified in development
+      maxAge: isDevelopment ? 0 : '1d',
+      // ETag/Last-Modified come from size+mtime, so a rebuild always changes them. With
+      // `no-cache` the browser revalidates on every load and gets a 304 instead of
+      // re-downloading the multi-MB bundle (dev mode used `no-store`).
+      etag: true,
+      lastModified: true,
       setHeaders: (res, filePath) => {
         if (isDevelopment) {
-          // Disable all caching in development
-          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-          res.setHeader('Pragma', 'no-cache');
-          res.setHeader('Expires', '0');
-        } else {
-          // Production caching rules
-          // Set longer cache for immutable assets
-          if (filePath.match(/\.(js|css|woff2?|ttf|eot|svg|png|jpg|jpeg|gif|ico)$/)) {
-            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-          }
-          // Shorter cache for HTML files
-          else if (filePath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
-          }
+          res.setHeader('Cache-Control', 'no-cache');
+        } else if (/\.(js|css|map|wasm|json)$/.test(filePath)) {
+          // Bundle file names carry no content hash, so they must be revalidated: a year-long
+          // `immutable` cache kept phones on the old client after an upgrade.
+          res.setHeader('Cache-Control', 'no-cache');
+        } else if (/\.(woff2?|ttf|eot|svg|png|jpg|jpeg|gif|ico)$/.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
         }
       },
     })
   );
   logger.debug(
-    `Serving static files from: ${publicPath} ${isDevelopment ? 'with caching disabled (dev mode)' : 'with caching headers'}`
+    `Serving static files from: ${publicPath} ${isDevelopment ? 'with revalidation on every request (dev mode)' : 'with caching headers'}`
   );
 
   // Health check endpoint (no auth required)
