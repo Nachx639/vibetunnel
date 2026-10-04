@@ -39,6 +39,7 @@ import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
+import { usesCompactPhoneUi } from './utils/phone-ui.js';
 import { prunePinned } from './utils/pinned-sessions.js';
 import { VisibilityPoller } from './utils/visibility-poller.js';
 
@@ -62,6 +63,17 @@ interface SessionViewElement extends HTMLElement {
   streamConnection?: {
     disconnect: () => void;
   } | null;
+}
+
+/**
+ * In the compact phone layout a phone stays mobile on its side. A Pro Max in landscape is
+ * 956 pt wide, past the 768 pt breakpoint: the rotation "expanded" the sessions sidebar as on
+ * a desktop under the phone's full-screen session view, and the header's "›" (shown only
+ * while it is collapsed) was gone. As mobile, it stays collapsed and opens over the session,
+ * as in portrait. The classic layout keeps the width breakpoints.
+ */
+function phoneMediaState(state: MediaQueryState): MediaQueryState {
+  return usesCompactPhoneUi() ? { isMobile: true, isTablet: false, isDesktop: false } : state;
 }
 
 @customElement('vibetunnel-app')
@@ -103,7 +115,9 @@ export class VibeTunnelApp extends LitElement {
   @state() private sidebarCollapsed = this.loadSidebarState();
   @state() private sidebarWidth = this.loadSidebarWidth();
   @state() private isResizing = false;
-  @state() private mediaState: MediaQueryState = responsiveObserver.getCurrentState();
+  @state() private mediaState: MediaQueryState = phoneMediaState(
+    responsiveObserver.getCurrentState()
+  );
   @state() private hasActiveOverlay = false;
   @state() private keyboardCaptureActive = true;
   private initialLoadComplete = false;
@@ -1470,7 +1484,7 @@ export class VibeTunnelApp extends LitElement {
     // On a phone the open sidebar covers the whole session. Restoring it opened the list over
     // the session a reload or a link pointed at: a phone always starts with it closed; the
     // saved state is for wider screens.
-    if (window.innerWidth < BREAKPOINTS.MOBILE) return true;
+    if (window.innerWidth < BREAKPOINTS.MOBILE || usesCompactPhoneUi()) return true;
     try {
       const saved = localStorage.getItem('sidebarCollapsed');
       const isMobile = window.innerWidth < BREAKPOINTS.MOBILE;
@@ -1523,7 +1537,8 @@ export class VibeTunnelApp extends LitElement {
   }
 
   private setupResponsiveObserver(): void {
-    this.responsiveUnsubscribe = responsiveObserver.subscribe((state) => {
+    this.responsiveUnsubscribe = responsiveObserver.subscribe((viewportState) => {
+      const state = phoneMediaState(viewportState);
       const oldState = this.mediaState;
       this.mediaState = state;
 

@@ -4,7 +4,7 @@
  * Header bar for session view with navigation, session info, status, and controls.
  * Includes back button, sidebar toggle, session details, and terminal controls.
  */
-import { html, LitElement } from 'lit';
+import { html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../../shared/types.js';
 import { LocaleController, t } from '../../i18n/index.js';
@@ -16,7 +16,9 @@ import '../git-status-badge.js';
 import { authClient } from '../../services/auth-client.js';
 import { isAIAssistantSession, sendAIPrompt } from '../../utils/ai-sessions.js';
 import { createLogger } from '../../utils/logger.js';
+import { formatPathForDisplay } from '../../utils/path-utils.js';
 import { usesCompactPhoneUi } from '../../utils/phone-ui.js';
+import { ShortLandscapeController } from '../../utils/short-landscape.js';
 import { closeSessionSwitcher, openSessionSwitcher } from './session-switcher-sheet.js';
 import './compact-menu.js';
 import '../theme-toggle-icon.js';
@@ -33,6 +35,17 @@ export class SessionHeader extends LitElement {
   }
 
   protected readonly i18n = new LocaleController(this);
+  /** A phone on its side (utils/short-landscape.ts). */
+  private readonly shortLandscape = new ShortLandscapeController(this);
+
+  /**
+   * One line in the compact phone layout on a phone on its side: the title and the folder row
+   * took two lines on a Pro Max in landscape, leaving the terminal less height. The title keeps
+   * the folder and branch inline; the folder row goes.
+   */
+  private get oneLine(): boolean {
+    return this.isMobile && usesCompactPhoneUi() && this.shortLandscape.value;
+  }
 
   @property({ type: Object }) session: Session | null = null;
   /** Every session, as the app polls them: the compact phone layout's session switcher. */
@@ -187,10 +200,34 @@ export class SessionHeader extends LitElement {
             --vt-header-padding-right: max(0.5rem, env(safe-area-inset-right));
           }
         }
+
+        /* One line on a phone on its side (oneLine): the title keeps its room, the folder and
+           branch after it give way first. */
+        .session-header-line {
+          display: flex;
+          align-items: baseline;
+          gap: 0.5rem;
+          min-width: 0;
+          overflow: hidden;
+        }
+        .session-header-line-title,
+        .session-header-line-where {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .session-header-line-title {
+          flex: 0 1 auto;
+        }
+        .session-header-line-where {
+          flex: 0 4 auto;
+        }
       </style>
       <!-- Header content -->
       <div
-        class="flex items-center justify-between border-b border-border text-sm min-w-0 max-w-[100vw] bg-bg-secondary py-2 session-header-container"
+        class="flex items-center justify-between border-b border-border text-sm min-w-0 max-w-[100vw] bg-bg-secondary ${this.oneLine ? 'py-1 session-header-one-line' : 'py-2'} session-header-container"
+        data-testid="session-header-bar"
       >
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 overflow-hidden flex-shrink">
           <!-- Sidebar Toggle (when sidebar is collapsed) - visible on all screen sizes -->
@@ -245,8 +282,12 @@ export class SessionHeader extends LitElement {
               : ''
           }
           
-          <!-- Status dot - visible on mobile, after sidebar toggle -->
-          <div class="sm:hidden relative flex-shrink-0">
+          <!-- Status dot - visible on mobile, after sidebar toggle (and on a phone on its side,
+               wider than sm, where it stands for the details row the header drops) -->
+          <div
+            class="${this.oneLine ? '' : 'sm:hidden'} relative flex-shrink-0"
+            data-testid="header-status-dot"
+          >
             <div class="w-2.5 h-2.5 rounded-full ${this.getStatusDotColor()}"></div>
             ${
               this.getStatusText() === 'running'
@@ -345,7 +386,10 @@ export class SessionHeader extends LitElement {
               `
               }
             </div>
-            <div
+            ${
+              this.oneLine
+                ? nothing
+                : html`<div
               class="text-xs opacity-75 mt-0.5 hidden sm:flex items-center gap-2 min-w-0 overflow-hidden"
               data-testid="session-details"
             >
@@ -365,7 +409,8 @@ export class SessionHeader extends LitElement {
                   `
                   : ''
               }
-            </div>
+            </div>`
+            }
           </div>
         </div>
         <div class="flex items-center gap-1 sm:gap-2 text-xs flex-shrink-0 ml-1 sm:ml-2">
@@ -512,18 +557,41 @@ export class SessionHeader extends LitElement {
   private renderPhoneTitle(session: Session) {
     const command = Array.isArray(session.command) ? session.command.join(' ') : '';
     const title = session.name || command;
+    // On its side (oneLine) the folder and branch follow the title, giving way first.
+    const path = this.oneLine ? formatPathForDisplay(session.workingDir ?? '') : '';
+    const folder = path.split('/').filter(Boolean).pop() ?? '';
+    const branch = this.oneLine && session.gitRepoPath ? session.gitBranch || '' : '';
+    const where = [folder, branch && `[${branch}]`].filter(Boolean).join(' ');
     return html`
       <button
         type="button"
         class="flex items-center gap-1 w-full min-w-0 min-h-11 overflow-hidden leading-tight text-left bg-transparent border-0 p-0"
         data-testid="header-phone-title"
         aria-haspopup="dialog"
-        aria-label=${`${title} — ${t('switcher.title')}`}
+        aria-label=${`${where ? `${title}, ${where}` : title} — ${t('switcher.title')}`}
         @click=${() => this.openSwitcher(session)}
       >
-        <span class="block min-w-0 truncate text-sm font-semibold text-text" title=${title}
-          ><bdi>${title}</bdi></span
-        >
+        ${
+          this.oneLine
+            ? html`<span class="session-header-line">
+                <span class="session-header-line-title text-sm font-semibold text-text" title=${title}
+                  ><bdi>${title}</bdi></span
+                >
+                ${
+                  where
+                    ? html`<span
+                        class="session-header-line-where text-xs font-normal text-text-muted"
+                        data-testid="header-inline-where"
+                        title=${[path, branch && `[${branch}]`].filter(Boolean).join(' ')}
+                        ><bdi>${where}</bdi></span
+                      >`
+                    : nothing
+                }
+              </span>`
+            : html`<span class="block min-w-0 truncate text-sm font-semibold text-text" title=${title}
+                ><bdi>${title}</bdi></span
+              >`
+        }
         <svg class="flex-shrink-0 opacity-60" width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/>
         </svg>
