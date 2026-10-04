@@ -13,6 +13,7 @@ import {
 import { createMockSession } from '@/test/utils/lit-test-utils';
 import { resetFactoryCounters } from '@/test/utils/test-factories';
 import { setPhoneUi } from '../utils/phone-ui.js';
+import { closeCopyMode } from './session-view/copy-mode-sheet.js';
 
 const terminalSocketClientMock = vi.hoisted(() => ({
   initialize: vi.fn(),
@@ -867,6 +868,22 @@ describe('SessionView', () => {
         document.removeEventListener('click', outsideClick);
         menuToggle.remove();
       }
+    });
+
+    it('opens Select text on a long press and applies a pinched font size', async () => {
+      const testElement = viewInternals();
+      const renderer = element.querySelector('terminal-renderer');
+      renderer?.dispatchEvent(
+        new CustomEvent('terminal-long-press', { bubbles: true, composed: true })
+      );
+      expect(document.querySelector('[data-testid="copy-mode"]')).toBeTruthy();
+      closeCopyMode();
+
+      renderer?.dispatchEvent(
+        new CustomEvent('font-size-change', { detail: { size: 18 }, bubbles: true, composed: true })
+      );
+      await element.updateComplete;
+      expect(testElement.uiStateManager.getState().terminalFontSize).toBe(18);
     });
   });
 

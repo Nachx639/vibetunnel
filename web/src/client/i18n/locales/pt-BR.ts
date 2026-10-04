@@ -914,4 +914,11 @@ export const ptBR: Messages = {
   'copyMode.copyFailed': 'Não foi possível copiar',
   'copyMode.close': 'Fechar',
   'copyMode.empty': 'Nada na tela ainda',
+
+  // Settings: smooth touch scrolling
+  'settings.touchScroll': 'Rolagem por toque suave',
+  'settings.touchScroll.description':
+    'Como o terminal rola sob o dedo neste navegador. Suave acompanha o dedo pixel a pixel, continua depois que você o levanta e estica nas pontas. Também permite pinçar para mudar o tamanho da fonte e tocar e segurar para selecionar texto.',
+  'settings.touchScroll.classic': 'Clássico',
+  'settings.touchScroll.smooth': 'Suave',
 };

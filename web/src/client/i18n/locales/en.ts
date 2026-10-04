@@ -910,6 +910,13 @@ export const en = {
   'copyMode.copyFailed': "Couldn't copy",
   'copyMode.close': 'Close',
   'copyMode.empty': 'Nothing on screen yet',
+
+  // Settings: smooth touch scrolling
+  'settings.touchScroll': 'Smooth touch scrolling',
+  'settings.touchScroll.description':
+    'How the terminal scrolls under your finger in this browser. Smooth follows the finger pixel by pixel, keeps going after you lift it and stretches at the ends. It also lets you pinch to change the font size and press and hold to select text.',
+  'settings.touchScroll.classic': 'Classic',
+  'settings.touchScroll.smooth': 'Smooth',
 };
 
 export type MessageKey = keyof typeof en;

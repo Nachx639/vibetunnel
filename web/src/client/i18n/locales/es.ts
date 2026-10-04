@@ -915,4 +915,11 @@ export const es: Messages = {
   'copyMode.copyFailed': 'No se pudo copiar',
   'copyMode.close': 'Cerrar',
   'copyMode.empty': 'Aún no hay nada en pantalla',
+
+  // Settings: smooth touch scrolling
+  'settings.touchScroll': 'Desplazamiento táctil suave',
+  'settings.touchScroll.description':
+    'Cómo se desplaza el terminal bajo el dedo en este navegador. Suave sigue al dedo píxel a píxel, continúa tras levantarlo y se estira en los extremos. Además permite pellizcar para cambiar el tamaño de letra y mantener pulsado para seleccionar texto.',
+  'settings.touchScroll.classic': 'Clásico',
+  'settings.touchScroll.smooth': 'Suave',
 };

@@ -892,4 +892,11 @@ export const bn: Messages = {
   'copyMode.copyFailed': 'কপি করা যায়নি',
   'copyMode.close': 'বন্ধ করুন',
   'copyMode.empty': 'স্ক্রিনে এখনও কিছু নেই',
+
+  // Settings: smooth touch scrolling
+  'settings.touchScroll': 'মসৃণ টাচ স্ক্রলিং',
+  'settings.touchScroll.description':
+    'এই ব্রাউজারে আঙুল দিয়ে টার্মিনাল কীভাবে স্ক্রল হয়। মসৃণ আঙুলকে পিক্সেল ধরে অনুসরণ করে, আঙুল তোলার পরেও চলতে থাকে এবং প্রান্তে টেনে যায়। এতে পিঞ্চ করে ফন্টের আকার বদলানো এবং চেপে ধরে টেক্সট নির্বাচন করাও যায়।',
+  'settings.touchScroll.classic': 'ক্লাসিক',
+  'settings.touchScroll.smooth': 'মসৃণ',
 };

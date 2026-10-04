@@ -881,4 +881,11 @@ export const zhCN: Messages = {
   'copyMode.copyFailed': '无法复制',
   'copyMode.close': '关闭',
   'copyMode.empty': '屏幕上还没有内容',
+
+  // Settings: smooth touch scrolling
+  'settings.touchScroll': '平滑触摸滚动',
+  'settings.touchScroll.description':
+    '在此浏览器中用手指滚动终端的方式。平滑模式逐像素跟随手指，松开后继续滑动，并在两端回弹。还可以双指捏合调整字体大小，长按选择文本。',
+  'settings.touchScroll.classic': '经典',
+  'settings.touchScroll.smooth': '平滑',
 };

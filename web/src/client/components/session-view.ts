@@ -202,6 +202,7 @@ export class SessionView extends LitElement {
     this.phoneUiUnsubscribe = subscribeToPhoneUi((value) => {
       this.phoneUi = value;
     });
+    this.addEventListener('font-size-change', this.handlePinchFontSize as EventListener);
 
     // Initialize UIStateManager callbacks
     this.uiStateManager.setCallbacks({
@@ -447,6 +448,7 @@ export class SessionView extends LitElement {
     this.phoneUiUnsubscribe?.();
     this.phoneUiUnsubscribe = undefined;
     closeCopyMode();
+    this.removeEventListener('font-size-change', this.handlePinchFontSize as EventListener);
 
     // Remove orientation listeners
     if (this.boundHandleOrientationChange) {
@@ -877,6 +879,11 @@ export class SessionView extends LitElement {
     // The catcher's own focus opens the keyboard (handleTerminalKeyboardRequest).
     if (e?.detail?.keyboardCatcher) return;
     this.handleKeyboardButtonClick();
+  };
+
+  /** Pinch on the terminal: same path as the font size setting (persisted, refits). */
+  private handlePinchFontSize = (e: CustomEvent<{ size: number }>) => {
+    this.terminalSettingsManager.handleFontSizeChange(e.detail.size);
   };
 
   private async handleTerminalInput(e: CustomEvent) {
@@ -1629,6 +1636,7 @@ export class SessionView extends LitElement {
                   .onTerminalResize=${this.boundHandleTerminalResize}
                   .onTerminalReady=${this.boundHandleTerminalReady}
                   @terminal-tap=${this.handleTerminalTap}
+                  @terminal-long-press=${this.handleSelectText}
                   @terminal-keyboard-request=${this.handleTerminalKeyboardRequest}
                 ></terminal-renderer>
                 

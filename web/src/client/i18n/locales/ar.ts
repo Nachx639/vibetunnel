@@ -889,4 +889,11 @@ export const ar: Messages = {
   'copyMode.copyFailed': 'تعذّر النسخ',
   'copyMode.close': 'إغلاق',
   'copyMode.empty': 'لا شيء على الشاشة بعد',
+
+  // Settings: smooth touch scrolling
+  'settings.touchScroll': 'تمرير لمسي سلس',
+  'settings.touchScroll.description':
+    'طريقة تمرير الطرفية تحت إصبعك في هذا المتصفح. الوضع السلس يتبع الإصبع بكسلًا بكسلًا، ويستمر بعد رفعه، ويتمدد عند الأطراف. كما يتيح القرص لتغيير حجم الخط والضغط المطوّل لتحديد النص.',
+  'settings.touchScroll.classic': 'كلاسيكي',
+  'settings.touchScroll.smooth': 'سلس',
 };

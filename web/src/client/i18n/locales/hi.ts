@@ -890,4 +890,11 @@ export const hi: Messages = {
   'copyMode.copyFailed': 'कॉपी नहीं हो सका',
   'copyMode.close': 'बंद करें',
   'copyMode.empty': 'स्क्रीन पर अभी कुछ नहीं है',
+
+  // Settings: smooth touch scrolling
+  'settings.touchScroll': 'स्मूद टच स्क्रॉलिंग',
+  'settings.touchScroll.description':
+    'इस ब्राउज़र में उंगली से टर्मिनल कैसे स्क्रॉल होता है। स्मूद उंगली के साथ पिक्सेल-दर-पिक्सेल चलता है, उंगली उठाने के बाद भी चलता रहता है और किनारों पर खिंचता है। इससे पिंच करके फ़ॉन्ट का आकार बदल सकते हैं और देर तक दबाकर टेक्स्ट चुन सकते हैं।',
+  'settings.touchScroll.classic': 'क्लासिक',
+  'settings.touchScroll.smooth': 'स्मूद',
 };

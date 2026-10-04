@@ -15,6 +15,11 @@ import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/acce
 import { createLogger } from '../utils/logger.js';
 import { getPhoneUi, type PhoneUi, setPhoneUi } from '../utils/phone-ui.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
+import {
+  getTerminalTouchScroll,
+  setTerminalTouchScroll,
+  type TerminalTouchScroll,
+} from '../utils/touch-scroll-preference.js';
 import { VERSION } from '../version.js';
 import './language-picker.js';
 import './quick-keys-editor.js';
@@ -45,6 +50,7 @@ export class Settings extends LitElement {
   @state() private isDiscoveringRepositories = false;
   @state() private showQuickKeysEditor = false;
   @state() private phoneUi: PhoneUi = getPhoneUi();
+  @state() private terminalTouchScroll: TerminalTouchScroll = getTerminalTouchScroll();
 
   // Appearance state (shared with the header toggle and the session compact menu)
   @state() private themeMode: ThemeMode = getThemeMode();
@@ -808,6 +814,30 @@ export class Settings extends LitElement {
                   }}
                 >
                   ${t(value === 'classic' ? 'settings.phoneLayout.classic' : 'settings.phoneLayout.compact')}
+                </button>
+              `
+            )}
+          </div>
+        </div>
+
+        <!-- Smooth touch scrolling -->
+        <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-touch-scroll">
+          <label class="text-primary font-medium">${t('settings.touchScroll')}</label>
+          <p class="text-muted text-xs mt-1">${t('settings.touchScroll.description')}</p>
+          <div class="appearance-modes mt-3" role="group" aria-label=${t('settings.touchScroll')}>
+            ${(['classic', 'smooth'] as const).map(
+              (value) => html`
+                <button
+                  type="button"
+                  class="appearance-mode min-h-[44px] ${this.terminalTouchScroll === value ? 'active' : ''}"
+                  aria-pressed=${this.terminalTouchScroll === value ? 'true' : 'false'}
+                  data-touch-scroll=${value}
+                  @click=${() => {
+                    setTerminalTouchScroll(value);
+                    this.terminalTouchScroll = value;
+                  }}
+                >
+                  ${t(value === 'classic' ? 'settings.touchScroll.classic' : 'settings.touchScroll.smooth')}
                 </button>
               `
             )}

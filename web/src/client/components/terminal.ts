@@ -18,9 +18,19 @@ import { TERMINAL_FONT_FAMILY, TERMINAL_IDS } from '../utils/terminal-constants.
 import { TerminalPreferencesManager } from '../utils/terminal-preferences.js';
 import { TERMINAL_THEMES, type TerminalThemeId } from '../utils/terminal-themes.js';
 import { getCurrentTheme } from '../utils/theme-utils.js';
+import {
+  getTerminalTouchScroll,
+  subscribeToTerminalTouchScroll,
+  type TerminalTouchScroll,
+} from '../utils/touch-scroll-preference.js';
 import { createGhostty } from './terminal-ghostty.js';
+import { PeekRow, paintCellRow } from './terminal-peek-row.js';
+import { TouchScroller } from './terminal-touch-scroll.js';
 
 const logger = createLogger('terminal');
+
+/** Hold time for a still finger to open copy mode (phones). */
+const LONG_PRESS_MS = 500;
 
 /** How long after a touch ends mouse events count as iOS's emulation of that touch. */
 const EMULATED_MOUSE_MS = 1000;
@@ -100,16 +110,46 @@ export class Terminal extends LitElement {
   private preservedScrollPosition: number | null = null;
   private touchStartX = 0;
   private touchStartY = 0;
+  private lastTouchX = 0;
   private lastTouchY = 0;
   private touchScrollRemainder = 0;
   private touchScrolling = false;
   /** The touch scroll in progress goes to the app as wheel events (mouse reporting). */
   private touchScrollsApp = false;
+  /**
+   * Settings > Smooth touch scrolling. `classic`: a drag moves whole rows, nothing more (see
+   * touchScrollRows). `smooth`: pixel scrolling with momentum and rubber band
+   * (TouchScroller), pinch to zoom the font and long press for Select text.
+   */
+  private touchScrollMode: TerminalTouchScroll = getTerminalTouchScroll();
+  private touchScrollModeUnsubscribe?: () => void;
+  private readonly touchScroller = new TouchScroller({
+    rowHeight: () => this.rowHeight(),
+    maxRows: () => this.getMaxScrollPosition(),
+    scrolledRows: () => Math.round(this.terminal?.getViewportY() ?? 0),
+    viewHeight: () =>
+      this.container?.clientHeight || this.rowHeight() * (this.terminal?.rows ?? this.rows),
+    reducedMotion: () => this.reducedMotion(),
+    show: (rows, shift) => this.showScrolled(rows, shift),
+    wheel: (steps) =>
+      this.sendWheel(steps > 0 ? 'up' : 'down', Math.abs(steps), this.lastTouchX, this.lastTouchY),
+  });
+  /** This touch stopped a moving scroll: like on iOS, it is not a tap. */
+  private touchCaughtScroll = false;
+  private motionQuery: MediaQueryList | null = null;
+  /** Pixels the canvas is moved down between whole rows by a touch scroll. */
+  private canvasShift = 0;
+  private peekRow: PeekRow | null = null;
   private canvasElement: HTMLCanvasElement | null = null;
-  /** What ghostty's canvas shows, as the render hook last painted it. */
+  /** What ghostty's canvas shows, as the render hook last painted or a shift last drew it. */
   private canvasRows: { viewportY: number; selection: boolean; cursor?: string } | null = null;
   /** A link hover or a selection changed what is drawn without dirtying a row. */
   private canvasStale = false;
+  /**
+   * The background ghostty-web paints its canvas with: the theme it was created with, as it
+   * ignores later theme changes (they only log a warning), so the strip above matches it.
+   */
+  private canvasBackground = '#1e1e1e';
   /** Our scrollbar beside the text (see updateScrollbar) and its thumb. */
   private scrollbar: HTMLElement | null = null;
   private scrollbarThumb: HTMLElement | null = null;
@@ -130,6 +170,8 @@ export class Terminal extends LitElement {
     this.theme = prefs.getTheme();
     super.connectedCallback();
     window.addEventListener('vibetunnel-accent-changed', this.handleAccentChange);
+    this.touchScrollMode = getTerminalTouchScroll();
+    this.touchScrollModeUnsubscribe = subscribeToTerminalTouchScroll(this.setTouchScrollMode);
 
     this.originalFontSize = this.fontSize;
     // Make host focusable so browser shortcuts (Cmd/Ctrl+V) have a target.
@@ -159,6 +201,8 @@ export class Terminal extends LitElement {
 
   disconnectedCallback() {
     window.removeEventListener('vibetunnel-accent-changed', this.handleAccentChange);
+    this.touchScrollModeUnsubscribe?.();
+    this.touchScrollModeUnsubscribe = undefined;
     this.cleanup();
     this.themeObserver?.disconnect();
     this.themeObserver = null;
@@ -183,6 +227,8 @@ export class Terminal extends LitElement {
 
     if (changed.has('fontSize')) {
       if (!this.fitHorizontally) this.originalFontSize = this.fontSize;
+      // The row height changes: a touch scroll's pixels between rows no longer fit.
+      this.settleOnRow();
       this.applyFontSize();
       this.requestResize('font-size-change');
     }
@@ -326,6 +372,7 @@ export class Terminal extends LitElement {
   public clear() {
     this.terminal?.clear();
     this.preservedScrollPosition = null;
+    this.settleOnRow();
     this.followCursorEnabled = true;
   }
 
@@ -339,6 +386,7 @@ export class Terminal extends LitElement {
   }
 
   public scrollToBottom() {
+    this.settleOnRow();
     this.terminal?.scrollToBottom();
     this.followCursorEnabled = true;
   }
@@ -446,46 +494,128 @@ export class Terminal extends LitElement {
     }
   }
 
+  /** Settings changed the touch scrolling mode: whatever a gesture was doing stops here. */
+  private setTouchScrollMode = (mode: TerminalTouchScroll) => {
+    if (mode === this.touchScrollMode) return;
+    this.handleTerminalTouchCancel();
+    this.touchScrollMode = mode;
+    this.settleOnRow();
+    this.applyCanvasTransform();
+  };
+
+  private get smoothTouchScroll(): boolean {
+    return this.touchScrollMode === 'smooth';
+  }
+
+  // Pinch to zoom the font (smooth touch scrolling only): the canvas is scaled live with a CSS
+  // transform, and the real font size (which refits columns and resizes the PTY) is applied
+  // once, on release.
+  private pinchStartDistance = 0;
+  private pinchStartFont = 0;
+  private pinchScale = 1;
+  private pinched = false;
+
+  // Long press (one still finger, smooth touch scrolling only) opens copy mode: the canvas text
+  // is not selectable on phones.
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private longPressed = false;
+
+  private cancelLongPress() {
+    if (this.longPressTimer) clearTimeout(this.longPressTimer);
+    this.longPressTimer = null;
+  }
+
+  private touchDistance(touches: TouchList): number {
+    const [a, b] = [touches[0], touches[1]];
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  }
+
+  private pinchFontSize(scale: number): number {
+    return Math.round(Math.max(8, Math.min(32, this.pinchStartFont * scale)));
+  }
+
   private handleTerminalTouchStart = (event: TouchEvent) => {
+    this.cancelLongPress();
+    if (event.touches.length === 2 && this.smoothTouchScroll) {
+      this.touchScroller.cancel();
+      this.resetTouchScroll();
+      this.pinched = true;
+      this.pinchStartDistance = this.touchDistance(event.touches);
+      this.pinchStartFont = this.fontSize;
+      this.pinchScale = 1;
+      return;
+    }
     if (event.touches.length !== 1) {
+      this.touchScroller.cancel();
       this.resetTouchScroll();
       return;
     }
+    if (this.pinchStartDistance === 0) this.pinched = false;
 
     const touch = event.touches[0];
     this.touchStartX = touch.clientX;
     this.touchStartY = touch.clientY;
+    this.lastTouchX = touch.clientX;
     this.lastTouchY = touch.clientY;
-    this.touchScrollRemainder = 0;
     this.touchScrolling = false;
+    this.touchScrollRemainder = 0;
+    this.longPressed = false;
+    if (!this.smoothTouchScroll) return;
+
+    this.touchCaughtScroll = this.touchScroller.grab();
+    this.longPressTimer = setTimeout(() => {
+      this.longPressTimer = null;
+      if (this.touchScrolling || this.pinched) return;
+      this.longPressed = true;
+      this.dispatchEvent(new CustomEvent('terminal-long-press', { bubbles: true, composed: true }));
+    }, LONG_PRESS_MS);
   };
 
   private handleTerminalTouchMove = (event: TouchEvent) => {
+    if (event.touches.length === 2 && this.pinchStartDistance > 0) {
+      if (event.cancelable) event.preventDefault();
+      const scale = this.touchDistance(event.touches) / this.pinchStartDistance;
+      // Preview within the same bounds the final size will use.
+      this.pinchScale = this.pinchFontSize(scale) / this.pinchStartFont;
+      this.applyCanvasTransform();
+      return;
+    }
     if (event.touches.length !== 1) return;
 
     const touch = event.touches[0];
     const totalX = touch.clientX - this.touchStartX;
     const totalY = touch.clientY - this.touchStartY;
+    if (Math.hypot(totalX, totalY) > 10) this.cancelLongPress();
 
     if (!this.touchScrolling) {
       if (Math.abs(totalY) <= 6 || Math.abs(totalY) <= Math.abs(totalX)) return;
       this.touchScrolling = true;
       this.touchScrollsApp = this.appHandlesScrolling();
+      if (this.smoothTouchScroll) this.touchScroller.start(this.touchScrollsApp);
     }
 
     if (event.cancelable) event.preventDefault();
 
-    this.touchScrollRows(touch.clientX, touch.clientY);
+    if (!this.smoothTouchScroll) {
+      this.touchScrollRows(touch.clientX, touch.clientY);
+      return;
+    }
+
+    const dy = touch.clientY - this.lastTouchY;
+    this.lastTouchX = touch.clientX;
+    this.lastTouchY = touch.clientY;
+    this.touchScroller.drag(dy, this.touchTime(event));
   };
 
   /**
-   * One whole row each time the finger crosses a row's height. Apps that report the mouse get
-   * those rows as wheel steps.
+   * Classic touch scrolling: one whole row each time the finger crosses a row's height, and
+   * nothing after it lifts. Apps that report the mouse get those rows as wheel steps.
    */
   private touchScrollRows(clientX: number, clientY: number) {
     const lineHeight = this.rowHeight();
     this.touchScrollRemainder += this.lastTouchY - clientY;
     const lines = Math.trunc(this.touchScrollRemainder / lineHeight);
+    this.lastTouchX = clientX;
     this.lastTouchY = clientY;
     if (lines === 0) return;
     this.touchScrollRemainder -= lines * lineHeight;
@@ -494,6 +624,17 @@ export class Terminal extends LitElement {
     } else {
       this.terminal?.scrollLines(lines);
     }
+  }
+
+  /**
+   * When the touch happened: the event's own time when it is on performance.now()'s clock
+   * (WebKit stamps touches when they are sensed), else now. Handler times bunch up when the
+   * page is busy, and the fling's speed is measured from them.
+   */
+  private touchTime(event: Event): number {
+    const now = performance.now();
+    const stamp = event.timeStamp;
+    return Number.isFinite(stamp) && stamp > 0 && Math.abs(now - stamp) < 1000 ? stamp : now;
   }
 
   private rowHeight(): number {
@@ -509,9 +650,170 @@ export class Terminal extends LitElement {
     return this.canvasElement;
   }
 
-  /** At the live bottom: no rows back. */
+  /** At the live bottom: no rows back and no pixels either. */
   private isAtBottom(): boolean {
-    return (this.terminal?.getViewportY() ?? 0) <= 0.5;
+    return (this.terminal?.getViewportY() ?? 0) <= 0.5 && this.touchScroller.offset === 0;
+  }
+
+  /**
+   * A touch scroll step: whole rows to ghostty's viewport, the pixels between to its canvas. A
+   * row change is painted right here, before the new shift shows: ghostty paints from its own
+   * requestAnimationFrame loop, which may run before this callback in the same frame, and that
+   * frame then showed the old rows at the new shift (letters jumping up and down while sliding).
+   */
+  private showScrolled(rows: number, shift: number) {
+    const term = this.terminal;
+    if (!term) return;
+    this.canvasShift = shift;
+    const from = Math.round(term.getViewportY());
+    if (from !== rows) {
+      // The shift goes first: moving the viewport may make ghostty render at once (its
+      // scrollbar fade), which then finds the canvas already showing these rows.
+      if (this.shiftCanvasRows(from, rows)) {
+        term.scrollToLine(rows);
+      } else {
+        term.scrollToLine(rows);
+        this.paintNow();
+      }
+    }
+    this.applyCanvasTransform();
+    this.followCursorEnabled = this.isAtBottom();
+    this.updateScrollbar(true);
+  }
+
+  /**
+   * A row crossing while scrolled back, `from` → `to` rows back: the canvas already holds all
+   * but |to - from| of the rows to show, that many rows off. Moves its pixels by that many rows
+   * and draws only the rows that come in, where ghostty repaints every row (every cell a font,
+   * a color and a fillText: some 2000 cells on a phone, at 3x) at each crossing, which may cost
+   * the frame. Only when ghostty's canvas shows exactly `from` with nothing new: no output since
+   * (the WASM's dirty state), no selection or link hover; not from or to the bottom, where
+   * ghostty draws the cursor and repaints by rows on its own. Returns whether it did.
+   */
+  private shiftCanvasRows(from: number, to: number): boolean {
+    const term = this.terminal;
+    const wasm = term?.wasmTerm;
+    const canvas = this.getCanvas();
+    const metrics = term?.renderer?.getMetrics();
+    const delta = to - from;
+    if (!term || !wasm || !canvas || !metrics || from <= 0 || to <= 0) return false;
+    if (Math.abs(delta) >= term.rows || this.canvasStale || term.hasSelection()) return false;
+    if (this.canvasRows?.viewportY !== from || this.canvasRows.selection || wasm.isDirty()) {
+      return false;
+    }
+    // Sized as ghostty sizes it (rows × row height × pixel ratio): mid-resize it is not.
+    const ratio = window.devicePixelRatio || 1;
+    const height = term.rows * metrics.height;
+    if (
+      Math.abs(canvas.height - height * ratio) > 0.5 ||
+      Math.abs(canvas.width - term.cols * metrics.width * ratio) > 0.5
+    ) {
+      return false;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+    const kept = (term.rows - Math.abs(delta)) * metrics.height * ratio;
+    const moved = Math.abs(delta) * metrics.height * ratio;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Back into the history the rows move down; towards the bottom, up.
+    if (delta > 0) ctx.drawImage(canvas, 0, 0, canvas.width, kept, 0, moved, canvas.width, kept);
+    else ctx.drawImage(canvas, 0, moved, canvas.width, kept, 0, 0, canvas.width, kept);
+    ctx.restore();
+    // The rows that come in, at the top or at the bottom; ghostty's renderer for a view `to`
+    // rows back shows history rows above row `to` and the live screen from there.
+    const history = term.getScrollbackLength();
+    const first = delta > 0 ? 0 : term.rows + delta;
+    const font = { size: term.options.fontSize, family: term.options.fontFamily };
+    for (let row = first; row < first + Math.abs(delta); row++) {
+      const fromHistory = row < to;
+      const index = fromHistory ? history - to + row : row - to;
+      const cells = fromHistory ? term.getScrollbackLine(index) : wasm.getLine(index);
+      ctx.save();
+      ctx.translate(0, row * metrics.height);
+      paintCellRow(ctx, cells ?? [], term.cols, metrics, font, this.canvasBackground, (col) =>
+        fromHistory
+          ? wasm.getScrollbackGraphemeString(index, col)
+          : wasm.getGraphemeString(index, col)
+      );
+      ctx.restore();
+    }
+    this.canvasRows = { viewportY: to, selection: false };
+    return true;
+  }
+
+  /** ghostty paints its canvas now, through the render hook (which skips an unchanged frame). */
+  private paintNow() {
+    const term = this.terminal;
+    if (!term?.renderer || !term.wasmTerm) return;
+    term.renderer.render(term.wasmTerm, false, term.getViewportY(), term, 0);
+  }
+
+  /** Drops a touch scroll's pixels between rows: the view was moved some other way. */
+  private settleOnRow() {
+    this.touchScroller.reset();
+    if (this.canvasShift === 0) return;
+    this.canvasShift = 0;
+    this.applyCanvasTransform();
+  }
+
+  /** The canvas shift on whole device pixels: moved by a fraction of one, its text blurs. */
+  private deviceShift(): number {
+    const ratio = window.devicePixelRatio || 1;
+    return Math.round(this.canvasShift * ratio) / ratio;
+  }
+
+  /**
+   * The canvas moved by the touch scroll's sub-row shift and scaled by a pinch preview. It keeps
+   * a 3D transform at rest too: dropping it at 0 took the canvas off its own compositing layer,
+   * and back on at the next step, mid-gesture, whenever a step landed on a whole row.
+   */
+  private applyCanvasTransform() {
+    const canvas = this.getCanvas();
+    if (!canvas) return;
+    if (!this.smoothTouchScroll && this.canvasShift === 0 && this.pinchScale === 1) {
+      // Classic touch scrolling never moves the canvas: it stays as ghostty made it.
+      if (canvas.style.transform) {
+        canvas.style.transform = '';
+        canvas.style.transformOrigin = '';
+      }
+      this.peekRow?.hide();
+      return;
+    }
+    const shift = this.deviceShift();
+    const scale = this.pinchScale !== 1 ? ` scale(${this.pinchScale})` : '';
+    canvas.style.transformOrigin = '0 0';
+    canvas.style.transform = `translate3d(0, ${shift}px, 0)${scale}`;
+    this.updatePeekRow();
+  }
+
+  /** Shows the row above the canvas in the strip a downward shift uncovers (terminal-peek-row.ts). */
+  private updatePeekRow() {
+    const term = this.terminal;
+    const shift = this.deviceShift();
+    const canvas = shift > 0 ? this.getCanvas() : null;
+    const metrics = canvas ? term?.renderer?.getMetrics() : undefined;
+    const history = term && metrics ? term.getScrollbackLength() : 0;
+    // The history row right above the top one shown; none above the oldest.
+    const line = term ? history - Math.round(term.getViewportY()) - 1 : -1;
+    if (!term || !canvas || !metrics || line < 0) {
+      this.peekRow?.hide();
+      return;
+    }
+    if (!this.peekRow) this.peekRow = new PeekRow();
+    const peek = this.peekRow;
+    if (peek.canvas.parentElement !== canvas.parentElement) canvas.after(peek.canvas);
+    // The history's length is in the key: when its oldest rows go, the same index is another row.
+    peek.draw(
+      `${line}/${history}`,
+      () => term.getScrollbackLine(line),
+      term.cols,
+      metrics,
+      { size: term.options.fontSize, family: term.options.fontFamily },
+      this.canvasBackground,
+      (col) => term.wasmTerm?.getScrollbackGraphemeString(line, col) ?? ' '
+    );
+    peek.place(shift, metrics.height, this.pinchScale);
   }
 
   /**
@@ -607,7 +909,11 @@ export class Terminal extends LitElement {
 
   private handleWheel = (event: WheelEvent): boolean => {
     // Shift+wheel scrolls the local scrollback even when the app tracks the mouse.
-    if (event.shiftKey || !this.appHandlesScrolling()) return false;
+    if (event.shiftKey || !this.appHandlesScrolling()) {
+      // ghostty scrolls by rows from here: whatever a touch left between rows goes.
+      this.settleOnRow();
+      return false;
+    }
     const rowHeight = this.terminal?.renderer?.getMetrics().height ?? this.fontSize * 1.2;
     const delta =
       event.deltaMode === WheelEvent.DOM_DELTA_LINE
@@ -629,7 +935,70 @@ export class Terminal extends LitElement {
     this.touchScrollRemainder = 0;
   };
 
+  private reducedMotion(): boolean {
+    try {
+      this.motionQuery ??= window.matchMedia('(prefers-reduced-motion: reduce)');
+      return this.motionQuery.matches;
+    } catch {
+      return false;
+    }
+  }
+
+  /** iOS cancelled the gesture (system swipe, alert): drop any pinch preview, change nothing. */
+  private handleTerminalTouchCancel = () => {
+    this.cancelLongPress();
+    this.longPressed = false;
+    this.pinchStartDistance = 0;
+    this.pinchScale = 1;
+    this.applyCanvasTransform();
+    this.pinched = false;
+    this.touchCaughtScroll = false;
+    this.touchScroller.cancel();
+    this.resetTouchScroll();
+  };
+
   private handleTerminalTouchEnd = (event: TouchEvent) => {
+    this.cancelLongPress();
+    // The last finger lifted: a smooth scroll flings on, springs back from a stretch, or stops.
+    if (event.touches.length === 0 && this.smoothTouchScroll) {
+      this.touchScroller.release(this.touchTime(event));
+    }
+    const caughtScroll = this.touchCaughtScroll && event.touches.length === 0;
+    if (event.touches.length === 0) this.touchCaughtScroll = false;
+    if (this.pinchStartDistance > 0 && event.touches.length < 2) {
+      const size = this.pinchFontSize(this.pinchScale);
+      this.pinchScale = 1;
+      this.applyCanvasTransform();
+      this.pinchStartDistance = 0;
+      // The finger still down continues as a scroll from where it is now, not from where it
+      // was before the pinch (that made the terminal jump).
+      const remaining = event.touches[0];
+      if (remaining) {
+        this.touchStartX = remaining.clientX;
+        this.touchStartY = remaining.clientY;
+        this.lastTouchX = remaining.clientX;
+        this.lastTouchY = remaining.clientY;
+      }
+      if (size !== this.pinchStartFont) {
+        this.dispatchEvent(
+          new CustomEvent('font-size-change', { detail: { size }, bubbles: true, composed: true })
+        );
+      }
+    }
+    // The finger still down after a pinch must not count as a tap when it lifts.
+    if (this.pinched) {
+      if (event.touches.length === 0) this.pinched = false;
+      this.resetTouchScroll();
+      return;
+    }
+    // A long press opened copy mode: no tap, and no synthetic click that would focus the
+    // keyboard catcher and raise the keyboard over the sheet.
+    if (this.longPressed) {
+      if (event.touches.length === 0) this.longPressed = false;
+      if (event.cancelable) event.preventDefault();
+      this.resetTouchScroll();
+      return;
+    }
     const touch = event.changedTouches[0];
     const isTap =
       !this.touchScrolling &&
@@ -638,6 +1007,12 @@ export class Terminal extends LitElement {
       Math.abs(touch.clientX - this.touchStartX) < 10 &&
       Math.abs(touch.clientY - this.touchStartY) < 10;
     this.resetTouchScroll();
+    // A touch that stopped a fling only stops it (iOS): no click for the app, no keyboard, and
+    // no synthetic click that would focus the keyboard catcher.
+    if (isTap && caughtScroll) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
     if (isTap && touch) this.sendClick(touch.clientX, touch.clientY);
     if (isTap) {
       // Dispatched synchronously inside touchend so listeners can still open the iOS keyboard.
@@ -722,11 +1097,14 @@ export class Terminal extends LitElement {
     this.container?.addEventListener('touchmove', this.handleTerminalTouchMove, {
       passive: false,
     });
-    this.container?.addEventListener('touchend', this.handleTerminalTouchEnd, { passive: true });
+    // Not passive: after a long press, touchend cancels the click iOS would synthesize.
+    this.container?.addEventListener('touchend', this.handleTerminalTouchEnd, { passive: false });
     this.container?.addEventListener('touchend', this.noteTouchEnd, { passive: true });
     this.container?.addEventListener('mousedown', this.handleContainerMouseDown);
     this.container?.addEventListener('mouseup', this.handleContainerMouseUp);
-    this.container?.addEventListener('touchcancel', this.resetTouchScroll, { passive: true });
+    this.container?.addEventListener('touchcancel', this.handleTerminalTouchCancel, {
+      passive: true,
+    });
   }
 
   private detachTouchScrollHandlers() {
@@ -736,7 +1114,7 @@ export class Terminal extends LitElement {
     this.container?.removeEventListener('touchend', this.noteTouchEnd);
     this.container?.removeEventListener('mousedown', this.handleContainerMouseDown);
     this.container?.removeEventListener('mouseup', this.handleContainerMouseUp);
-    this.container?.removeEventListener('touchcancel', this.resetTouchScroll);
+    this.container?.removeEventListener('touchcancel', this.handleTerminalTouchCancel);
   }
 
   private cleanup() {
@@ -744,6 +1122,10 @@ export class Terminal extends LitElement {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.detachTouchScrollHandlers();
+    this.cancelLongPress();
+    this.touchScroller.reset();
+    this.canvasShift = 0;
+    this.peekRow = null;
     this.canvasElement = null;
     this.canvasRows = null;
     this.canvasStale = false;
@@ -889,6 +1271,7 @@ export class Terminal extends LitElement {
         return;
 
       const theme = this.getResolvedTheme();
+      this.canvasBackground = theme.background || '#1e1e1e';
       const term = new GhosttyTerminal({
         cols: this.cols,
         rows: this.rows,
@@ -918,6 +1301,8 @@ export class Terminal extends LitElement {
         this.pendingResizeSource = null;
 
         const isHeightOnlyChange = cols === prev.cols && rows !== prev.rows;
+        // The text reflows: a touch scroll's pixels between rows no longer fit.
+        this.settleOnRow();
 
         this.lastCols = cols;
         this.lastRows = rows;
@@ -947,6 +1332,9 @@ export class Terminal extends LitElement {
       this.hookRenders(term);
       this.dropGhosttyScrollbar(term, container);
       this.createScrollbar(container);
+      // Smooth touch scrolling: the canvas gets its compositing layer now, not in the middle of
+      // the first scroll.
+      this.applyCanvasTransform();
       term.registerLinkProvider(new KeyboardShortcutLinkProvider(term, this.handleShortcutClick));
       term.attachCustomWheelEventHandler(this.handleWheel);
 
@@ -1050,13 +1438,23 @@ export class Terminal extends LitElement {
       this.canvasRows = { viewportY: line, selection, cursor };
       // Scrollbar opacity 0: ghostty paints none on the canvas (see dropGhosttyScrollbar).
       render(buffer, forceAll, line, scrollback, 0);
+      // Output may have changed the row above (the history dropping its oldest rows).
+      if (this.canvasShift > 0) {
+        try {
+          this.updatePeekRow();
+        } catch (error) {
+          // Inside ghostty's render loop: a throw would stop it painting for good.
+          logger.warn('failed to draw the row above the canvas', error);
+        }
+      }
     };
   }
 
   /**
    * ghostty-web paints its scrollbar on the canvas, over the last columns, after clearing a
    * 14 px strip of them with the background (renderScrollbar): while it showed, the last
-   * letters of every row were gone. The render hook never lets it paint (opacity 0); its mouse
+   * letters of every row were gone (and with smooth touch scrolling it moved with the canvas
+   * shift and jumped back at each row). The render hook never lets it paint (opacity 0); its mouse
    * zone goes too (the last 12 px of the canvas, where a click scrolled instead of selecting).
    * Ours stands beside the text instead (updateScrollbar).
    */
@@ -1095,8 +1493,9 @@ export class Terminal extends LitElement {
       track,
       Math.max(SCROLLBAR_MIN_THUMB, (track * term.rows) / (history + term.rows))
     );
-    // How far the top of the view is from the oldest row.
-    const fromTop = (history - Math.round(term.getViewportY())) * metrics.height;
+    // How far the top of the view is from the oldest row, the touch scroll's pixels included.
+    const fromTop =
+      (history - Math.round(term.getViewportY())) * metrics.height - this.touchScroller.offset;
     const fraction = Math.max(0, Math.min(1, fromTop / (history * metrics.height)));
     const ratio = window.devicePixelRatio || 1;
     return {
@@ -1141,6 +1540,7 @@ export class Terminal extends LitElement {
     if (!bar || !layout || event.pointerType === 'touch' || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    this.settleOnRow();
     const y = event.clientY - bar.getBoundingClientRect().top;
     const onThumb = y >= layout.top && y <= layout.top + layout.thumb;
     // Off the thumb, it jumps under the pointer first, as ghostty's did on its track.

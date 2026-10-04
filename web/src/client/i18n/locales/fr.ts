@@ -924,4 +924,11 @@ export const fr: Messages = {
   'copyMode.copyFailed': 'Copie impossible',
   'copyMode.close': 'Fermer',
   'copyMode.empty': "Rien à l'écran pour l'instant",
+
+  // Settings: smooth touch scrolling
+  'settings.touchScroll': 'Défilement tactile fluide',
+  'settings.touchScroll.description':
+    "Comment le terminal défile sous le doigt dans ce navigateur. Fluide suit le doigt au pixel près, continue après que vous l'avez levé et s'étire aux extrémités. Il permet aussi de pincer pour changer la taille de la police et d'appuyer longuement pour sélectionner du texte.",
+  'settings.touchScroll.classic': 'Classique',
+  'settings.touchScroll.smooth': 'Fluide',
 };

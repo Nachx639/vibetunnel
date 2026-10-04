@@ -30,6 +30,7 @@ vi.mock('../services/server-config-service.js', () => ({
 import { applyAccent } from '../utils/accent-themes.js';
 import { getPhoneUi } from '../utils/phone-ui.js';
 import { applyThemeMode } from '../utils/theme-mode.js';
+import { getTerminalTouchScroll } from '../utils/touch-scroll-preference.js';
 import { Settings } from './settings.js';
 
 describe('Settings', () => {
@@ -99,6 +100,26 @@ describe('Settings', () => {
 
       expect(option('compact')?.getAttribute('aria-pressed')).toBe('true');
       expect(getPhoneUi()).toBe('compact');
+    });
+  });
+
+  describe('smooth touch scrolling', () => {
+    const option = (value: string) =>
+      component.querySelector(`[data-touch-scroll="${value}"]`) as HTMLButtonElement | null;
+
+    it('starts on Classic and stores Smooth when chosen', async () => {
+      expect(option('classic')?.getAttribute('aria-pressed')).toBe('true');
+      expect(getTerminalTouchScroll()).toBe('classic');
+
+      option('smooth')?.click();
+      await component.updateComplete;
+
+      expect(option('smooth')?.getAttribute('aria-pressed')).toBe('true');
+      expect(getTerminalTouchScroll()).toBe('smooth');
+
+      option('classic')?.click();
+      await component.updateComplete;
+      expect(getTerminalTouchScroll()).toBe('classic');
     });
   });
 });
