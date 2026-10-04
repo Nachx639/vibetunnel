@@ -6,7 +6,8 @@
  * A tap on a tmux session opens it here as a new tmux client in the user's open mode, or goes to
  * the VibeTunnel session already attached to it; a tap on an agent opens its conversation,
  * read-only. ⋯ or a long press offers the other actions. Nothing on these rows is destructive,
- * so there are no swipe actions. Events never carry a Mac id where a VibeTunnel id is expected.
+ * so there are no swipe actions ("Share with phone" closes the agent on the computer, but only
+ * after its own confirm sheet). Events never carry a Mac id where a VibeTunnel id is expected.
  *
  * @fires navigate-to-session - The VibeTunnel session attached to the tmux session (detail: { sessionId })
  * @fires session-created - The tmux session was opened in a new VibeTunnel session (detail: { sessionId })
@@ -18,6 +19,7 @@
 import { html, LitElement, nothing, render } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type {
+  MacAgentSession,
   MacOpenMode,
   MacSessionItem,
   MacTmuxPaneAgent,
@@ -48,6 +50,7 @@ import {
   openMacSession,
   showMacConversation,
 } from '../utils/mac-sessions.js';
+import { macShareDetail, openMacShare } from '../utils/mac-share.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
 import { endsADrag } from '../utils/pointer-drag.js';
 import { terminateSession } from '../utils/session-actions.js';
@@ -195,7 +198,10 @@ export class MacSessionRow extends LitElement {
   private activate() {
     if (this.pending) return;
     const item = this.item;
-    if (item.kind === 'agent') {
+    if (item.kind === 'agent' && item.share?.jobId) {
+      // A share of it is running: its progress, not its conversation.
+      this.share();
+    } else if (item.kind === 'agent') {
       this.read();
     } else if (item.vtSessionId) {
       this.goToSession(item.vtSessionId);
@@ -213,6 +219,13 @@ export class MacSessionRow extends LitElement {
   private read(pane?: MacTmuxPaneAgent) {
     const detail = macSessionViewDetail(this.item, pane);
     if (detail) showMacConversation(detail);
+  }
+
+  /** "Share with phone": its sheet plans and confirms, or shows the running share. */
+  private share() {
+    if (this.item.kind !== 'agent') return;
+    const detail = macShareDetail(this.item);
+    if (detail) openMacShare(detail);
   }
 
   /** Opens the tmux session in a new VibeTunnel session, or goes to the one attached to it. */
@@ -340,6 +353,38 @@ export class MacSessionRow extends LitElement {
     );
   }
 
+  /**
+   * "Share with phone", above Read, on an agent row while the feature is on: disabled with why
+   * while the agent works or waits, "Sharing…" (its progress) while a share runs.
+   */
+  private shareButtons(item: MacAgentSession) {
+    const share = item.share;
+    if (!share || !macShareDetail(item)) return [];
+    if (share.can || share.jobId) {
+      return [
+        this.sheetButton(
+          share.jobId ? t('macShare.sharing') : t('macShare.action'),
+          'msr-sheet-share',
+          () => this.share()
+        ),
+      ];
+    }
+    if (share.reason !== 'busy' && share.reason !== 'waiting') return [];
+    return [
+      html`<button
+        class="unavailable"
+        disabled
+        aria-disabled="true"
+        data-testid="msr-sheet-share"
+      >
+        ${t('macShare.action')}
+        <span class="psr-sheet-note" data-testid="msr-sheet-share-why"
+          >${t('macShare.whenIdle', { agent: MAC_AGENT_NAMES[item.agent] })}</span
+        >
+      </button>`,
+    ];
+  }
+
   private tmuxActions(item: MacTmuxSession) {
     const reads = this.readButtons(item, false);
     const vtSessionId = item.vtSessionId;
@@ -412,7 +457,11 @@ export class MacSessionRow extends LitElement {
     } else {
       content = html`
         <div class="psr-sheet-title" id=${id}><bdi>${title}</bdi></div>
-        ${item.kind === 'tmux' ? this.tmuxActions(item) : this.readButtons(item, true)}
+        ${
+          item.kind === 'tmux'
+            ? this.tmuxActions(item)
+            : [...this.shareButtons(item), ...this.readButtons(item, true)]
+        }
       `;
     }
     // One template for every step, so a step keeps the sheet (and its "open" class) in place.
@@ -530,12 +579,15 @@ export class MacSessionRow extends LitElement {
     const title = macItemTitle(item);
     const time = macItemTime(item);
     const openHere = item.kind === 'tmux' && item.vtSessionId ? macItemBadge(item) : '';
+    const sharing = item.kind === 'agent' && item.share?.reason === 'in-progress';
     const pendingText =
       this.pending === 'opening'
         ? t('macSessions.row.opening')
         : this.pending === 'disconnecting'
           ? t('sessions.row.disconnecting')
-          : nothing;
+          : sharing
+            ? t('macShare.sharing')
+            : nothing;
     const menu = this.tapAction(() => this.openSheet('actions'));
     return html`
       <div

@@ -14,6 +14,7 @@ import {
   type MacSessionViewDetail,
   type MacTmuxOpenDetail,
 } from '../shared/mac-sessions.js';
+import { MAC_SHARE_EVENT, type MacShareSheetDetail } from '../shared/mac-share.js';
 import type { Session } from '../shared/types.js';
 import { HttpMethod, ServerEventType } from '../shared/types.js';
 import { LocaleController, t, whenLocaleReady } from './i18n/index.js';
@@ -45,13 +46,16 @@ import './components/ssh-key-manager.js';
 
 import { openAnswerSheet } from './components/answer-sheet.js';
 import { closeMacSessionView, openMacSessionView } from './components/mac-session-view.js';
+import { closeMacShareSheet, openMacShareSheet } from './components/mac-share-sheet.js';
 import { isPhoneListLayout } from './components/session-list.js';
 import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
 import {
+  announceMacSessionsChanged,
   fetchMacSessions,
+  MAC_AGENT_NAMES,
   MacSessionsApiError,
   macOpenErrorText,
   openMacSession,
@@ -313,7 +317,9 @@ export class VibeTunnelApp extends LitElement {
       this.handleOpenMacSessionView as EventListener
     );
     window.removeEventListener(MAC_TMUX_OPEN_EVENT, this.handleOpenMacTmux as EventListener);
+    window.removeEventListener(MAC_SHARE_EVENT, this.handleOpenMacShare as EventListener);
     closeMacSessionView();
+    closeMacShareSheet();
     window.removeEventListener(
       'notification-action',
       this.handleClaudeNotification as EventListener
@@ -842,6 +848,30 @@ export class VibeTunnelApp extends LitElement {
   /** An agent's or tmux pane's conversation outside VibeTunnel, read-only (from its row). */
   private handleOpenMacSessionView = (e: CustomEvent<MacSessionViewDetail>) => {
     if (e.detail?.chatId) openMacSessionView(e.detail);
+  };
+
+  /**
+   * "Share with phone" on an agent's row or conversation sheet: its sheet plans, confirms and
+   * follows the share; once it reopened through vt, its session opens here (it may not be
+   * listed yet), with a note when the agent waits for an answer.
+   */
+  private handleOpenMacShare = (e: CustomEvent<MacShareSheetDetail>) => {
+    const detail = e.detail;
+    if (!detail?.id) return;
+    openMacShareSheet(detail, {
+      authHeader: () => authClient.getAuthHeader(),
+      onShared: (sessionId, needs) => {
+        closeMacSessionView();
+        announceMacSessionsChanged();
+        if (needs) {
+          const agent = MAC_AGENT_NAMES[detail.agent] ?? detail.agent;
+          this.showSuccess(
+            t(needs === 'trust' ? 'macShare.needs.trust' : 'macShare.needs.answer', { agent })
+          );
+        }
+        void this.waitForSessionAndSwitch(sessionId);
+      },
+    });
   };
 
   private handleOpenMacTmux = (e: CustomEvent<MacTmuxOpenDetail>) => {
@@ -2005,6 +2035,7 @@ export class VibeTunnelApp extends LitElement {
     window.addEventListener(MAC_SESSIONS_CHANGED_EVENT, this.handleMacSessionsChanged);
     window.addEventListener(MAC_SESSION_VIEW_EVENT, this.handleOpenMacSessionView as EventListener);
     window.addEventListener(MAC_TMUX_OPEN_EVENT, this.handleOpenMacTmux as EventListener);
+    window.addEventListener(MAC_SHARE_EVENT, this.handleOpenMacShare as EventListener);
     // Listen for notification settings events
   }
 

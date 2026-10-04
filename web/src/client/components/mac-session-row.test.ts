@@ -8,6 +8,7 @@ import {
   type MacTmuxPaneAgent,
   type MacTmuxSession,
 } from '../../shared/mac-sessions.js';
+import { MAC_SHARE_EVENT } from '../../shared/mac-share.js';
 import './mac-session-row.js';
 import { setLocale } from '../i18n/index.js';
 import type { MacSessionRow } from './mac-session-row.js';
@@ -408,6 +409,68 @@ describe('mac session row', () => {
     tap(sheetButton('msr-sheet-watch'));
     await flush();
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ mode: 'watch' });
+  });
+
+  it('⋯ on an idle agent offers Share with phone above Read; only while the feature is on', async () => {
+    await mount(agent({ share: { can: true } }));
+    await openSheet();
+    const buttons = [...(sheet()?.querySelectorAll('.psr-sheet-group button') ?? [])];
+    expect(buttons.map((button) => button.getAttribute('data-testid'))).toEqual([
+      'msr-sheet-share',
+      'msr-sheet-read',
+    ]);
+    expect(sheetButton('msr-sheet-share')?.textContent?.trim()).toBe('Share with phone');
+    const opened = listen(window, MAC_SHARE_EVENT);
+    tap(sheetButton('msr-sheet-share'));
+    window.removeEventListener(MAC_SHARE_EVENT, opened);
+    expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({
+      id: 'a-20085-1759500000',
+      agent: 'claude',
+      app: 'Terminal',
+      title: 'Docs pass',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    el.remove();
+    for (const node of document.querySelectorAll('.psr-sheet')) node.parentElement?.remove();
+
+    await mount(agent());
+    await openSheet();
+    expect(sheetButton('msr-sheet-share')).toBeNull();
+  });
+
+  it('a busy agent shows the action disabled, with why', async () => {
+    await mount(agent({ share: { can: false, reason: 'busy' }, status: { status: 'busy' } }));
+    await openSheet();
+    const button = sheetButton('msr-sheet-share') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(sheetButton('msr-sheet-share-why')?.textContent?.trim()).toBe(
+      'Available when Claude finishes its turn.'
+    );
+    const opened = listen(window, MAC_SHARE_EVENT);
+    tap(button);
+    window.removeEventListener(MAC_SHARE_EVENT, opened);
+    expect(opened).not.toHaveBeenCalled();
+  });
+
+  it('never on an agent in another app', async () => {
+    await mount(
+      agent({ app: 'Visual Studio Code', share: { can: false, reason: 'unsupported-app' } })
+    );
+    await openSheet();
+    expect(sheetButton('msr-sheet-share')).toBeNull();
+  });
+
+  it('while a share runs the row says so, and a tap reopens its progress', async () => {
+    const jobId = 'j'.repeat(22);
+    await mount(agent({ share: { can: false, reason: 'in-progress', jobId } }));
+    expect(el.querySelector('[data-testid="msr-pending"]')?.textContent?.trim()).toBe('Sharing…');
+    const opened = listen(window, MAC_SHARE_EVENT);
+    const read = listen(window, MAC_SESSION_VIEW_EVENT);
+    tap(row());
+    window.removeEventListener(MAC_SHARE_EVENT, opened);
+    window.removeEventListener(MAC_SESSION_VIEW_EVENT, read);
+    expect((opened.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ jobId });
+    expect(read).not.toHaveBeenCalled();
   });
 
   it("explains a tmux session that can't be opened, and offers to read it", async () => {

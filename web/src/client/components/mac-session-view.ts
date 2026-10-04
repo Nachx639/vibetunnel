@@ -17,6 +17,7 @@ import { LocaleController, t, tAround } from '../i18n/index.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { tapHandler } from '../utils/ghost-click.js';
 import { MAC_AGENT_NAMES, macAppName } from '../utils/mac-sessions.js';
+import { openMacShare } from '../utils/mac-share.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
 import { holdSheetFocus } from '../utils/sheet-a11y.js';
 import './claude-chat-view.js';
@@ -61,6 +62,42 @@ export class MacSessionView extends LitElement {
       new CustomEvent<MacTmuxOpenDetail>(MAC_TMUX_OPEN_EVENT, { detail: { id, mode: 'control' } })
     );
   }, this.openedAt);
+
+  /** "Share with phone": the share sheet over this one, which closes once it is shared. */
+  private readonly shareTap = tapHandler(() => {
+    const { chatId, agent, app, title, share } = this.detail;
+    if (app !== 'Terminal' && app !== 'iTerm') return;
+    openMacShare({
+      id: chatId,
+      agent,
+      app,
+      ...(title ? { title } : {}),
+      ...(share?.jobId ? { jobId: share.jobId } : {}),
+    });
+  }, this.openedAt);
+
+  /** The footer's share button, or why it isn't there yet; nothing while the feature is off. */
+  private renderShare() {
+    const { share, app, agent, kind, inTmux } = this.detail;
+    if (!share || kind !== 'agent' || inTmux || (app !== 'Terminal' && app !== 'iTerm')) {
+      return nothing;
+    }
+    if (share.can || share.jobId) {
+      return html`<button
+        class="vt-mac-view-primary"
+        data-testid="mac-view-share"
+        @pointerdown=${this.shareTap}
+        @pointerup=${this.shareTap}
+        @click=${this.shareTap}
+      >
+        ${share.jobId ? t('macShare.sharing') : t('macShare.action')}
+      </button>`;
+    }
+    if (share.reason !== 'busy' && share.reason !== 'waiting') return nothing;
+    return html`<p class="vt-mac-view-running" data-testid="mac-view-share-why">
+      ${t('macShare.whenIdle', { agent: MAC_AGENT_NAMES[agent] ?? agent })}
+    </p>`;
+  }
 
   private handleAvailability = (e: CustomEvent<boolean>) => {
     if (this.sheetState === 'ended' || this.sheetState === 'off') return;
@@ -170,6 +207,7 @@ export class MacSessionView extends LitElement {
     // that its server can't be reached (no tmux session to open), not where it was started.
     const where = this.agentApp();
     return html`<div class="vt-mac-view-foot">
+      ${this.renderShare()}
       <p class="vt-mac-view-running">
         ${
           where

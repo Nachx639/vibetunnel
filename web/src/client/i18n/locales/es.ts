@@ -1182,4 +1182,106 @@ export const es: Messages = {
   'macSessions.where.tmuxServer': 'tmux ({server}) · {name}',
   'sessions.row.disconnectFailed': 'No se ha podido desconectar: {error}',
   'sessions.row.disconnecting': 'Desconectando…',
+  // Share with phone (mac-share-sheet.ts, mac-session-row.ts, Settings)
+  'macShare.action': 'Compartir con el móvil',
+  'macShare.confirm.background':
+    'Los subagentes que tenga en segundo plano se detendrán al cerrarse.',
+  'macShare.confirm.body':
+    '{agent} se cerrará en su ventana de {app} en el Mac y se reabrirá en la misma pestaña a través de VibeTunnel. Es la misma conversación: podrás seguir en el Mac y aquí.',
+  'macShare.confirm.command': 'Orden en el Mac',
+  'macShare.confirm.draftUnchecked': 'Si hay texto sin escribir en el Mac, se perderá.',
+  'macShare.confirm.dropped': 'No se conservan: {flags}',
+  'macShare.confirm.inexact':
+    'Las opciones con texto libre no se pueden leer con exactitud en el Mac, así que no se conservan.',
+  'macShare.confirm.launchPrompt': 'el mensaje con el que se abrió',
+  'macShare.confirm.newWindow':
+    'El Mac está bloqueado: se cerrará en su pestaña y se reabrirá en una ventana nueva de {window}. La pestaña anterior se quedará en la línea de órdenes.',
+  'macShare.confirm.note': 'No escribas en esa pestaña hasta que vuelva.',
+  'macShare.confirm.share': 'Compartir',
+  'macShare.confirm.title': '¿Compartir esta conversación con el móvil?',
+  'macShare.done': 'Compartida: está abierta en el Mac y aquí.',
+  'macShare.done.newWindow': 'Se ha reabierto en una ventana nueva de {window}.',
+  'macShare.done.oldTab': 'La pestaña anterior se ha quedado en la línea de órdenes.',
+  'macShare.error.agentNotSupported': 'Aún no se puede compartir {agent}.',
+  'macShare.error.automationDenied':
+    'VibeTunnel no tiene permiso para controlar {app}. En el Mac: Ajustes del Sistema → Privacidad y seguridad → Automatización → VibeTunnel → activa {app}.',
+  'macShare.error.automationPending':
+    'Puede que macOS esté preguntando en el Mac. Responde allí y vuelve a intentarlo.',
+  'macShare.error.backgroundWork':
+    '{agent} aún tiene órdenes en marcha en el Mac. Espera a que terminen.',
+  'macShare.error.busy': '{agent} está trabajando. Vuelve a intentarlo cuando termine su turno.',
+  'macShare.error.cwdMissing': 'Su carpeta ya no existe.',
+  'macShare.error.disabled': 'Compartir con el móvil está desactivado.',
+  'macShare.error.draft': 'Hay texto sin enviar en {agent} en el Mac. Envíalo o bórralo primero.',
+  'macShare.error.failed': 'No se pudo compartir: {error}',
+  'macShare.error.inProgress': 'Ya se está compartiendo.',
+  'macShare.error.locked': 'Desbloquea el Mac para compartir esta sesión.',
+  'macShare.error.noAuth':
+    'Compartir está desactivado mientras VibeTunnel funciona sin inicio de sesión.',
+  'macShare.error.noConversation':
+    'Su conversación aún no está guardada. Envíale un primer mensaje.',
+  'macShare.error.notShareable': 'Esta sesión no se puede compartir.',
+  'macShare.error.notShellJob':
+    'No se abrió desde el prompt de esa pestaña, así que no se puede reabrir allí.',
+  'macShare.error.planChanged': 'Ha cambiado en el Mac mientras tanto. Revísalo de nuevo.',
+  'macShare.error.planExpired': 'Ha pasado demasiado tiempo. Revísalo de nuevo.',
+  'macShare.error.stillRunning': '{agent} no se cerró en el Mac. No se hizo nada más.',
+  'macShare.error.tabAmbiguous': 'Coincide más de una pestaña de {app}.',
+  'macShare.error.tabNotFound': 'No encuentro su pestaña en {app}.',
+  'macShare.error.unresponsive': '{app} no respondió a tiempo. Inténtalo de nuevo en un momento.',
+  'macShare.error.unsafeValue': 'Su carpeta u opciones no se pueden escribir de forma segura.',
+  'macShare.error.unsupportedApp': 'Solo se pueden compartir pestañas de Terminal e iTerm2.',
+  'macShare.error.unsupportedShell':
+    'Su pestaña usa {shell}. Compartir funciona con zsh, bash y fish.',
+  'macShare.error.waiting': '{agent} espera una respuesta en el Mac.',
+  'macShare.explain.body':
+    'Para reabrirla en la misma pestaña, VibeTunnel necesita controlar {app}. macOS lo preguntará en el Mac: elige Permitir.',
+  'macShare.explain.continue': 'Continuar',
+  'macShare.explain.title': 'Permitir que VibeTunnel use {app}',
+  'macShare.failed.checkFirst':
+    'Puede que aún se reabra cuando {app} responda. Mira la pestaña antes de ejecutarla.',
+  'macShare.failed.howTo': 'Para seguir, ejecuta esto en esa pestaña:',
+  'macShare.failed.title':
+    '{agent} se cerró en el Mac y la conversación está guardada, pero no se reabrió: {reason}',
+  'macShare.hide': 'Ocultar',
+  'macShare.needs.answer': '{agent} pregunta algo antes de arrancar. Respóndele aquí.',
+  'macShare.needs.trust': '{agent} pregunta si confías en esta carpeta. Respóndele aquí.',
+  'macShare.reason.alreadyOpen': 'ya estaba abierto en otro sitio, así que no se escribió nada.',
+  'macShare.reason.denied': 'VibeTunnel no tiene permiso para controlar {app}.',
+  'macShare.reason.exited': 'se cerró al arrancar.',
+  'macShare.reason.locked': 'el Mac siguió bloqueado {minutes} min.',
+  'macShare.reason.notShared':
+    'se reabrió en el Mac pero no a través de vt, así que no aparece aquí. En Ajustes, pon «Reabrir con» en vt.',
+  'macShare.reason.otherInstance': 'se abrió en otro VibeTunnel.',
+  'macShare.reason.refused': '{app} no quiso escribir en la pestaña.',
+  'macShare.reason.shellBusy': 'hay otra cosa en marcha en esa pestaña.',
+  'macShare.reason.tabGone': 'su pestaña se cerró.',
+  'macShare.reason.timeout': 'no arrancó en {seconds} s.',
+  'macShare.reason.transcript': 'su archivo de conversación parece incompleto.',
+  'macShare.reason.unconfirmed': 'el Mac nunca lo confirmó.',
+  'macShare.reason.unresponsive': '{app} no respondió.',
+  'macShare.reason.windowFailed': '{window} no abrió una ventana nueva.',
+  'macShare.retry': 'Reintentar',
+  'macShare.setting.description':
+    'Un Claude Code inactivo en Terminal o iTerm2 se puede cerrar allí y reabrir en la misma pestaña a través de VibeTunnel, para usarlo en el Mac y aquí.',
+  'macShare.setting.label': 'Compartir terminales del Mac con el móvil',
+  'macShare.setting.launcher': 'Reabrir con',
+  'macShare.setting.launcher.shell': 'La orden de mi shell',
+  'macShare.setting.launcher.shellHint':
+    'Para una función de tu shell que ya lo abre con vt. Antes se recarga su archivo de inicio.',
+  'macShare.setting.launcher.vt': 'vt',
+  'macShare.sharing': 'Compartiendo…',
+  'macShare.step.checking': 'Comprobando que está inactivo…',
+  'macShare.step.closing': 'Cerrándolo en el Mac…',
+  'macShare.step.opening': 'Abriendo una ventana nueva de {window}…',
+  'macShare.step.reopening': 'Reabriéndolo en la misma pestaña…',
+  'macShare.step.saved': 'Conversación guardada',
+  'macShare.step.starting': 'Esperando a que arranque {agent}…',
+  'macShare.step.trusting': 'Confirmando la carpeta en la que ya confiaba…',
+  'macShare.step.unlock':
+    'Desbloquea el Mac para terminar. Ya está cerrado allí y la conversación está guardada; se reabrirá cuando lo desbloquees.',
+  'macShare.unchanged': 'No se ha cambiado nada.',
+  'macShare.whenIdle': 'Disponible cuando {agent} termine su turno.',
+  'macShare.copied': 'Copiado',
+  'macShare.copyFailed': 'No se pudo copiar',
 };

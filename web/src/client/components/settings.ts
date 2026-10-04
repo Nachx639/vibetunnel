@@ -2,6 +2,7 @@ import { html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
 import { MAC_SESSIONS_CHANGED_EVENT, type MacOpenMode } from '../../shared/mac-sessions.js';
+import type { MacShareLauncher } from '../../shared/mac-share.js';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/config.js';
 import { LocaleController, t, tAround } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
@@ -54,6 +55,13 @@ export class Settings extends LitElement {
   @state() private macSessionsLockedBy: string | null = null;
   /** Not offered where nothing can be listed (not macOS or Linux, HQ mode). */
   @state() private macSessionsSupported = false;
+  /** "Share with phone": off unless turned on (config.json `macShare`); macOS only. */
+  @state() private macShare = false;
+  @state() private macShareLauncher: MacShareLauncher = 'vt';
+  /** How the server's start forced the switch ("--no-mac-share"), or null. */
+  @state() private macShareLockedBy: string | null = null;
+  /** Not offered off macOS or in HQ mode. */
+  @state() private macShareSupported = false;
   /** The server's platform: "this Mac" on macOS, "this computer" elsewhere. */
   @state() private configPlatform = '';
 
@@ -203,6 +211,12 @@ export class Settings extends LitElement {
             ? (serverConfig.macSessionsLockedBy ?? '')
             : null;
           this.macSessionsSupported = serverConfig.macSessionsSupported === true;
+          this.macShare = serverConfig.macShare === true;
+          this.macShareLauncher = serverConfig.macShareLauncher === 'shell' ? 'shell' : 'vt';
+          this.macShareLockedBy = serverConfig.macShareLocked
+            ? (serverConfig.macShareLockedBy ?? '')
+            : null;
+          this.macShareSupported = serverConfig.macShareSupported === true;
           this.configPlatform = serverConfig.platform ?? '';
           logger.debug('Loaded repository base path:', this.repositoryBasePath);
           // Force update to ensure UI reflects the loaded value
@@ -530,6 +544,8 @@ export class Settings extends LitElement {
   private async saveMacSessions(update: {
     macSessions?: boolean;
     macSessionsOpenMode?: MacOpenMode;
+    macShare?: boolean;
+    macShareLauncher?: MacShareLauncher;
   }) {
     if (!this.serverConfigService) throw new Error('no server config');
     await this.serverConfigService.updateConfig(update);
@@ -562,6 +578,98 @@ export class Settings extends LitElement {
       select.value = previous;
       this.dispatchEvent(new CustomEvent('error', { detail: t('macSessions.setting.saveFailed') }));
     }
+  }
+
+  private async handleMacShareToggle() {
+    if (this.macShareLockedBy !== null) return;
+    const next = !this.macShare;
+    this.macShare = next;
+    try {
+      await this.saveMacSessions({ macShare: next });
+    } catch (error) {
+      logger.error('Failed to update Share with phone:', error);
+      this.macShare = !next;
+      this.dispatchEvent(new CustomEvent('error', { detail: t('macSessions.setting.saveFailed') }));
+    }
+  }
+
+  private async handleMacShareLauncherChange(select: HTMLSelectElement) {
+    const launcher: MacShareLauncher = select.value === 'shell' ? 'shell' : 'vt';
+    const previous = this.macShareLauncher;
+    if (launcher === previous) return;
+    this.macShareLauncher = launcher;
+    try {
+      await this.saveMacSessions({ macShareLauncher: launcher });
+    } catch (error) {
+      logger.error('Failed to update how a shared agent reopens:', error);
+      this.macShareLauncher = previous;
+      select.value = previous;
+      this.dispatchEvent(new CustomEvent('error', { detail: t('macSessions.setting.saveFailed') }));
+    }
+  }
+
+  /**
+   * "Share with phone", under "On this computer" while that is on
+   * (macOS only): the switch, locked when forced at start, and "Reopen with".
+   */
+  private renderMacShare() {
+    if (!this.macShareSupported) return nothing;
+    const on = this.macShare;
+    const locked = this.macShareLockedBy !== null;
+    const label = t('macShare.setting.label');
+    return html`
+      <div class="mt-4 pt-4 border-t border-border/50" data-testid="settings-mac-share">
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="text-primary font-medium">${label}</label>
+            <p class="text-muted text-xs mt-1">${t('macShare.setting.description')}</p>
+            ${locked ? this.renderLock(this.macShareLockedBy, 'settings-mac-share-locked') : nothing}
+          </div>
+          <button
+            role="switch"
+            aria-checked=${on ? 'true' : 'false'}
+            aria-label=${label}
+            ?disabled=${locked}
+            data-testid="settings-mac-share-toggle"
+            @click=${this.handleMacShareToggle}
+            class="relative flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors before:absolute before:-inset-[10px] before:content-[''] disabled:opacity-50 ${
+              on ? 'bg-primary' : 'bg-border'
+            }"
+          >
+            <span
+              class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+                on ? 'translate-x-5' : 'translate-x-0.5'
+              }"
+            ></span>
+          </button>
+        </div>
+        ${
+          on
+            ? html`
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
+                <div class="min-w-0">
+                  <label class="text-primary font-medium" for="mac-share-launcher-select">${t('macShare.setting.launcher')}</label>
+                  <p class="text-muted text-xs mt-1" data-testid="settings-mac-share-launcher-hint">${t('macShare.setting.launcher.shellHint')}</p>
+                </div>
+                <select
+                  id="mac-share-launcher-select"
+                  class="input-field py-2 text-sm w-full sm:w-auto"
+                  data-testid="settings-mac-share-launcher"
+                  @change=${(e: Event) => this.handleMacShareLauncherChange(e.target as HTMLSelectElement)}
+                >
+                  <option value="vt" ?selected=${this.macShareLauncher === 'vt'}>
+                    ${t('macShare.setting.launcher.vt')}
+                  </option>
+                  <option value="shell" ?selected=${this.macShareLauncher === 'shell'}>
+                    ${t('macShare.setting.launcher.shell')}
+                  </option>
+                </select>
+              </div>
+            `
+            : nothing
+        }
+      </div>
+    `;
   }
 
   /**
@@ -624,6 +732,7 @@ export class Settings extends LitElement {
                   </option>
                 </select>
               </div>
+              ${this.renderMacShare()}
             `
             : nothing
         }

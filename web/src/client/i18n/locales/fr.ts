@@ -1193,4 +1193,111 @@ export const fr: Messages = {
   'macSessions.where.tmuxServer': 'tmux ({server}) · {name}',
   'sessions.row.disconnectFailed': 'Impossible de se déconnecter : {error}',
   'sessions.row.disconnecting': 'Déconnexion…',
+  // Share with phone (mac-share-sheet.ts, mac-session-row.ts, Settings)
+  'macShare.action': 'Partager avec le téléphone',
+  'macShare.confirm.background':
+    'Les sous-agents qu’il exécute en arrière-plan s’arrêteront à sa fermeture.',
+  'macShare.confirm.body':
+    '{agent} se fermera dans sa fenêtre {app} sur le Mac et se rouvrira dans le même onglet via VibeTunnel. C’est la même conversation : continuez-la sur le Mac et ici.',
+  'macShare.confirm.command': 'Commande sur le Mac',
+  'macShare.confirm.draftUnchecked': 'S’il reste du texte non envoyé sur le Mac, il sera perdu.',
+  'macShare.confirm.dropped': 'Non repris : {flags}',
+  'macShare.confirm.inexact':
+    'Les options à texte libre ne peuvent pas être lues exactement sur le Mac : elles ne sont donc pas reprises.',
+  'macShare.confirm.launchPrompt': 'le message avec lequel il a été lancé',
+  'macShare.confirm.newWindow':
+    'Le Mac est verrouillé : il sera fermé dans son onglet et rouvert dans une nouvelle fenêtre de {window}. L’ancien onglet restera à l’invite du shell.',
+  'macShare.confirm.note': 'N’écrivez rien dans cet onglet avant son retour.',
+  'macShare.confirm.share': 'Partager',
+  'macShare.confirm.title': 'Partager cette conversation avec votre téléphone ?',
+  'macShare.done': 'Partagée : elle est ouverte sur le Mac et ici.',
+  'macShare.done.newWindow': 'Rouvert dans une nouvelle fenêtre de {window}.',
+  'macShare.done.oldTab': 'L’ancien onglet est resté à l’invite du shell.',
+  'macShare.error.agentNotSupported': 'Le partage de {agent} n’est pas encore disponible.',
+  'macShare.error.automationDenied':
+    'VibeTunnel n’est pas autorisé à contrôler {app}. Sur le Mac : Réglages Système → Confidentialité et sécurité → Automatisation → VibeTunnel → activez {app}.',
+  'macShare.error.automationPending':
+    'macOS pose peut-être une question sur le Mac. Répondez-y, puis réessayez.',
+  'macShare.error.backgroundWork':
+    '{agent} a encore des commandes en cours sur le Mac. Attendez qu’elles se terminent.',
+  'macShare.error.busy':
+    '{agent} est en train de travailler. Réessayez quand il aura terminé son tour.',
+  'macShare.error.cwdMissing': 'Son dossier n’existe plus.',
+  'macShare.error.disabled': 'Le partage avec le téléphone est désactivé.',
+  'macShare.error.draft':
+    'Il y a du texte non envoyé dans {agent} sur le Mac. Envoyez-le ou effacez-le d’abord.',
+  'macShare.error.failed': 'Impossible de la partager : {error}',
+  'macShare.error.inProgress': 'Le partage est déjà en cours.',
+  'macShare.error.locked': 'Déverrouillez le Mac pour partager cette session.',
+  'macShare.error.noAuth':
+    'Le partage est désactivé tant que VibeTunnel fonctionne sans connexion.',
+  'macShare.error.noConversation':
+    'Sa conversation n’est pas encore enregistrée. Envoyez-lui un premier message.',
+  'macShare.error.notShareable': 'Cette session ne peut pas être partagée.',
+  'macShare.error.notShellJob':
+    'Il n’a pas été lancé depuis l’invite de cet onglet : il ne peut donc pas y être rouvert.',
+  'macShare.error.planChanged': 'Il a changé sur le Mac entre-temps. Vérifiez à nouveau.',
+  'macShare.error.planExpired': 'Cela a pris trop de temps. Vérifiez à nouveau.',
+  'macShare.error.stillRunning':
+    '{agent} ne s’est pas fermé sur le Mac. Rien d’autre n’a été fait.',
+  'macShare.error.tabAmbiguous': 'Plusieurs onglets de {app} correspondent.',
+  'macShare.error.tabNotFound': 'Impossible de trouver son onglet dans {app}.',
+  'macShare.error.unresponsive': '{app} n’a pas répondu à temps. Réessayez dans un instant.',
+  'macShare.error.unsafeValue':
+    'Son dossier ou ses options ne peuvent pas être saisis sans risque.',
+  'macShare.error.unsupportedApp':
+    'Seuls les onglets de Terminal et d’iTerm2 peuvent être partagés.',
+  'macShare.error.unsupportedShell':
+    'Son onglet exécute {shell}. Le partage fonctionne avec zsh, bash et fish.',
+  'macShare.error.waiting': '{agent} attend une réponse sur le Mac.',
+  'macShare.explain.body':
+    'Pour la rouvrir dans le même onglet, VibeTunnel doit contrôler {app}. macOS le demandera sur le Mac : choisissez Autoriser.',
+  'macShare.explain.continue': 'Continuer',
+  'macShare.explain.title': 'Autoriser VibeTunnel à utiliser {app}',
+  'macShare.failed.checkFirst':
+    'Il peut encore se rouvrir quand {app} répondra. Regardez l’onglet avant de l’exécuter.',
+  'macShare.failed.howTo': 'Pour continuer, exécutez ceci dans cet onglet :',
+  'macShare.failed.title':
+    '{agent} s’est fermé sur le Mac et la conversation est enregistrée, mais il ne s’est pas rouvert : {reason}',
+  'macShare.hide': 'Masquer',
+  'macShare.needs.answer': '{agent} pose une question avant de démarrer. Répondez ici.',
+  'macShare.needs.trust': '{agent} demande si vous faites confiance à ce dossier. Répondez ici.',
+  'macShare.reason.alreadyOpen': 'il était déjà rouvert ailleurs : rien n’a été saisi.',
+  'macShare.reason.denied': 'VibeTunnel n’est pas autorisé à contrôler {app}.',
+  'macShare.reason.exited': 'il s’est fermé au démarrage.',
+  'macShare.reason.locked': 'le Mac est resté verrouillé {minutes} min.',
+  'macShare.reason.notShared':
+    'il s’est rouvert sur le Mac mais pas via vt : il n’est donc pas ici. Dans les réglages, choisissez vt pour « Rouvrir avec ».',
+  'macShare.reason.otherInstance': 'il s’est ouvert dans un autre VibeTunnel.',
+  'macShare.reason.refused': '{app} a refusé d’écrire dans l’onglet.',
+  'macShare.reason.shellBusy': 'autre chose s’exécute dans cet onglet.',
+  'macShare.reason.tabGone': 'son onglet a été fermé.',
+  'macShare.reason.timeout': 'il n’a pas démarré en {seconds} s.',
+  'macShare.reason.transcript': 'son fichier de conversation semble incomplet.',
+  'macShare.reason.unconfirmed': 'le Mac ne l’a jamais confirmé.',
+  'macShare.reason.unresponsive': '{app} n’a pas répondu.',
+  'macShare.reason.windowFailed': '{window} n’a pas ouvert de nouvelle fenêtre.',
+  'macShare.retry': 'Réessayer',
+  'macShare.setting.description':
+    'Un Claude Code inactif dans Terminal ou iTerm2 peut y être fermé puis rouvert dans le même onglet via VibeTunnel, pour l’utiliser sur le Mac et ici.',
+  'macShare.setting.label': 'Partager les terminaux du Mac avec le téléphone',
+  'macShare.setting.launcher': 'Rouvrir avec',
+  'macShare.setting.launcher.shell': 'La commande de mon shell',
+  'macShare.setting.launcher.shellHint':
+    'Pour une fonction de votre shell qui le lance déjà avec vt. Son fichier de démarrage est d’abord rechargé.',
+  'macShare.setting.launcher.vt': 'vt',
+  'macShare.sharing': 'Partage…',
+  'macShare.step.checking': 'Vérification qu’il est inactif…',
+  'macShare.step.closing': 'Fermeture sur le Mac…',
+  'macShare.step.opening': 'Ouverture d’une nouvelle fenêtre de {window}…',
+  'macShare.step.reopening': 'Réouverture dans le même onglet…',
+  'macShare.step.saved': 'Conversation enregistrée',
+  'macShare.step.starting': 'En attente du démarrage de {agent}…',
+  'macShare.step.trusting': 'Confirmation du dossier auquel il faisait déjà confiance…',
+  'macShare.step.unlock':
+    'Déverrouillez le Mac pour terminer. Il y est fermé et la conversation est enregistrée ; il se rouvrira quand vous déverrouillerez.',
+  'macShare.unchanged': 'Rien n’a été modifié.',
+  'macShare.whenIdle': 'Disponible quand {agent} aura terminé son tour.',
+  'macShare.copied': 'Copié',
+  'macShare.copyFailed': 'Copie impossible',
 };

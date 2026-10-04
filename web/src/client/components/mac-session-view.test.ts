@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAC_TMUX_OPEN_EVENT, type MacSessionViewDetail } from '../../shared/mac-sessions.js';
+import { MAC_SHARE_EVENT } from '../../shared/mac-share.js';
 import { setLocale } from '../i18n/index.js';
 import type { ClaudeChatView } from './claude-chat-view.js';
 import {
@@ -95,6 +96,37 @@ describe('mac-session-view', () => {
       'Why can’t I type here?'
     );
     expect(find('mac-view-open')).toBeNull();
+  });
+
+  it('offers Share with phone in the footer for an idle agent in Terminal', async () => {
+    await open({ ...agent, share: { can: true } });
+    const button = find('mac-view-share');
+    expect(button?.textContent?.trim()).toBe('Share with phone');
+    const opened = vi.fn();
+    window.addEventListener(MAC_SHARE_EVENT, opened);
+    tapLater(button);
+    window.removeEventListener(MAC_SHARE_EVENT, opened);
+    expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({
+      id: 'a-20085-1759500000',
+      agent: 'claude',
+      app: 'Terminal',
+      title: 'Docs pass',
+    });
+  });
+
+  it('says when sharing is possible while the agent works, and nothing while it is off', async () => {
+    await open({ ...agent, share: { can: false, reason: 'busy' } });
+    expect(find('mac-view-share')).toBeNull();
+    expect(find('mac-view-share-why')?.textContent?.trim()).toBe(
+      'Available when Claude finishes its turn.'
+    );
+    closeMacSessionView();
+    await open(agent);
+    expect(find('mac-view-share')).toBeNull();
+    expect(find('mac-view-share-why')).toBeNull();
+    closeMacSessionView();
+    await open({ ...agent, app: 'Visual Studio Code', share: { can: true } });
+    expect(find('mac-view-share')).toBeNull();
   });
 
   it('names a pane by its tmux window and opens its tmux session to type into it', async () => {

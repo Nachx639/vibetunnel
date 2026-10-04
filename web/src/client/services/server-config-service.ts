@@ -7,6 +7,7 @@
  * - Server configuration status
  */
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
+import type { MacShareLauncher, MacShareOffReason } from '../../shared/mac-share.js';
 import { HttpMethod } from '../../shared/types.js';
 import type { NotificationPreferences, QuickStartCommand } from '../../types/config.js';
 import { createLogger } from '../utils/logger.js';
@@ -30,6 +31,17 @@ export interface ServerConfig {
   macSessionsLockedBy?: string;
   /** False where nothing can be listed (not macOS or Linux, HQ mode). */
   macSessionsSupported?: boolean;
+  /** "Share with phone": the switch, forced or from config.json (default off). */
+  macShare?: boolean;
+  /** What is typed to reopen an agent; default vt. */
+  macShareLauncher?: MacShareLauncher;
+  /** The switch was forced when the server started; macShareLockedBy names how. */
+  macShareLocked?: boolean;
+  macShareLockedBy?: string;
+  /** False off macOS and in HQ mode. */
+  macShareSupported?: boolean;
+  /** Why it isn't offered although supported. */
+  macShareReason?: MacShareOffReason;
   /** The server's platform ("darwin", "linux"…). */
   platform?: string;
 }

@@ -291,6 +291,7 @@ export function macSessionViewDetail(
       app: item.app,
       cwd: item.cwd,
       ...(item.inTmux ? { inTmux: item.inTmux } : {}),
+      ...(item.share ? { share: item.share } : {}),
     };
   }
   const agent = pane ?? item.agents[0];
