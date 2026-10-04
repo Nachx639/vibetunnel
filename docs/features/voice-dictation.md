@@ -1,4 +1,4 @@
-# Voice dictation
+# Voice: dictation, read-aloud and voice mode
 
 Dictation puts spoken text into the chat-mode input box; you still press send. The browser
 records the audio and the VibeTunnel server transcribes it locally with
@@ -7,7 +7,8 @@ Safari and Chrome on iOS, where the browser's own Web Speech recognizer is missi
 
 ## Turning it on
 
-Dictation is **off by default**. With it off, the chat view shows no mic button,
+Everything on this page (dictation, read-aloud and voice mode) is **off by default**, behind
+one switch. For dictation: With it off, the chat view shows no mic button,
 `GET /api/dictation/status` answers `{"enabled": false, "available": false}`, and
 `POST /api/dictation/transcribe` answers `403 {"error": "disabled"}` without reading the upload
 or starting any process.
@@ -20,7 +21,8 @@ To turn it on, add this to `~/.vibetunnel/config.json`:
 }
 ```
 
-The key is read on every request, so no restart is needed. Remove it (or set `false`) to turn
+The same key turns on read-aloud and voice mode (below). The key is read on every request,
+so no restart is needed. Remove it (or set `false`) to turn
 dictation off again; a running `whisper-server` is stopped the next time the status or
 transcribe endpoint is called. `voice` cannot be set through `PUT /api/config`.
 
@@ -82,3 +84,59 @@ otherwise that tool counts as missing. It is not replaced by another copy found 
    loopback.
 
 All tools are started with argument arrays (`execFile`/`spawn`), never through a shell.
+
+## Read-aloud and voice mode
+
+With `"voice": true`, each Claude answer in the phone chat view gets a **Read aloud** button,
+and the chat's header gets a **Voice mode** button: a full-screen, hands-free conversation that
+listens until you pause, transcribes what you said (the dictation pipeline above), sends it
+to Claude, reads the answer aloud and listens again. Speaking over the answer, or **Stop
+talking**, interrupts it. A permission prompt or plan approval is announced and the
+conversation stops: it is never answered by voice.
+
+With `voice` off: no Read aloud or Voice mode buttons, `GET /api/tts/status` answers
+`{"enabled": false, ...}` without looking for any engine, and `POST /api/tts` answers `403`.
+
+Answers are read by the best local engine available:
+
+1. **Kokoro** (kokoro-onnx), kept loaded between answers and stopped after 15 idle minutes.
+   It talks to the server over a stdin/stdout pipe (no network listener).
+2. **Piper**, if installed with a voice model.
+3. macOS **`say`**, with a voice picked from `say -v '?'` for the answer's language (an
+   enhanced or premium voice first, never a novelty voice). Without a voice for that language
+   the system voice reads it.
+
+If no engine works, the browser's own speech synthesis reads the answer (muted on an iPhone
+in silent mode).
+
+Kokoro setup (any OS with Python 3.10+):
+
+```bash
+python3 -m venv ~/.vibetunnel/tts/venv
+~/.vibetunnel/tts/venv/bin/pip install kokoro-onnx soundfile
+mkdir -p ~/.vibetunnel/tts/models && cd ~/.vibetunnel/tts/models
+curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.fp16.onnx
+curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+```
+
+Piper: put the `piper` binary on the PATH and a `*.onnx` voice in `~/.vibetunnel/tts/piper/`.
+
+| Variable | Meaning |
+|---|---|
+| `VIBETUNNEL_TTS_ENGINE` | Use only `kokoro`, `piper` or `say` (other values are ignored). |
+| `VIBETUNNEL_TTS_DIR` | Absolute folder holding `venv/`, `models/` and `piper/` (default `~/.vibetunnel/tts`). |
+| `VIBETUNNEL_TTS_PYTHON` | Absolute path to the Python that has kokoro-onnx. |
+| `VIBETUNNEL_KOKORO_MODEL` | Absolute path to the Kokoro `.onnx` model. |
+| `VIBETUNNEL_KOKORO_VOICES` | Absolute path to Kokoro's `voices-v1.0.bin`. |
+| `VIBETUNNEL_PIPER` | Absolute path to `piper`. |
+| `VIBETUNNEL_PIPER_MODEL` | Absolute path to the Piper voice model. |
+| `VIBETUNNEL_SAY` | Absolute path to `say`. |
+
+The same rules as above apply: a set path must be an absolute existing file and is never
+replaced by a default. `POST /api/tts` takes at most 600 characters per request (the client
+sends an answer sentence by sentence) and a 16 KB body; audio is written to a private temporary
+directory and removed. Piper gets the text on stdin and `say` after `--`, never through a
+shell. On voice mode's first use, Kokoro is warmed for the UI language only.
+
+whisper sometimes turns noise into text. Voice mode ignores transcripts with no letters and
+non-speech tags (`[Music]`, `*noise*`, `♪`); it has no phrase list for any language.

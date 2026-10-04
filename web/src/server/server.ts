@@ -30,6 +30,7 @@ import { createRepositoryRoutes } from './routes/repositories.js';
 import { createSessionRoutes } from './routes/sessions.js';
 import { createTestNotificationRouter } from './routes/test-notification.js';
 import { createTmuxRoutes } from './routes/tmux.js';
+import { createTtsRoutes } from './routes/tts.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { AuthService } from './services/auth-service.js';
 import { CastOutputHub } from './services/cast-output-hub.js';
@@ -45,6 +46,7 @@ import { RemoteRegistry } from './services/remote-registry.js';
 import { SessionMonitor } from './services/session-monitor.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { TerminalManager } from './services/terminal-manager.js';
+import { stopResidentKokoro } from './services/tts.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
 import { agentChatEnabled } from './utils/agent-chat.js';
 import { closeLogger, createLogger, initLogger, setDebugMode } from './utils/logger.js';
@@ -260,6 +262,10 @@ Environment Variables:
                         Voice dictation tools (absolute paths; WHISPER_SERVER=off
                         disables the resident server). Dictation itself needs
                         "voice": true in config.json; see docs/features/voice-dictation.md
+  VIBETUNNEL_TTS_ENGINE (kokoro|piper|say), VIBETUNNEL_TTS_DIR, VIBETUNNEL_TTS_PYTHON,
+  VIBETUNNEL_KOKORO_MODEL, VIBETUNNEL_KOKORO_VOICES, VIBETUNNEL_PIPER,
+  VIBETUNNEL_PIPER_MODEL, VIBETUNNEL_SAY
+                        Read-aloud engines (absolute paths), also behind "voice": true
 
 Examples:
   # Run a simple server with authentication
@@ -1208,7 +1214,8 @@ export async function createApp(): Promise<AppInstance> {
 
   // Mount voice dictation routes (off unless config.json has "voice": true)
   app.use('/api', createDictationRoutes({ configService }));
-  logger.debug('Mounted dictation routes');
+  app.use('/api', createTtsRoutes({ configService }));
+  logger.debug('Mounted dictation and read-aloud routes');
 
   // Mount Git routes
   app.use('/api', createGitRoutes());
@@ -1797,8 +1804,9 @@ export async function startVibeTunnelServer() {
       configService.stopWatching();
       logger.debug('Stopped configuration service watcher');
 
-      // Stop the resident whisper-server, if dictation started one
+      // Stop the resident whisper-server and Kokoro, if voice started them
       stopResidentWhisper();
+      stopResidentKokoro();
 
       // Stop mDNS advertisement if it was started
       if (mdnsService.isActive()) {
