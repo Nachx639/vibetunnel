@@ -732,7 +732,9 @@ export class PushNotificationService {
     errors?: string[];
   }> {
     try {
-      const response = await fetch('/api/push/status');
+      const response = await fetch('/api/push/status', {
+        headers: { ...authClient.getAuthHeader() },
+      });
 
       if (!response.ok) {
         throw new Error(`Server responded with ${response.status}: ${response.statusText}`);

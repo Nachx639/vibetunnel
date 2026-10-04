@@ -158,17 +158,16 @@ export function unauthorizedLogLine(
 
 export function createAuthMiddleware(config: AuthConfig) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    // Skip auth for auth endpoints, client logging, the push key and status, and Tailscale status.
-    // Only these exact routes: the whole of /logs and /push used to be open, so
-    // anyone who could reach the server could read the server log (`GET /logs/raw`, with what
-    // was typed into terminals) or subscribe their own push endpoint and receive every Claude
-    // reply and permission request (`POST /push/subscribe`).
+    // Skip auth for auth endpoints, client logging and Tailscale status. Only these exact
+    // routes: the whole of /logs and /push used to be open, so anyone who could reach the
+    // server could read the server log (`GET /logs/raw`, with what was typed into terminals)
+    // or subscribe their own push endpoint and receive every Claude reply and permission
+    // request (`POST /push/subscribe`). Every /push route needs a login: the app only calls
+    // them signed in, and the service worker calls none.
     if (
       req.path.startsWith('/auth') ||
       req.path.startsWith('/api/auth') ||
       (req.method === 'POST' && req.path === '/logs/client') ||
-      (req.method === 'GET' && req.path === '/push/vapid-public-key') ||
-      (req.method === 'GET' && req.path === '/push/status') ||
       req.path === '/sessions/tailscale/status'
     ) {
       // Special case: If Tailscale auth is enabled and we have valid headers,

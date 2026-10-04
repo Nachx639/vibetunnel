@@ -400,19 +400,15 @@ describe('Auth Middleware', () => {
       expect(response2.status).toBe(200);
     });
 
-    it('lets only client logging and the push key and status through without a login', async () => {
+    it('lets only client logging through without a login', async () => {
       const middleware = createAuthMiddleware({
         authService: mockAuthService,
       });
 
       app.use(middleware);
       app.post('/logs/client', (_req, res) => res.json({ success: true }));
-      app.get('/push/vapid-public-key', (_req, res) => res.json({ success: true }));
-      app.get('/push/status', (_req, res) => res.json({ success: true }));
 
       expect((await request(app).post('/logs/client')).status).toBe(200);
-      expect((await request(app).get('/push/vapid-public-key')).status).toBe(200);
-      expect((await request(app).get('/push/status')).status).toBe(200);
     });
 
     // All of /logs and /push used to be open. Anyone who could reach the server could read
@@ -426,6 +422,8 @@ describe('Auth Middleware', () => {
       ['post', '/push/subscribe'],
       ['post', '/push/unsubscribe'],
       ['post', '/push/test'],
+      ['get', '/push/status'],
+      ['get', '/push/vapid-public-key'],
       ['get', '/logs/client'],
     ] as const)('requires a login for %s %s', async (method, path) => {
       const middleware = createAuthMiddleware({
