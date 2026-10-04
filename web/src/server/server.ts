@@ -28,6 +28,7 @@ import { createPushRoutes } from './routes/push.js';
 import { createRemoteRoutes } from './routes/remotes.js';
 import { createRepositoryRoutes } from './routes/repositories.js';
 import { createSessionRoutes } from './routes/sessions.js';
+import { createTaskRoutes } from './routes/tasks.js';
 import { createTestNotificationRouter } from './routes/test-notification.js';
 import { createTmuxRoutes } from './routes/tmux.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
@@ -45,6 +46,8 @@ import { PushNotificationService } from './services/push-notification-service.js
 import { RemoteRegistry } from './services/remote-registry.js';
 import { SessionMonitor } from './services/session-monitor.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
+import { createTaskLauncher, type DeliverInitialInput } from './services/task-launcher.js';
+import { TaskScheduler } from './services/task-scheduler.js';
 import { LARGE_REPLAY_MAX_BYTES, TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
 import { agentChatEnabled } from './utils/agent-chat.js';
@@ -522,6 +525,7 @@ interface AppInstance {
   hqClient: HQClient | null;
   controlDirWatcher: ControlDirWatcher | null;
   pushNotificationService: PushNotificationService | null;
+  taskScheduler: TaskScheduler | null;
 }
 
 // Track if app has been created
@@ -673,6 +677,9 @@ export async function createApp(): Promise<AppInstance> {
     logger.debug('Push notifications disabled');
   }
 
+  // Tasks from the phone (run now or at a time); created once the session routes exist.
+  let taskScheduler: TaskScheduler | null = null;
+
   // Push "Claude finished / needs you" from Claude Code's own session status. Off unless the
   // user turns on Settings > Notifications > Claude status (notificationPreferences.agentStatus):
   // while off the notifier reads nothing (no ps, no transcript).
@@ -713,6 +720,10 @@ export async function createApp(): Promise<AppInstance> {
           return preferences.enabled === true && preferences.agentStatus === true;
         },
       }
+    );
+    // A task session's first "finished" becomes "Task finished" (one push, not two).
+    claudeNotifier.setPayloadRewriter(
+      (payload) => taskScheduler?.rewriteFinished(payload) ?? payload
     );
     claudeNotifier.start();
   }
@@ -1200,6 +1211,7 @@ export async function createApp(): Promise<AppInstance> {
   logger.debug('Mounted authentication routes');
 
   // Mount routes
+  let deliverTaskInput: DeliverInitialInput | null = null;
   app.use(
     '/api',
     createSessionRoutes({
@@ -1208,9 +1220,42 @@ export async function createApp(): Promise<AppInstance> {
       remoteRegistry,
       isHQMode: config.isHQMode,
       agentChatEnabled: () => agentChatEnabled(configService.getConfig()),
+      exposeInitialInput: (deliver) => {
+        deliverTaskInput = deliver;
+      },
     })
   );
   logger.debug('Mounted session routes');
+
+  // Tasks (docs/features/scheduled-tasks.md): sessions start on this machine, so not on an HQ
+  // server. Inert until the user creates one: with no saved tasks the scheduler arms nothing.
+  const tasksEnabled = () => agentChatEnabled(configService.getConfig());
+  if (!config.isHQMode) {
+    const scheduler = new TaskScheduler({
+      storePath: path.join(CONTROL_DIR, 'tasks.json'),
+      launch: createTaskLauncher({
+        ptyManager,
+        deliverInitialInput: () => deliverTaskInput,
+        enabled: tasksEnabled,
+      }),
+      notify: (payload) => {
+        logger.log(`Task push: ${payload.type}`);
+        pushNotificationService?.sendNotification(payload).catch((error) => {
+          logger.warn(`Failed to send task notification: ${error}`);
+        });
+      },
+      sessionStatus: (sessionId) => ptyManager.getSession(sessionId)?.status,
+      runOverdueOnStart: () => configService.getConfig().runOverdueOnStart === true,
+      onError: (message, error) => logger.warn(`${message}: ${error ?? ''}`),
+    });
+    taskScheduler = scheduler;
+    scheduler.start().catch((error) => logger.error('Task scheduler failed to start:', error));
+  }
+  app.use(
+    '/api',
+    createTaskRoutes({ configService, scheduler: () => taskScheduler, enabled: tasksEnabled })
+  );
+  logger.debug('Mounted task routes');
 
   app.use(
     '/api',
@@ -1740,6 +1785,7 @@ export async function createApp(): Promise<AppInstance> {
     hqClient,
     controlDirWatcher,
     pushNotificationService,
+    taskScheduler,
   };
 }
 
@@ -1775,6 +1821,7 @@ export async function startVibeTunnelServer() {
     controlDirWatcher,
     config,
     configService,
+    taskScheduler,
   } = appInstance;
 
   // Update debug mode based on config or environment variable
@@ -1861,6 +1908,8 @@ export async function startVibeTunnelServer() {
         await cloudflareService.stop();
         logger.debug('Stopped Cloudflare tunnel');
       }
+
+      taskScheduler?.stop();
 
       // Stop control directory watcher
       if (controlDirWatcher) {

@@ -77,6 +77,7 @@ export class ClaudeStatusNotifier {
   >();
   private timer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
+  private rewrite: (payload: NotificationPayload) => NotificationPayload = (payload) => payload;
 
   constructor(
     private listSessions: () => WatchedSession[],
@@ -88,6 +89,11 @@ export class ClaudeStatusNotifier {
     private readChoices?: (sessionId: string) => Promise<ScreenChoices | null>,
     private options: ClaudeStatusNotifierOptions = {}
   ) {}
+
+  /** Swap a push before it is sent (a task session's "finished" becomes "task finished"). */
+  setPayloadRewriter(rewrite: (payload: NotificationPayload) => NotificationPayload): void {
+    this.rewrite = rewrite;
+  }
 
   start(intervalMs = 3000): void {
     if (this.timer) return;
@@ -159,8 +165,9 @@ export class ClaudeStatusNotifier {
           if (!again || claude.status === 'busy') continue;
           previous = 'busy';
         }
-        const payload = this.payloadFor(session, claude, previous, status);
-        if (!payload) continue;
+        const original = this.payloadFor(session, claude, previous, status);
+        if (!original) continue;
+        const payload = this.rewrite(original);
         if (claude.status === 'waiting' && this.readChoices) {
           // A failed screen read still sends the push, just without choices.
           const read = await this.readChoices(session.id).catch(() => null);

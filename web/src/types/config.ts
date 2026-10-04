@@ -1,4 +1,5 @@
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../shared/constants.js';
+import type { TaskTemplate } from '../shared/tasks.js';
 
 export interface QuickStartCommand {
   name?: string; // Optional display name (can include emoji), if empty uses command
@@ -35,6 +36,13 @@ export interface VibeTunnelConfig {
    * VIBETUNNEL_AGENT_CHAT=1|0 overrides it.
    */
   agentChat?: boolean;
+  /** The user's own task templates (Tasks sheet); built-in ones live in the app. */
+  taskTemplates?: TaskTemplate[];
+  /**
+   * Run scheduled tasks whose time passed while the server was down (at most 6 h late) when it
+   * starts again. Off when missing: they are marked missed instead.
+   */
+  runOverdueOnStart?: boolean;
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

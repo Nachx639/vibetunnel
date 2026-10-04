@@ -5,6 +5,12 @@ import * as os from 'os';
 import * as path from 'path';
 import { z } from 'zod';
 import {
+  MAX_TASK_TEMPLATES,
+  TASK_NAME_MAX,
+  TASK_PROMPT_MAX,
+  type TaskTemplate,
+} from '../../shared/tasks.js';
+import {
   DEFAULT_CONFIG,
   DEFAULT_NOTIFICATION_PREFERENCES,
   type NotificationPreferences,
@@ -13,6 +19,19 @@ import {
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('config-service');
+
+export const TaskTemplateSchema = z.object({
+  id: z.string().regex(/^[\w-]{1,64}$/, 'Invalid template id'),
+  name: z.string().trim().min(1, 'Template name cannot be empty').max(TASK_NAME_MAX),
+  prompt: z.string().trim().min(1, 'Template prompt cannot be empty').max(TASK_PROMPT_MAX),
+});
+
+export const TaskTemplatesSchema = z
+  .array(TaskTemplateSchema)
+  .max(MAX_TASK_TEMPLATES, `At most ${MAX_TASK_TEMPLATES} templates`)
+  .refine((list) => new Set(list.map((tpl) => tpl.id)).size === list.length, {
+    message: 'Template ids must be unique',
+  });
 
 // Zod schema for config validation
 const ConfigSchema = z.object({
@@ -25,6 +44,9 @@ const ConfigSchema = z.object({
   ),
   repositoryBasePath: z.string().optional(),
   agentChat: z.boolean().optional(),
+  // A broken hand edit drops the templates instead of resetting the whole config.
+  taskTemplates: TaskTemplatesSchema.optional().catch(undefined),
+  runOverdueOnStart: z.boolean().optional().catch(undefined),
   // Extended configuration sections - we parse but don't use most of these yet
   server: z
     .object({
@@ -284,6 +306,23 @@ export class ConfigService {
     // Validate the entire config with updated repository base path
     const updatedConfig = { ...this.config, repositoryBasePath: path };
     this.config = this.validateConfig(updatedConfig);
+    this.saveConfig();
+    this.notifyConfigChange();
+  }
+
+  public getTaskTemplates(): TaskTemplate[] {
+    return this.config.taskTemplates ?? [];
+  }
+
+  /** Replace the user's task templates (validated; throws on an invalid list). */
+  public updateTaskTemplates(templates: TaskTemplate[]): void {
+    const parsed = TaskTemplatesSchema.safeParse(templates);
+    if (!parsed.success) {
+      throw new Error(
+        `Invalid task templates: ${parsed.error.issues.map((e) => e.message).join(', ')}`
+      );
+    }
+    this.config = this.validateConfig({ ...this.config, taskTemplates: parsed.data });
     this.saveConfig();
     this.notifyConfigChange();
   }

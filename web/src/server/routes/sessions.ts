@@ -47,6 +47,8 @@ interface SessionRoutesConfig {
    * request, so the switch applies without a restart. Missing means off.
    */
   agentChatEnabled?: () => boolean;
+  /** Hands out the "type the first message once Claude is ready" helper (tasks use it). */
+  exposeInitialInput?: (deliver: (sessionId: string, text: string) => void) => void;
 }
 
 // Helper function to resolve path with default fallback
@@ -193,6 +195,18 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       options
     );
   }
+
+  /**
+   * Types a task's prompt into its new session once Claude Code is ready: minutes may pass
+   * while the user answers its first dialogs (trust this folder), and nothing is typed blind.
+   */
+  function deliverInitialInput(sessionId: string, text: string) {
+    if (!text.trim()) return;
+    typeWhenReady(sessionId, text).catch((error) =>
+      logger.error(`initial input for session ${sessionId} failed:`, error)
+    );
+  }
+  config.exposeInitialInput?.(deliverInitialInput);
 
   // Server status endpoint
   router.get('/server/status', async (_req, res) => {
