@@ -110,13 +110,20 @@ describe('CastOutputHub - Asciinema Stream Pruning', () => {
       kind: 'output';
       data: string;
     }>;
-    // The cursor-home written after the clear in the same event, then lines 9, 10, 11
-    expect(outputEvents.map((e) => e.data)).toEqual([
-      '\u001b[H',
-      expect.stringContaining('Line 9: Final content'),
-      expect.stringContaining('Line 10: This should be visible'),
-      expect.stringContaining('Line 11: Last line'),
-    ]);
+    // The cursor-home written after the clear in the same event, then lines 9, 10, 11. A
+    // replay joins consecutive output into large chunks, so compare the joined text.
+    const replayed = outputEvents.map((e) => e.data).join('');
+    expect(replayed.startsWith('\u001b[H')).toBe(true);
+    for (const pruned of ['Line 1:', 'Line 5:', 'Line 7:']) expect(replayed).not.toContain(pruned);
+    const order = [
+      'Line 9: Final content',
+      'Line 10: This should be visible',
+      'Line 11: Last line',
+    ];
+    expect(order.map((line) => replayed.indexOf(line))).toEqual(
+      [...order.map((line) => replayed.indexOf(line))].sort((a, b) => a - b)
+    );
+    for (const line of order) expect(replayed).toContain(line);
 
     // Should have exit event
     const exitEvent = events.find((e) => e.kind === 'exit');
@@ -136,10 +143,9 @@ describe('CastOutputHub - Asciinema Stream Pruning', () => {
       kind: 'output';
       data: string;
     }>;
-    expect(outputEvents.map((e) => e.data)).toEqual([
-      ' in the middle',
-      expect.stringContaining('After clear'),
-    ]);
+    const replayed = outputEvents.map((e) => e.data).join('');
+    expect(replayed.startsWith(' in the middle')).toBe(true);
+    expect(replayed).toContain('After clear');
   });
 
   it('should not prune streams without clear sequences', async () => {
@@ -155,10 +161,11 @@ describe('CastOutputHub - Asciinema Stream Pruning', () => {
       kind: 'output';
       data: string;
     }>;
-    expect(outputEvents.length).toBe(3); // All 3 lines
-    expect(outputEvents[0].data).toContain('Line 1: No clears');
-    expect(outputEvents[1].data).toContain('Line 2: Just regular');
-    expect(outputEvents[2].data).toContain('Line 3: Should replay');
+    const replayed = outputEvents.map((e) => e.data).join(''); // All 3 lines, in order
+    const lines = ['Line 1: No clears', 'Line 2: Just regular', 'Line 3: Should replay'];
+    for (const line of lines) expect(replayed).toContain(line);
+    expect(replayed.indexOf(lines[0])).toBeLessThan(replayed.indexOf(lines[1]));
+    expect(replayed.indexOf(lines[1])).toBeLessThan(replayed.indexOf(lines[2]));
   });
 
   it('should surface errors for missing sessions', async () => {

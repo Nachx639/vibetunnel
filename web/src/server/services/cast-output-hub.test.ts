@@ -165,9 +165,52 @@ describe('CastOutputHub live follow', () => {
       await vi.waitFor(() => expect(outputs().at(-1)).toBe('<live>'), { timeout: 3000 });
       expect(outputs()).toEqual([
         '\x1bc',
-        ...Array.from({ length: 10 }, (_, i) => `<new ${i}>`),
+        Array.from({ length: 10 }, (_, i) => `<new ${i}>`).join(''),
         '<live>',
       ]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('replays a history of many short events in a few large chunks', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cast-hub-'));
+    const stdoutPath = path.join(tmpDir, 'stdout');
+    const lines = [HEADER];
+    let expected = '';
+    for (let i = 0; i < 100_000; i++) {
+      const data = `${i % 1000}\r\n`;
+      expected += data;
+      lines.push(JSON.stringify([i / 1000, 'o', data]));
+    }
+    lines.push(JSON.stringify([101, 'r', '50x20']));
+    lines.push(JSON.stringify([102, 'o', 'after']));
+    fs.writeFileSync(stdoutPath, `${lines.join('\n')}\n`);
+    const sessionManager = {
+      getSessionPaths: () => ({ stdoutPath }),
+      loadSessionInfo: () => ({ lastClearOffset: 0 }),
+      saveSessionInfo: vi.fn(),
+    } as unknown as SessionManager;
+    const hub = new CastOutputHub(sessionManager);
+    const events: CastOutputHubEvent[] = [];
+    const unsubscribe = hub.subscribe('s1', (event) => events.push(event));
+    try {
+      await vi.waitFor(() => expect(events.at(-1)?.kind).toBe('replay-end'), { timeout: 5000 });
+      // It used to be one event (one WebSocket frame) per cast line, 100k of them for 500 KB.
+      const kinds = events.map((e) => e.kind);
+      expect(kinds.filter((kind) => kind === 'output').length).toBeLessThanOrEqual(4);
+      // In order, and the resize between them still where it was.
+      const outputs = events.filter(
+        (e): e is Extract<CastOutputHubEvent, { kind: 'output' }> => e.kind === 'output'
+      );
+      expect(outputs.at(-1)?.data).toBe('after');
+      expect(
+        outputs
+          .slice(0, -1)
+          .map((e) => e.data)
+          .join('')
+      ).toBe(expected);
+      expect(kinds.slice(-3)).toEqual(['resize', 'output', 'replay-end']);
     } finally {
       unsubscribe();
     }
@@ -375,8 +418,11 @@ describe('CastOutputHub replay of a cast too big for memory', () => {
       .filter((e): e is Extract<CastOutputHubEvent, { kind: 'output' }> => e.kind === 'output')
       .map((e) => e.data);
     // Whole events only, ending with the last one, and no more than the window.
+    // (Joined into larger chunks for the socket, so compared as text.)
     expect(outputs.length).toBeGreaterThan(0);
-    expect(frames.slice(-outputs.length)).toEqual(outputs);
+    const replayed = outputs.join('');
+    const whole = frames.findIndex((_, i) => frames.slice(i).join('') === replayed);
+    expect(whole).toBeGreaterThan(0);
     expect(Buffer.byteLength(outputs.join(''))).toBeLessThanOrEqual(replayMaxBytes);
     expect(events.some((e) => e.kind === 'error')).toBe(false);
   });

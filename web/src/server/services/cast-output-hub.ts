@@ -70,6 +70,9 @@ export type CastOutputHubEvent =
 
 export type CastOutputHubListener = (event: CastOutputHubEvent) => void;
 
+/** Most characters of history replay output sent as one event (and one WebSocket frame). */
+const REPLAY_CHUNK_CHARS = 256 * 1024;
+
 /** Sent before the history a reset replays: a full terminal reset (RIS). */
 const RESET_EVENT: CastOutputHubEvent = { kind: 'output', data: '\x1bc', historical: true };
 
@@ -579,16 +582,34 @@ export class CastOutputHub {
       listener({ kind: 'header', header: headerToSend });
     }
 
+    // Consecutive output goes out joined, up to REPLAY_CHUNK_CHARS at a time: one frame per
+    // cast event made a 1 MB history of short lines 214k WebSocket messages, each one a
+    // message event and a frame and string decode on the client, which took seconds to take
+    // in where ghostty parses the whole megabyte in about 20 ms.
+    let chunk: string[] = [];
+    let chunkLength = 0;
+    const sendChunk = () => {
+      if (chunk.length === 0) return;
+      listener({ kind: 'output', data: chunk.join(''), historical: true });
+      chunk = [];
+      chunkLength = 0;
+    };
     for (let i = startIndex; i < events.length; i++) {
       const event = events[i];
+      if (isOutputEvent(event)) {
+        chunk.push(event[2]);
+        chunkLength += event[2].length;
+        if (chunkLength >= REPLAY_CHUNK_CHARS) sendChunk();
+        continue;
+      }
+      sendChunk();
       if (isExitEvent(event)) {
         listener({ kind: 'exit', exitCode: event[1] });
-      } else if (isOutputEvent(event)) {
-        listener({ kind: 'output', data: event[2], historical: true });
       } else if (isResizeEvent(event)) {
         listener({ kind: 'resize', dimensions: event[2], historical: true });
       }
     }
+    sendChunk();
   }
 
   private cleanup(): void {

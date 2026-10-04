@@ -679,7 +679,7 @@ describe('WsV3Hub history replay through a real CastOutputHub', () => {
           return frame?.type === WsV3MessageType.EVENT ? JSON.parse(text).kind : text;
         });
     await vi.waitFor(() => expect(stream()).toContain('replay-end'), { timeout: 5_000 });
-    expect(stream()).toEqual(['header', 'one\r\n', 'two\r\n', 'replay-end']);
+    expect(stream()).toEqual(['header', 'one\r\ntwo\r\n', 'replay-end']);
     // The header tells the client that this server marks the end of the replay.
     const header = ws.sent
       .map((raw) => decodeWsV3Frame(raw))
