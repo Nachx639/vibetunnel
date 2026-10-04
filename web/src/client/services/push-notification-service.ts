@@ -6,6 +6,7 @@ import {
   RECOMMENDED_NOTIFICATION_PREFERENCES,
 } from '../../types/config.js';
 import { t } from '../i18n/index.js';
+import { syncAppBadge } from '../sw-badge.js';
 import { isIOSDevice, isStandaloneApp } from '../utils/ios-install';
 import { createLogger } from '../utils/logger';
 import { authClient } from './auth-client';
@@ -145,6 +146,9 @@ export class PushNotificationService {
         hasSubscription: !!this.pushSubscription,
         endpoint: `${this.pushSubscription?.endpoint?.substring(0, 50)}...`,
       });
+
+      // The icon may still count notifications cleared while the app was closed
+      void this.recountAppBadge();
 
       // Listen for service worker messages
       navigator.serviceWorker.addEventListener(
@@ -584,6 +588,17 @@ export class PushNotificationService {
     } catch (error) {
       logger.debug('failed to clear session notifications:', error);
     }
+  }
+
+  /**
+   * Recount the home-screen icon badge from the notifications still on screen. iOS fires no
+   * `notificationclose` when they are cleared from Notification Center, so the worker's own
+   * count can stay too high until the app looks again.
+   */
+  async recountAppBadge(): Promise<void> {
+    const registration = this.serviceWorkerRegistration;
+    if (!registration?.getNotifications || typeof navigator === 'undefined') return;
+    await syncAppBadge(registration, navigator);
   }
 
   /**

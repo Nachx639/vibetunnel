@@ -795,6 +795,40 @@ describe('PushNotificationService', () => {
       unsubscribe();
     });
   });
+  describe('recountAppBadge', () => {
+    it('badges the icon with the Claude notifications still on screen', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: Required for test mocking
+      const testService = pushNotificationService as unknown as any;
+      testService.serviceWorkerRegistration = {
+        getNotifications: vi
+          .fn()
+          .mockResolvedValue([
+            { tag: 'vibetunnel-claude-a' },
+            { tag: 'vibetunnel-claude-b' },
+            { tag: 'vibetunnel-bell-a' },
+          ]),
+      };
+      const setAppBadge = vi.fn().mockResolvedValue(undefined);
+      const clearAppBadge = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'setAppBadge', { value: setAppBadge, configurable: true });
+      Object.defineProperty(navigator, 'clearAppBadge', {
+        value: clearAppBadge,
+        configurable: true,
+      });
+      try {
+        await pushNotificationService.recountAppBadge();
+        expect(setAppBadge).toHaveBeenCalledWith(2);
+
+        // Cleared from Notification Center while the app was away
+        testService.serviceWorkerRegistration.getNotifications.mockResolvedValue([]);
+        await pushNotificationService.recountAppBadge();
+        expect(clearAppBadge).toHaveBeenCalled();
+      } finally {
+        Reflect.deleteProperty(navigator, 'setAppBadge');
+        Reflect.deleteProperty(navigator, 'clearAppBadge');
+      }
+    });
+  });
   describe('clearSessionNotifications', () => {
     it('closes only the opened session’s VibeTunnel notifications', async () => {
       const make = (tag: string, sessionId?: string) => ({

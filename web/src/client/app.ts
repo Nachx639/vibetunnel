@@ -218,7 +218,8 @@ export class VibeTunnelApp extends LitElement {
     window.removeEventListener('keydown', this.handleKeyDown);
     // Clean up capture toggle listener
     document.removeEventListener('capture-toggled', this.handleCaptureToggled as EventListener);
-    document.removeEventListener('visibilitychange', this.clearViewedSessionNotifications);
+    document.removeEventListener('visibilitychange', this.handleAppVisible);
+    window.removeEventListener('focus', this.handleAppVisible);
     // Clean up auto refresh interval
     if (this.autoRefreshIntervalId !== null) {
       clearInterval(this.autoRefreshIntervalId);
@@ -1588,18 +1589,28 @@ export class VibeTunnelApp extends LitElement {
         new CustomEvent('navigate-to-session', { detail: { sessionId: data.sessionId } })
       );
     }) as EventListener);
-    document.addEventListener('visibilitychange', this.clearViewedSessionNotifications);
+    document.addEventListener('visibilitychange', this.handleAppVisible);
+    window.addEventListener('focus', this.handleAppVisible);
   }
 
   /** The session on screen has been seen: take its notifications off the lock screen. */
-  private clearViewedSessionNotifications = () => {
+  private clearViewedSessionNotifications = (): Promise<void> => {
     if (
       document.visibilityState === 'visible' &&
       this.currentView === 'session' &&
       this.selectedSessionId
     ) {
-      void pushNotificationService.clearSessionNotifications(this.selectedSessionId);
+      return pushNotificationService.clearSessionNotifications(this.selectedSessionId);
     }
+    return Promise.resolve();
+  };
+
+  /** Back on screen: clear what is now seen, then recount the icon badge. */
+  private handleAppVisible = () => {
+    if (document.visibilityState !== 'visible') return;
+    void this.clearViewedSessionNotifications().then(() =>
+      pushNotificationService.recountAppBadge()
+    );
   };
 
   private handleOpenSettings = () => {
