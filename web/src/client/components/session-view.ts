@@ -202,6 +202,8 @@ export class SessionView extends LitElement {
   @state() private chatCovers = false;
   /** The chat view shows a question with its options; the composer then shows none. */
   @state() private chatAsking = false;
+  /** The PTY's width as the stream last said (another client may have changed it). */
+  @state() private ptyCols?: number;
 
   /**
    * Phone chat mode with agent chat on: the agent's conversation (when the session runs one)
@@ -429,6 +431,10 @@ export class SessionView extends LitElement {
     this.terminalLifecycleManager.setInputManager(this.inputManager);
     this.terminalLifecycleManager.setConnected(this.uiStateManager.getState().connected);
     this.terminalLifecycleManager.setDomElement(this);
+    // The chat and the composer read the menu again at once (see ClaudeChatView.ptyCols).
+    this.connectionManager.setOnPtySize((size) => {
+      this.ptyCols = size.cols;
+    });
 
     // Set up event handlers for terminal lifecycle manager
     const eventHandlers: TerminalEventHandlers = {
@@ -1657,6 +1663,7 @@ export class SessionView extends LitElement {
                   .getMenuScreen=${() =>
                     this.terminalLifecycleManager.getTerminal()?.getScreenText(60) ?? ''}
                   .getScreenLayout=${() => this.screenLayout(60)}
+                  .ptyCols=${this.ptyCols}
                   @claude-chat-asking=${(e: CustomEvent<boolean>) => {
                     this.chatAsking = e.detail;
                   }}
@@ -1704,6 +1711,7 @@ export class SessionView extends LitElement {
             .getScreenText=${() =>
               this.terminalLifecycleManager.getTerminal()?.getScreenText(60) ?? ''}
             .getScreenLayout=${() => this.screenLayout(60)}
+            .ptyCols=${this.ptyCols}
             .claudeWaiting=${this.session?.claudeStatus?.status === 'waiting'}
             .menuInChat=${this.chatAsking}
             @composer-attach=${() => this.fileOperationsManager.pickImagesForComposer()}

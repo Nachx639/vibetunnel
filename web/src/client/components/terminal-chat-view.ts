@@ -796,6 +796,8 @@ export class TerminalChatView extends LitElement {
    * answer (Claude Code's trust-folder dialog), whose options then replace the quick prompts.
    */
   @property({ attribute: false }) getScreenText?: () => string;
+  /** The PTY's width, as the stream last said: the menu is read again at once when it changes. */
+  @property({ type: Number }) ptyCols?: number;
   /** How getScreenText's lines are laid out: width, soft-wrapped rows, visible rows. */
   @property({ attribute: false }) getScreenLayout?: () => ScreenLayout | undefined;
   /** Claude Code reports it waits for the user (a permission, a plan to approve, a question). */
@@ -999,6 +1001,12 @@ export class TerminalChatView extends LitElement {
 
   updated(changedProperties: Map<string, unknown>) {
     this.syncScreenMenuWatch();
+    // A menu read at the old width is dropped at once if the screen has none at the new one,
+    // not after the two polls that ride out a redraw.
+    if (changedProperties.has('ptyCols') && this.screenMenuTimer) {
+      if (this.screenMenu && !this.menuOnScreen()) this.screenMenuMisses = 1;
+      this.readScreenMenu();
+    }
     // This view is reused across sessions: another session's images, note, menu and failed
     // sends are not this one's.
     if (changedProperties.has('sessionId') && changedProperties.get('sessionId') !== undefined) {

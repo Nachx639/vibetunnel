@@ -4,9 +4,11 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { resetViewport, setupFetchMock, setViewport } from '@/test/utils/component-helpers';
 import { createMockSession } from '@/test/utils/lit-test-utils';
 import { resetFactoryCounters } from '@/test/utils/test-factories';
+import { terminalSocketClient } from '../services/terminal-socket-client.js';
 import { resetAgentChatCache } from '../utils/agent-chat.js';
 import type { ClaudeChatView } from './claude-chat-view.js';
 import type { SessionView } from './session-view';
+import type { Terminal } from './terminal';
 import type { TerminalChatView } from './terminal-chat-view.js';
 
 vi.mock('../services/terminal-socket-client.js', () => ({
@@ -29,6 +31,13 @@ interface Internals {
     getState(): { chatMode: boolean };
   };
   handleToggleChatMode(): void;
+  terminalLifecycleManager: { setTerminal(terminal: Terminal): void };
+  connectionManager: {
+    setTerminal(terminal: Terminal): void;
+    setSession(session: unknown): void;
+    setConnected(connected: boolean): void;
+    connectToStream(): void;
+  };
 }
 
 const internals = (element: SessionView) => element as unknown as Internals;
@@ -216,6 +225,79 @@ describe('SessionView phone chat with agent chat', () => {
     await vi.waitFor(() =>
       expect(internals(element).uiStateManager.getState().chatMode).toBe(true)
     );
+  });
+
+  it("reads no menu off the phone's copy once the stream says the PTY got wider", async () => {
+    // Another client resized the PTY to 53x56 under the phone's 45 columns: the chat must not
+    // keep the cut labels as buttons until its next poll, seconds away.
+    await open({ agentChat: true });
+    const sessionId = element.session?.id ?? '';
+    fetchMock.mockResponse(`/api/sessions/${sessionId}/claude-chat`, {
+      available: true,
+      status: 'waiting',
+      waitingFor: 'permission prompt',
+      messages: [],
+    });
+    const screen = [
+      ' Do you want to proceed?',
+      ' ❯ 1. Yes',
+      '   2. Yes, and always allow access to /home/u',
+      '      ongname/projects/acme/demo-repo-qa1 fro',
+      '      project',
+      '   3. No',
+      '',
+      ' Esc to cancel · Tab to amend',
+    ].join('\n');
+    const terminal = element.querySelector('vibe-terminal') as Terminal | null;
+    if (!terminal) throw new Error('no terminal');
+    // The phone's terminal as it is: 45 columns, and the rows it holds.
+    terminal.getScreenText = () => screen;
+    terminal.getScreenWrapped = () => screen.split('\n').map(() => false);
+    terminal.getTerminalSize = () => ({ cols: 45, rows: 32 });
+    // What the view does when its terminal opens: the stream it reads the PTY's size from.
+    internals(element).terminalLifecycleManager.setTerminal(terminal);
+    const connection = internals(element).connectionManager;
+    connection.setTerminal(terminal);
+    connection.setSession(element.session);
+    connection.setConnected(true);
+    connection.connectToStream();
+    const calls = vi.mocked(terminalSocketClient.subscribe).mock.calls as unknown as Array<
+      [string, { onEvent: (event: unknown) => void }]
+    >;
+    const { onEvent } = calls[calls.length - 1][1];
+    onEvent({ kind: 'header', header: { width: 45, height: 32 } });
+
+    await enterChatMode();
+    const chat = element.querySelector('claude-chat-view') as ClaudeChatView | null;
+    if (!chat) throw new Error('chat mode not rendered');
+    const card = () => chat.shadowRoot?.querySelector('.question');
+    const waiting = () => chat.shadowRoot?.querySelector('.waiting')?.textContent ?? '';
+    await vi.waitFor(() => expect(card()?.textContent).toContain('ongname'));
+
+    // Another client resizes the PTY; Claude redraws for 53 columns (the same cut rows here).
+    // No poll in between: the card must go at once.
+    onEvent({ kind: 'resize', dimensions: '53x56' });
+    await element.updateComplete;
+    await chat.updateComplete;
+    expect(card()).toBeNull();
+    expect(waiting()).toContain('wider screen');
+
+    // Back at the phone's width: the menu is read again, at once too.
+    terminal.getScreenText = () =>
+      [
+        ' Do you want to proceed?',
+        ' ❯ 1. Yes',
+        '   2. Yes, and always allow access to',
+        '      /home/userwithlongname/projects/acme/',
+        '      demo-repo-qa1 from this project',
+        '   3. No',
+        '',
+        ' Esc to cancel · Tab to amend',
+      ].join('\n');
+    onEvent({ kind: 'resize', dimensions: '45x32' });
+    await element.updateComplete;
+    await chat.updateComplete;
+    expect(card()?.textContent).toContain('userwithlongname');
   });
 
   it('keeps the classic desktop chat mode even with agent chat on', async () => {

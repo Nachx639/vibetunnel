@@ -1304,6 +1304,11 @@ export class ClaudeChatView extends LitElement {
    */
   @property({ attribute: false }) getMenuScreen?: () => string;
   @property({ attribute: false }) getScreenLayout?: () => ScreenLayout | undefined;
+  /**
+   * The PTY's width, as the stream last said: when it changes the menu is read again at once.
+   * A poll may be seconds away, and meanwhile the card kept labels the phone's copy had lost.
+   */
+  @property({ type: Number }) ptyCols?: number;
 
   @state() private messages: ChatMessage[] = [];
   /** Messages sent from the phone that the transcript does not have yet, in send order. */
@@ -1452,6 +1457,8 @@ export class ClaudeChatView extends LitElement {
   }
 
   updated(changed: PropertyValues) {
+    // The PTY's width changed: the menu on the card may no longer be what the screen holds.
+    if (changed.has('ptyCols') && this.waitingFor) this.readScreenMenu(true);
     if (changed.has('sessionId') && changed.get('sessionId') !== undefined) {
       // A different conversation: forget everything shown for the previous one.
       this.messages = [];
@@ -1463,6 +1470,7 @@ export class ClaudeChatView extends LitElement {
       this.backgroundWait = false;
       this.waitingFor = null;
       this.screenChoices = null;
+      this.menuTooNarrow = false;
       // The question card's state was the last session's.
       this.answering = false;
       this.answerNote = '';
@@ -1653,6 +1661,22 @@ export class ClaudeChatView extends LitElement {
     return at === undefined ? undefined : Math.max(0, at - now);
   }
 
+  /** Reads the menu Claude waits on off the terminal's screen (none when it waits on none). */
+  private readScreenMenu(waiting: boolean, screen = this.getScreenTail?.() ?? '') {
+    const layout = waiting ? this.getScreenLayout?.() : undefined;
+    const screenChoices = waiting
+      ? parseScreenChoices(this.getMenuScreen?.() ?? screen, layout)
+      : null;
+    this.menuTooNarrow = !screenChoices && narrowerThanPty(layout);
+    // A fresh object every poll re-rendered (and re-scrolled) the view each 1.5 s while
+    // Claude waited on a question; keep the old one when the choices are the same.
+    if (JSON.stringify(screenChoices) !== JSON.stringify(this.screenChoices)) {
+      this.screenChoices = screenChoices;
+      this.answerNote = '';
+      if (!sameShownMenu(this.answeredMenu?.menu, screenChoices)) this.answeredMenu = null;
+    }
+  }
+
   /** Shows a poll's answer; returns whether anything on screen changed. */
   private apply(chat: ChatResponse): boolean {
     const before = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${JSON.stringify(this.screenChoices)}|${this.menuTooNarrow}|${JSON.stringify(this.activity)}`;
@@ -1674,19 +1698,7 @@ export class ClaudeChatView extends LitElement {
     } else {
       this.mode = rememberedMode(this.sessionId);
     }
-    const layout = chat.status === 'waiting' ? this.getScreenLayout?.() : undefined;
-    const screenChoices =
-      chat.status === 'waiting'
-        ? parseScreenChoices(this.getMenuScreen?.() ?? screen, layout)
-        : null;
-    this.menuTooNarrow = !screenChoices && narrowerThanPty(layout);
-    // A fresh object every poll re-rendered (and re-scrolled) the view each 1.5 s while
-    // Claude waited on a question; keep the old one when the choices are the same.
-    if (JSON.stringify(screenChoices) !== JSON.stringify(this.screenChoices)) {
-      this.screenChoices = screenChoices;
-      this.answerNote = '';
-      if (!sameShownMenu(this.answeredMenu?.menu, screenChoices)) this.answeredMenu = null;
-    }
+    this.readScreenMenu(chat.status === 'waiting', screen);
     this.waitingFor =
       chat.status === 'waiting'
         ? (claudeWaitingLabel(chat.waitingFor) ?? t('chat.yourInput'))
