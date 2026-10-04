@@ -152,6 +152,7 @@ describe('getDetailedGitStatus', () => {
       const first = getDetailedGitStatusCached(repoDir);
       const second = getDetailedGitStatusCached(repoDir);
       expect(second).toBe(first);
+      expect(getDetailedGitStatusCached(`${repoDir}/`)).toBe(first);
       expect((await first).added).toBe(1);
 
       // Within the TTL a new untracked file is not visible yet...

@@ -8,7 +8,7 @@
 import { execFile } from 'child_process';
 import { createReadStream } from 'fs';
 import { lstat } from 'fs/promises';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
@@ -265,7 +265,7 @@ export async function getDetailedGitStatus(workingDir: string): Promise<GitStatu
 }
 
 // GET /sessions/:id/git-status and the git-status hub (one 2 s poll per
-// watched session) each ran 4-5 git processes per call (~60 ms on this repo), even
+// watched session) each ran 4-5 git processes per call (tens of ms in a large repo), even
 // when several sessions share the same directory or callers arrive together.
 const GIT_STATUS_CACHE_MAX_ENTRIES = 128;
 const gitStatusCache = new Map<string, { startedAt: number; promise: Promise<GitStatusCounts> }>();
@@ -280,14 +280,16 @@ export function getDetailedGitStatusCached(
   maxAgeMs = 1500
 ): Promise<GitStatusCounts> {
   const now = Date.now();
-  const cached = gitStatusCache.get(workingDir);
+  // One entry per directory however it is spelled ("/a" and "/a/").
+  const key = resolve(workingDir);
+  const cached = gitStatusCache.get(key);
   if (cached && maxAgeMs > 0 && now - cached.startedAt < maxAgeMs) {
     return cached.promise;
   }
 
   const promise = getDetailedGitStatus(workingDir);
-  gitStatusCache.delete(workingDir);
-  gitStatusCache.set(workingDir, { startedAt: now, promise });
+  gitStatusCache.delete(key);
+  gitStatusCache.set(key, { startedAt: now, promise });
   if (gitStatusCache.size > GIT_STATUS_CACHE_MAX_ENTRIES) {
     const oldest = gitStatusCache.keys().next().value;
     if (oldest !== undefined) gitStatusCache.delete(oldest);
