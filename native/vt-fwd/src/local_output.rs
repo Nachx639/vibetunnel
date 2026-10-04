@@ -15,6 +15,13 @@
 //! after that the window counts as stalled and pushes drop the oldest queued
 //! bytes instead of waiting, until the window accepts a write again.
 //!
+//! A drop cuts the queue at an arbitrary byte, possibly inside an escape
+//! sequence or a UTF-8 character; a cut OSC or DCS would make the window
+//! swallow output until it saw a terminator. So the surviving bytes start at
+//! the next ESC or line break (within [`RESYNC_SCAN`] bytes, else at least on
+//! a UTF-8 boundary), and the writer sends CAN first, which aborts whatever
+//! sequence the window's parser is in.
+//!
 //! Why a thread and not `O_NONBLOCK` on stdout: the window's open file
 //! description is shared with the login shell and anything else in that
 //! terminal tab, and `O_NONBLOCK` is a property of the description. Setting
@@ -42,6 +49,10 @@ pub const DEFAULT_CAPACITY: usize = 2 * 1024 * 1024;
 /// Longest a push waits for a full queue before the window counts as stalled.
 pub const STALL_WAIT: Duration = Duration::from_millis(250);
 const WRITE_CHUNK: usize = 64 * 1024;
+/// How far past a drop the queue is searched for an ESC or line break to resume at.
+const RESYNC_SCAN: usize = 256;
+/// CAN: aborts an escape, control or string sequence in progress (VT parsers, ECMA-48).
+const CANCEL: u8 = 0x18;
 const EAGAIN_POLL_MS: libc::c_int = 100;
 const WRITER_STACK_BYTES: usize = 256 * 1024;
 
@@ -54,6 +65,8 @@ struct State {
     stalled: bool,
     stalled_since: Option<Instant>,
     dropped_in_stall: u64,
+    /// Bytes were dropped since the writer last took a chunk: send CAN before the next one.
+    resync: bool,
     /// Writing failed for good (closed window); discard everything.
     closed: bool,
     shutdown: bool,
@@ -150,8 +163,14 @@ impl LocalOutput {
             }
             state.queue.drain(..overflow);
             state.dropped_in_stall += (overflow + skipped) as u64;
+            state.queue.extend(data);
+            let cut = resync_cut(&state.queue);
+            state.queue.drain(..cut);
+            state.dropped_in_stall += cut as u64;
+            state.resync = true;
+        } else {
+            state.queue.extend(data);
         }
-        state.queue.extend(data);
         shared.data.notify_one();
     }
 
@@ -185,6 +204,22 @@ impl LocalOutput {
     }
 }
 
+/// Bytes to skip at the head of a queue that was just cut: up to the next ESC or
+/// line break when one is near, else past any UTF-8 continuation bytes.
+fn resync_cut(queue: &VecDeque<u8>) -> usize {
+    if let Some(boundary) = queue
+        .iter()
+        .take(RESYNC_SCAN)
+        .position(|byte| matches!(byte, 0x1b | b'\n' | b'\r'))
+    {
+        return boundary;
+    }
+    queue
+        .iter()
+        .take_while(|byte| (**byte & 0xC0) == 0x80)
+        .count()
+}
+
 fn writer_thread(fd: RawFd, shared: &Shared) {
     let mut chunk = Vec::with_capacity(WRITE_CHUNK);
     loop {
@@ -202,6 +237,9 @@ fn writer_thread(fd: RawFd, shared: &Shared) {
             }
             let take = state.queue.len().min(WRITE_CHUNK);
             chunk.clear();
+            if std::mem::take(&mut state.resync) {
+                chunk.push(CANCEL);
+            }
             chunk.extend(state.queue.drain(..take));
             state.writing = true;
             shared.space.notify_all();
@@ -362,6 +400,43 @@ mod tests {
         assert!(!output.shared.lock().stalled);
         assert!(output.take_redraw_request());
         assert!(!output.take_redraw_request());
+        drop(write_end);
+    }
+
+    #[test]
+    fn a_drop_never_leaves_the_window_inside_a_cut_sequence() {
+        let (read_end, write_end) = pipe();
+        let output = LocalOutput::start(write_end.as_raw_fd(), 4096, None).unwrap();
+        // Title updates (OSC, BEL-terminated) and colored UTF-8 text, like an agent's TUI.
+        let unit = "\x1b]0;caf\u{e9} build\x07\x1b[31mr\u{e9}sum\u{e9}\x1b[0m line\n".as_bytes();
+        let block: Vec<u8> = unit
+            .iter()
+            .copied()
+            .cycle()
+            .take(unit.len() * 300 + 7)
+            .collect();
+        for _ in 0..200 {
+            output.push(&block);
+        }
+        output.push(b"TAIL");
+
+        let received = read_available(&read_end, |seen| seen.ends_with(b"TAIL"));
+        assert!(output.finish(Duration::from_secs(5)));
+        // Each drop is followed by CAN (aborts any sequence the window's parser is in) and
+        // the surviving bytes start on a sequence or line boundary.
+        let cans: Vec<usize> = received
+            .iter()
+            .enumerate()
+            .filter_map(|(index, byte)| (*byte == 0x18).then_some(index))
+            .collect();
+        assert!(!cans.is_empty(), "no drop was marked");
+        for index in cans {
+            let next = received[index + 1];
+            assert!(
+                next == 0x1b || next == b'\n' || next == b'\r',
+                "after CAN comes {next:#04x}"
+            );
+        }
         drop(write_end);
     }
 
