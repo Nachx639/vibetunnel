@@ -36,6 +36,15 @@ import type { QuickStartCommand } from '../../types/config.js';
 import { serverConfigService } from '../services/server-config-service.js';
 import { parseCommand } from '../utils/command-utils.js';
 import { Z_INDEX } from '../utils/constants.js';
+import {
+  FAB_REST_MS,
+  FAB_SCROLL_START,
+  type FabScroll,
+  fabLift,
+  fabObstacles,
+  listScroller,
+  nextFabScroll,
+} from '../utils/fab-visibility.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
@@ -48,6 +57,8 @@ const logger = createLogger('session-list');
 
 /** After a repository's worktrees fail to load, ask again at most this often. */
 const WORKTREE_RETRY_MS = 60_000;
+/** Gap between the floating "+" and the bar at the bottom of the list (styles.css). */
+const FAB_GAP_PX = 14;
 
 /**
  * What the phone "new session" flow remembers between visits: the last tool you started and
@@ -129,6 +140,7 @@ export class SessionList extends LitElement {
 
   updated(changedProperties: Map<string | number | symbol, unknown>) {
     super.updated(changedProperties);
+    this.watchFabScroller();
     this.placeFab();
 
     // Phone rows show no worktree/follow-mode UI: don't fetch it for them.
@@ -150,7 +162,8 @@ export class SessionList extends LitElement {
 
   /**
    * The floating "+" of the phone list sits 14 px above the bar at the bottom of the list,
-   * whatever its height. Without the bar (no sessions) the CSS default applies.
+   * whatever its height. Without the bar (no sessions) the CSS default applies. Then it hides
+   * or lifts (utils/fab-visibility.ts) so it doesn't cover the rows.
    */
   private placeFab = () => {
     const fab = this.querySelector<HTMLElement>('[data-testid="new-session-fab"]');
@@ -160,24 +173,117 @@ export class SessionList extends LitElement {
     if (!footer || top <= 0 || top >= window.innerHeight) {
       fab.style.removeProperty('bottom');
     } else {
-      fab.style.bottom = `${Math.round(window.innerHeight - top + 14)}px`;
+      fab.style.bottom = `${Math.round(window.innerHeight - top + FAB_GAP_PX)}px`;
     }
-    if (footer !== this.observedFooter) {
+    // The bar's height moves the button; the list's moves what is under it, so it checks
+    // again what it covers.
+    const content = this.querySelector<HTMLElement>('[data-testid="session-list-container"]');
+    if (footer !== this.observedFooter || content !== this.observedContent) {
       this.footerObserver?.disconnect();
       this.observedFooter = footer;
-      if (footer && typeof ResizeObserver !== 'undefined') {
+      this.observedContent = content;
+      if (typeof ResizeObserver !== 'undefined') {
         this.footerObserver ??= new ResizeObserver(() => this.placeFab());
-        this.footerObserver.observe(footer);
+        if (footer) this.footerObserver.observe(footer);
+        if (content) this.footerObserver.observe(content);
       }
     }
+    this.applyFabVisibility(fab);
   };
   private footerObserver: ResizeObserver | null = null;
   private observedFooter: HTMLElement | null = null;
+  private observedContent: HTMLElement | null = null;
+
+  /** Scroll direction state of the floating "+" (hidden while the list scrolls down). */
+  private fabScroll: FabScroll = FAB_SCROLL_START;
+  /** Lift last chosen at rest, kept while the list moves so the button doesn't jump. */
+  private fabLiftPx = 0;
+  private fabRestTimer: ReturnType<typeof setTimeout> | null = null;
+  /** What the FAB follows: the list's scrolling ancestor, or the window. Null: not watching. */
+  private fabScrollTarget: HTMLElement | Window | null = null;
+
+  /** Only the compact phone list has the button: nothing is watched in the classic layout. */
+  private watchFabScroller() {
+    const hasFab = this.querySelector('[data-testid="new-session-fab"]') !== null;
+    const target = hasFab ? (listScroller(this) ?? window) : null;
+    if (target === this.fabScrollTarget) return;
+    this.fabScrollTarget?.removeEventListener('scroll', this.handleListScroll);
+    this.fabScrollTarget = target;
+    this.fabScroll = FAB_SCROLL_START;
+    target?.addEventListener('scroll', this.handleListScroll, { passive: true });
+  }
+
+  private fabScrollPosition(): number {
+    const target = this.fabScrollTarget;
+    if (!target) return 0;
+    const el =
+      target === window
+        ? (document.scrollingElement as HTMLElement | null)
+        : (target as HTMLElement);
+    if (!el) return 0;
+    // iOS rubber-banding reports positions past either end: clamp, or the bounce at the
+    // bottom would read as a scroll up and bring the button back.
+    const max = Math.max(0, el.scrollHeight - el.clientHeight);
+    return Math.min(Math.max(el.scrollTop, 0), max);
+  }
+
+  private handleListScroll = () => {
+    if (!this.fabScrollTarget) return;
+    this.fabScroll = nextFabScroll(this.fabScroll, this.fabScrollPosition());
+    if (this.fabRestTimer) clearTimeout(this.fabRestTimer);
+    this.fabRestTimer = setTimeout(() => {
+      this.fabRestTimer = null;
+      this.placeFab();
+    }, FAB_REST_MS);
+    this.placeFab();
+  };
+
+  /**
+   * Hidden while scrolling down; at rest, lifted to the nearest place where it covers no
+   * control (utils/fab-visibility.ts fabObstacles), or hidden when none is. Reduce Motion:
+   * it appears and disappears in place, with no slide (styles.css).
+   */
+  private applyFabVisibility(fab: HTMLElement) {
+    const reduced =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    fab.dataset.motion = reduced ? 'reduced' : 'full';
+    let hidden = this.fabScroll.hidden;
+    if (!hidden && !this.fabRestTimer) {
+      const lift = this.restingFabLift(fab);
+      if (lift === null) hidden = true;
+      else this.fabLiftPx = lift;
+    }
+    fab.classList.toggle('fab-hidden', hidden);
+    fab.dataset.fab = hidden ? 'hidden' : 'shown';
+    fab.style.setProperty('--fab-lift', `${this.fabLiftPx}px`);
+    // Hidden, it is out of the way for touch, focus and VoiceOver too.
+    fab.toggleAttribute('inert', hidden);
+  }
+
+  /** Lift (px) that keeps the button off every control it would cover at rest, or null. */
+  private restingFabLift(fab: HTMLElement): number | null {
+    // Its layout box, where it rests with no lift: offset* ignore the transform that lifts
+    // or hides it (fixed position: relative to the viewport, like the controls' rects).
+    if (!fab.offsetWidth || !fab.offsetHeight) return 0;
+    const base = {
+      top: fab.offsetTop,
+      bottom: fab.offsetTop + fab.offsetHeight,
+      left: fab.offsetLeft,
+      right: fab.offsetLeft + fab.offsetWidth,
+    };
+    return fabLift(base, fabObstacles(this, fab));
+  }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.footerObserver?.disconnect();
     this.observedFooter = null;
+    this.observedContent = null;
+    this.fabScrollTarget?.removeEventListener('scroll', this.handleListScroll);
+    this.fabScrollTarget = null;
+    if (this.fabRestTimer) clearTimeout(this.fabRestTimer);
+    this.fabRestTimer = null;
     window.removeEventListener('resize', this.placeFab);
     window.removeEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
     this.closeSheet();

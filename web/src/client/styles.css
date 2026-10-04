@@ -2752,14 +2752,16 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 .psr-sheet button:active {
   background: var(--color-surface-hover);
 }
-/* Phone "new session" button (session-list.ts) */
+/* Phone "new session" button (session-list.ts). It hides while the list scrolls down and
+   lifts clear of the list's controls at rest (utils/fab-visibility.ts): --fab-lift. */
 .new-chat-fab {
+  --fab-size: 58px;
   position: fixed;
   right: 18px;
   bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   z-index: 40;
-  width: 58px;
-  height: 58px;
+  width: var(--fab-size);
+  height: var(--fab-size);
   border-radius: 18px;
   display: flex;
   align-items: center;
@@ -2767,14 +2769,44 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   background: var(--color-primary);
   color: #fff;
   box-shadow: 0 8px 24px color-mix(in srgb, var(--color-primary) 45%, transparent);
-  transition: transform 120ms ease;
-}
-/* The last rows can scroll clear of the floating "+". */
-.phone-list-fab-room {
-  padding-bottom: 88px;
+  transform: translateY(calc(-1 * var(--fab-lift, 0px)));
+  transition:
+    transform 200ms ease,
+    opacity 200ms ease,
+    visibility 0s;
 }
 .new-chat-fab:active {
-  transform: scale(0.94);
+  transform: translateY(calc(-1 * var(--fab-lift, 0px))) scale(0.94);
+}
+/* Slides down out of view; visibility flips once the slide is over. */
+.new-chat-fab.fab-hidden {
+  transform: translateY(calc(100% + 24px));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 200ms ease,
+    opacity 200ms ease,
+    visibility 0s linear 200ms;
+}
+/* Reduce Motion: no slide and no lift animation; it only appears and disappears in place. */
+.new-chat-fab[data-motion="reduced"] {
+  transition: none;
+}
+.new-chat-fab[data-motion="reduced"].fab-hidden {
+  transform: translateY(calc(-1 * var(--fab-lift, 0px)));
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .new-chat-fab,
+  .new-chat-fab.fab-hidden {
+    transition: none;
+  }
+}
+/* The last rows can scroll clear of the floating "+": the button, its 14 px gap above the
+   bottom bar (session-list.ts FAB_GAP_PX) and 16 px. */
+.phone-list-fab-room {
+  padding-bottom: calc(58px + 14px + 16px);
 }
 .psr-sheet-group button.folder {
   overflow: hidden;
