@@ -35,6 +35,12 @@ async function build() {
   console.log('Building CSS...');
   execSync('npx --no-install postcss ./src/client/styles.css -o ./public/bundle/styles.css', { stdio: 'inherit' });
 
+  // Production bundles have no source maps. A dev build's linked map (client-bundle.js.map,
+  // full sources) left in public/bundle would otherwise ship in the npm package.
+  for (const name of fs.readdirSync('public/bundle')) {
+    if (name.endsWith('.map')) fs.rmSync(path.join('public/bundle', name), { force: true });
+  }
+
   // Bundle client JavaScript
   console.log('Bundling client JavaScript...');
 
