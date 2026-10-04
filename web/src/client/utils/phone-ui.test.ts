@@ -4,6 +4,7 @@ import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/com
 import {
   APP_PREFERENCES_STORAGE_KEY,
   getPhoneUi,
+  isPhoneScreen,
   isPhoneSizedScreen,
   setPhoneUi,
   subscribeToPhoneUi,
@@ -68,6 +69,25 @@ describe('phone layout preference', () => {
         expect(isPhoneSizedScreen()).toBe(false);
         expect(usesCompactPhoneUi()).toBe(false);
       }
+    });
+
+    it('counts a touch device with a phone-sized window, but not a narrow desktop window', () => {
+      setPhoneUi('compact');
+      screenSize(820, 1180);
+      vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320);
+      vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(1180);
+      // A narrow desktop window: no touch, so still classic
+      vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(0);
+      vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Macintosh)');
+      expect(isPhoneScreen()).toBe(false);
+      expect(usesCompactPhoneUi()).toBe(false);
+      // An iPad in a narrow Split View window looks like a phone
+      vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(5);
+      expect(isPhoneScreen()).toBe(true);
+      expect(usesCompactPhoneUi()).toBe(true);
+      // The same iPad full screen keeps Classic
+      vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(820);
+      expect(usesCompactPhoneUi()).toBe(false);
     });
 
     it('Classic unchanged: a phone with Classic chosen (or nothing saved) stays classic', () => {

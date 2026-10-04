@@ -6,8 +6,10 @@
  * - `compact`: the session view is pinned to the visible viewport with the action bar and
  *   quick keys docked under the terminal, two-row quick keys tuned for coding agents,
  *   sticky Ctrl/⌥ and swipe-to-move-cursor on the quick keys.
- * Only phones are affected (see isPhoneSizedScreen); desktop and tablet layouts ignore it.
+ * Only phones are affected (see usesCompactPhoneUi); desktop and tablet layouts ignore it.
  */
+import { detectMobile } from './mobile-utils.js';
+
 export type PhoneUi = 'classic' | 'compact';
 
 export const APP_PREFERENCES_STORAGE_KEY = 'vibetunnel_app_preferences';
@@ -40,12 +42,19 @@ export function isPhoneSizedScreen(): boolean {
   return shortSide > 0 && shortSide <= PHONE_SCREEN_MAX_SHORT_SIDE;
 }
 
+/** A phone: a touch device whose shorter side is under 600 px. */
+export function isPhoneScreen(): boolean {
+  return detectMobile() && Math.min(window.innerWidth, window.innerHeight) < 600;
+}
+
 /**
- * The compact phone layout applies: it is chosen and the screen is phone-sized. A tablet
- * (an iPad reports itself as mobile too) keeps the classic layout whatever is chosen.
+ * The compact phone layout applies: it is chosen, and the screen is phone-sized or a touch
+ * device's window is. A full-screen iPad is neither (its window and screen are at least 744
+ * wide), so it keeps the classic layout whatever is chosen; a narrow Split View window of
+ * one counts as a phone, which is how it should look.
  */
 export function usesCompactPhoneUi(phoneUi: PhoneUi = getPhoneUi()): boolean {
-  return phoneUi === 'compact' && isPhoneSizedScreen();
+  return phoneUi === 'compact' && (isPhoneSizedScreen() || isPhoneScreen());
 }
 
 export function setPhoneUi(value: PhoneUi): void {
