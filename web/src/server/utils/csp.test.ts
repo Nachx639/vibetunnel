@@ -1,0 +1,73 @@
+import express from 'express';
+import request from 'supertest';
+import { describe, expect, it, vi } from 'vitest';
+import { APP_CSP, CSP_REPORT_PATH, createCspReportRoutes, cspReportLogLine } from './csp';
+
+describe('the app pages CSP', () => {
+  it('allows no inline script and reports to the server', () => {
+    expect(APP_CSP).toContain("script-src 'self'");
+    expect(APP_CSP).toContain("worker-src 'self' data: blob:");
+    expect(APP_CSP).not.toContain('unsafe-inline');
+    expect(APP_CSP).toContain(`report-uri ${CSP_REPORT_PATH}`);
+  });
+
+  it('summarizes a classic report once an hour', () => {
+    const report = {
+      'csp-report': {
+        'violated-directive': 'script-src-attr',
+        'blocked-uri': 'inline',
+        'source-file': 'http://127.0.0.1:4020/session/1',
+        'line-number': 12,
+        'script-sample': 'alert(1)',
+      },
+    };
+    expect(cspReportLogLine(report, 1000)).toBe(
+      'CSP (report-only) would block inline [script-src-attr] at http://127.0.0.1:4020/session/1:12 sample: alert(1)'
+    );
+    expect(cspReportLogLine(report, 2000)).toBeNull();
+    expect(cspReportLogLine(report, 1000 + 60 * 60 * 1000 + 1)).not.toBeNull();
+  });
+
+  it('reads the Reporting API format and clips what it logs', () => {
+    const line = cspReportLogLine(
+      [
+        {
+          type: 'csp-violation',
+          body: {
+            effectiveDirective: 'script-src-elem',
+            blockedURL: `https://evil.example/${'x'.repeat(500)}`,
+          },
+        },
+      ],
+      5000
+    );
+    expect(line).toContain('[script-src-elem]');
+    expect(line?.length).toBeLessThan(220);
+  });
+
+  it('accepts reports without credentials and answers 204', async () => {
+    const log = vi.fn();
+    const app = express();
+    app.use(createCspReportRoutes(log));
+    const response = await request(app)
+      .post(CSP_REPORT_PATH)
+      .set('Content-Type', 'application/csp-report')
+      .send(
+        JSON.stringify({
+          'csp-report': { 'violated-directive': 'script-src', 'blocked-uri': 'eval' },
+        })
+      );
+    expect(response.status).toBe(204);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('would block eval'));
+  });
+
+  it('logs at most 50 report lines an hour in all', () => {
+    // A fresh hour: earlier tests count toward the current one.
+    const at = Date.now() + 2 * 60 * 60 * 1000;
+    let lines = 0;
+    for (let i = 0; i < 80; i++) {
+      if (cspReportLogLine({ 'blocked-uri': `https://spam.example/${i}` }, at + i)) lines++;
+    }
+    expect(lines).toBe(50);
+  });
+});

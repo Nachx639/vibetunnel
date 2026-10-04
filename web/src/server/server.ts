@@ -45,6 +45,7 @@ import { SessionMonitor } from './services/session-monitor.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
+import { APP_CSP, CSP_HEADER, createCspReportRoutes } from './utils/csp.js';
 import { closeLogger, createLogger, initLogger, setDebugMode } from './utils/logger.js';
 import { VapidManager } from './utils/vapid-manager.js';
 import { getVersionInfo, printVersionBanner } from './version.js';
@@ -902,6 +903,8 @@ export async function createApp(): Promise<AppInstance> {
       etag: !isDevelopment, // Disable ETag in development
       lastModified: !isDevelopment, // Disable Last-Modified in development
       setHeaders: (res, filePath) => {
+        // Report-only Content-Security-Policy on the app's pages (utils/csp.ts).
+        if (filePath.endsWith('.html')) res.setHeader(CSP_HEADER, APP_CSP);
         if (isDevelopment) {
           // Disable all caching in development
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -1137,6 +1140,9 @@ export async function createApp(): Promise<AppInstance> {
   }
 
   // Apply auth middleware to all API routes (including auth routes for Tailscale header detection)
+  // CSP violation reports come from browsers without credentials: before the auth middleware.
+  app.use(createCspReportRoutes((line) => logger.warn(line)));
+
   app.use('/api', authMiddleware);
   logger.debug('Applied authentication middleware to /api routes');
 
@@ -1393,24 +1399,30 @@ export async function createApp(): Promise<AppInstance> {
     }
   });
 
-  // Serve index.html for client-side routes (but not API routes)
-  app.get('/', (_req, res) => {
+  // Serve index.html for client-side routes (but not API routes), with the same report-only
+  // CSP as the static page.
+  const sendIndexHtml = (res: express.Response) => {
+    res.setHeader(CSP_HEADER, APP_CSP);
     res.sendFile(path.join(publicPath, 'index.html'));
+  };
+
+  app.get('/', (_req, res) => {
+    sendIndexHtml(res);
   });
 
   // Handle /session/:id routes by serving the same index.html
   app.get('/session/:id', (_req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
+    sendIndexHtml(res);
   });
 
   // Handle /worktrees route by serving the same index.html
   app.get('/worktrees', (_req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
+    sendIndexHtml(res);
   });
 
   // Handle /file-browser route by serving the same index.html
   app.get('/file-browser', (_req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
+    sendIndexHtml(res);
   });
 
   // 404 handler for all other routes
