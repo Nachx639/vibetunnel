@@ -7,7 +7,6 @@ import { TerminalManager } from './terminal-manager.js';
 type Internals = {
   terminals: Map<string, unknown>;
   watchStreamFile(sessionId: string): Promise<void>;
-  resumeFileWatcher(sessionId: string): Promise<void>;
   destroy(): void;
 };
 
@@ -44,7 +43,7 @@ describe('TerminalManager stream file of a brand-new session', () => {
     await vi.waitFor(() => expect(written.join('')).toContain('hello'), { timeout: 2000 });
   });
 
-  it('goes on from where it stopped when flow control resumes its watcher', async () => {
+  it('goes on from where it stopped when its watcher is set up again', async () => {
     dir = mkdtempSync(path.join(tmpdir(), 'vt-tm-'));
     manager = new TerminalManager(dir) as unknown as Internals;
     const written: string[] = [];
@@ -61,11 +60,11 @@ describe('TerminalManager stream file of a brand-new session', () => {
     writeFileSync(file, '{"version":2,"width":80,"height":24}\n[0.1,"o","hello"]\n');
     await manager.watchStreamFile('s1');
 
-    // Paused under buffer pressure: the watcher is closed, output keeps coming.
+    // The watcher is closed (as flow control used to do), output keeps coming.
     sessionTerminal.watcher?.close();
     sessionTerminal.watcher = undefined;
     appendFileSync(file, '[0.2,"o","bye"]\n');
-    await manager.resumeFileWatcher('s1');
+    await manager.watchStreamFile('s1');
 
     // It used to read the whole file again from the start, writing every line twice.
     await vi.waitFor(() => expect(written.join('')).toBe('hellobye'), { timeout: 2000 });

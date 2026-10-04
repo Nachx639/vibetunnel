@@ -79,37 +79,27 @@ function truncateForLog(str: string, maxLength: number = 50): string {
   return `${str.substring(0, maxLength)}...(${str.length} chars total)`;
 }
 
-// Flow control configuration
-const FLOW_CONTROL_CONFIG = {
-  // When buffer exceeds this percentage of max lines, pause reading
-  // 80% gives a good buffer before hitting the scrollback limit
-  highWatermark: 0.8,
-  // Resume reading when buffer drops below this percentage
-  // 50% ensures enough space is cleared before resuming
-  lowWatermark: 0.5,
-  // Check interval for resuming paused sessions
-  // 100ms provides responsive resumption without excessive CPU usage
-  checkInterval: 100, // ms
-  // Maximum pending lines to accumulate while paused
-  // 10K lines handles bursts without excessive memory (avg ~1MB at 100 chars/line)
-  maxPendingLines: 10000,
-  // Maximum time a session can be paused before timing out
-  // 5 minutes handles temporary client issues without indefinite memory growth
-  maxPauseTime: 5 * 60 * 1000, // 5 minutes
-  // Lines to process between buffer pressure checks
-  // Checking every 100 lines balances performance with responsiveness
-  bufferCheckInterval: 100,
-};
+/**
+ * Flow control used to pause a session's terminal once its scrollback passed 80% of
+ * SCROLLBACK_LIMIT lines and resume it below 50%, but ghostty never shrinks its scrollback: the
+ * server-side screen (/text, buffer snapshots) froze until a 5-minute timeout, which then dropped the lines queued meanwhile. ghostty's
+ * limit is a byte budget, so the line count got there only on narrow terminals (about 15,000
+ * lines at 5 columns, 1,100 at 80), but there it froze every time.
+ *
+ * The scrollback was never the risk, ghostty bounds it. What a flood can grow is output read
+ * from the cast and not yet on the screen, and the CPU spent on it. So the cast on disk is the
+ * queue: new output is read in 256 KB chunks and written to the terminal as it is read, in
+ * order, at most LIVE_WRITE_CHUNK_CHARS at a time, and the next chunk is read only once this
+ * one is on the screen. Nothing piles up in memory, nothing is paused, nothing is dropped. The
+ * one deliberate cap: a terminal more than castReplayMaxBytes behind (a stalled event loop, a
+ * flood faster than ghostty) skips to the end the way a new terminal's replay does, and logs it.
+ */
+const LIVE_WRITE_CHUNK_CHARS = 256 * 1024;
 
 interface SessionTerminal {
   terminal: GhosttyTerminal;
   watcher?: fs.FSWatcher;
   lastUpdate: number;
-  isPaused?: boolean;
-  pendingLines?: string[];
-  pausedAt?: number;
-  linesProcessedSinceCheck?: number;
-  isProcessingPending?: boolean;
   /** Settles once the cast's replay into the new terminal is done. */
   ready?: Promise<void>;
   /** Where the next read of the cast starts: always the start of a line. */
@@ -149,17 +139,13 @@ interface BufferSnapshot {
  * Key features:
  * - Headless Ghostty terminals with 10K line scrollback
  * - Asciinema v2 format stream parsing and playback
- * - Flow control with backpressure to prevent memory exhaustion
+ * - Flow control: the cast on disk is the backlog, read as fast as the terminal takes it
  * - Efficient binary buffer encoding for WebSocket transmission
  * - Real-time buffer change notifications with debouncing
  * - Error deduplication to prevent log spam
  * - Automatic cleanup of stale terminals
  *
- * Flow control strategy:
- * - Pauses reading when buffer reaches 80% capacity
- * - Resumes when buffer drops below 50%
- * - Queues up to 10K pending lines while paused
- * - Times out paused sessions after 5 minutes
+ * Flow control: see LIVE_WRITE_CHUNK_CHARS.
  *
  * @example
  * ```typescript
@@ -191,13 +177,33 @@ const FALLBACK_REPLAY_MAX_BYTES = 1024 * 1024;
 /** Output written to a terminal at once while replaying a cast. */
 const REPLAY_WRITE_CHUNK_CHARS = 1024 * 1024;
 
+/** Output events read live, joined and written at most LIVE_WRITE_CHUNK_CHARS at a time. */
+class LiveOutput {
+  private parts: string[] = [];
+  private chars = 0;
+
+  constructor(private readonly write: (data: string) => void) {}
+
+  push(data: string): void {
+    this.parts.push(data);
+    this.chars += data.length;
+    if (this.chars >= LIVE_WRITE_CHUNK_CHARS) this.flush();
+  }
+
+  flush(): void {
+    if (this.chars === 0 && this.parts.length === 0) return;
+    const data = this.parts.join('');
+    this.parts = [];
+    this.chars = 0;
+    if (data) this.write(data);
+  }
+}
+
 export class TerminalManager {
   private terminals: Map<string, SessionTerminal> = new Map();
   private controlDir: string;
   private bufferListeners: Map<string, Set<BufferChangeListener>> = new Map();
   private changeTimers: Map<string, NodeJS.Timeout> = new Map();
-  private writeQueues: Map<string, string[]> = new Map();
-  private writeTimers: Map<string, NodeJS.Timeout> = new Map();
   private errorDeduplicator = new ErrorDeduplicator({
     keyExtractor: (error, context) => {
       // Use session ID and line prefix as context for terminal parsing errors
@@ -205,16 +211,12 @@ export class TerminalManager {
       return `${context}:${errorMessage}`;
     },
   });
-  private flowControlTimer?: NodeJS.Timeout;
   /** Most bytes of a cast replayed into a terminal at once (CAST_REPLAY_MAX_BYTES). */
   private castReplayMaxBytes: number;
 
   constructor(controlDir: string, options: { castReplayMaxBytes?: number } = {}) {
     this.controlDir = controlDir;
     this.castReplayMaxBytes = options.castReplayMaxBytes ?? CAST_REPLAY_MAX_BYTES;
-
-    // Start flow control check timer
-    this.startFlowControlTimer();
   }
 
   /**
@@ -419,8 +421,8 @@ export class TerminalManager {
     }
 
     try {
-      // First time only: a watcher resumed after flow control goes on from where it stopped.
-      // It used to read the whole file again from the start, replaying every line twice.
+      // First time only: a watcher set up again goes on from where it stopped. It used to read
+      // the whole file again from the start, replaying every line twice.
       if (sessionTerminal.lastFileOffset === undefined) {
         sessionTerminal.lastFileOffset = await this.replayCastTail(
           sessionId,
@@ -433,7 +435,7 @@ export class TerminalManager {
       sessionTerminal.watcher = fs.watch(streamPath, (eventType) => {
         if (eventType === 'change') void this.readNewOutput(sessionId, sessionTerminal, streamPath);
       });
-      // Whatever was written while the replay ran (or the watcher was paused).
+      // Whatever was written while the replay ran.
       void this.readNewOutput(sessionId, sessionTerminal, streamPath);
 
       logger.log(chalk.green(`Watching stream file for session ${truncateForLog(sessionId)}`));
@@ -558,8 +560,10 @@ export class TerminalManager {
   /**
    * Hand the complete lines written since the last read to the terminal. Reads end on a line
    * boundary, so a half-written line is read again whole next time. One read at a time; a
-   * change during it asks for another pass. After a long pause (more than castReplayMaxBytes
-   * written meanwhile) it skips to the end the way a new terminal's replay does.
+   * change during it asks for another pass. Output reaches the terminal as it is read, so the
+   * next chunk of the file is read only once this one is on the screen (LIVE_WRITE_CHUNK_CHARS).
+   * A terminal more than castReplayMaxBytes behind skips to the end the way a new terminal's
+   * replay does, and logs it.
    */
   private async readNewOutput(
     sessionId: string,
@@ -581,12 +585,17 @@ export class TerminalManager {
         if (size - from > this.castReplayMaxBytes) {
           from = (await castReplayStart(streamPath, from, size, this.castReplayMaxBytes)).start;
           logger.warn(
-            `Skipped ${Math.round((from - (sessionTerminal.lastFileOffset ?? 0)) / 1024)} KB of output of ${truncateForLog(sessionId)} written while its terminal was paused`
+            `Skipped ${Math.round((from - (sessionTerminal.lastFileOffset ?? 0)) / 1024)} KB of output of ${truncateForLog(sessionId)}: its terminal fell more than ${Math.round(this.castReplayMaxBytes / 1024)} KB behind`
           );
         }
-        sessionTerminal.lastFileOffset = await forEachCastLine(streamPath, from, size, (line) => {
-          if (line.trim()) this.handleStreamLine(sessionId, sessionTerminal, line);
-        });
+        const output = new LiveOutput((data) => this.writeOutput(sessionId, sessionTerminal, data));
+        try {
+          sessionTerminal.lastFileOffset = await forEachCastLine(streamPath, from, size, (line) => {
+            if (line.trim()) this.processStreamLine(sessionId, sessionTerminal, line, output);
+          });
+        } finally {
+          output.flush();
+        }
       } while (sessionTerminal.readAgain);
     } catch (error) {
       logger.error(`Error reading stream file for session ${truncateForLog(sessionId)}:`, error);
@@ -596,209 +605,21 @@ export class TerminalManager {
   }
 
   /**
-   * Start flow control timer to check paused sessions
+   * Hand one cast line read live to the terminal: output is batched in `output`, which is
+   * flushed before anything else reaches the terminal so everything stays in order.
    */
-  private startFlowControlTimer(): void {
-    let checkIndex = 0;
-    const sessionIds: string[] = [];
-
-    this.flowControlTimer = setInterval(() => {
-      // Rebuild session list periodically
-      if (checkIndex === 0) {
-        sessionIds.length = 0;
-        for (const [sessionId, sessionTerminal] of this.terminals) {
-          if (sessionTerminal.isPaused) {
-            sessionIds.push(sessionId);
-          }
-        }
-      }
-
-      // Process one session per tick to avoid thundering herd
-      if (sessionIds.length > 0) {
-        const sessionId = sessionIds[checkIndex % sessionIds.length];
-        const sessionTerminal = this.terminals.get(sessionId);
-
-        if (sessionTerminal?.isPaused) {
-          // Check for timeout
-          if (
-            sessionTerminal.pausedAt &&
-            Date.now() - sessionTerminal.pausedAt > FLOW_CONTROL_CONFIG.maxPauseTime
-          ) {
-            logger.warn(
-              chalk.red(
-                `Session ${sessionId} has been paused for too long. ` +
-                  `Dropping ${sessionTerminal.pendingLines?.length || 0} pending lines.`
-              )
-            );
-            sessionTerminal.isPaused = false;
-            sessionTerminal.pendingLines = [];
-            sessionTerminal.pausedAt = undefined;
-
-            // Resume file watching after timeout
-            this.resumeFileWatcher(sessionId).catch((error) => {
-              logger.error(
-                `Failed to resume file watcher for session ${sessionId} after timeout:`,
-                error
-              );
-            });
-          } else {
-            this.checkBufferPressure(sessionId);
-          }
-        }
-
-        checkIndex = (checkIndex + 1) % Math.max(sessionIds.length, 1);
-      }
-    }, FLOW_CONTROL_CONFIG.checkInterval);
-  }
-
-  /**
-   * Check buffer pressure and pause/resume as needed
-   */
-  private checkBufferPressure(sessionId: string): boolean {
-    const sessionTerminal = this.terminals.get(sessionId);
-    if (!sessionTerminal) return false;
-
-    const terminal = sessionTerminal.terminal;
-    const scrollbackLength = terminal.getScrollbackLength();
-    const currentLines = scrollbackLength + terminal.rows;
-    const maxLines = SCROLLBACK_LIMIT;
-    const bufferUtilization = currentLines / maxLines;
-
-    const wasPaused = sessionTerminal.isPaused || false;
-
-    // Check if we should pause
-    if (!wasPaused && bufferUtilization > FLOW_CONTROL_CONFIG.highWatermark) {
-      sessionTerminal.isPaused = true;
-      sessionTerminal.pendingLines = [];
-      sessionTerminal.pausedAt = Date.now();
-
-      // Apply backpressure by closing the file watcher
-      if (sessionTerminal.watcher) {
-        sessionTerminal.watcher.close();
-        sessionTerminal.watcher = undefined;
-      }
-
-      logger.warn(
-        chalk.yellow(
-          `Buffer pressure high for session ${sessionId}: ${Math.round(bufferUtilization * 100)}% ` +
-            `(${currentLines}/${maxLines} lines). Pausing file watcher.`
-        )
-      );
-      return true;
-    }
-
-    // Check if we should resume
-    if (wasPaused && bufferUtilization < FLOW_CONTROL_CONFIG.lowWatermark) {
-      // Avoid race condition: mark as processing pending before resuming
-      if (
-        sessionTerminal.pendingLines &&
-        sessionTerminal.pendingLines.length > 0 &&
-        !sessionTerminal.isProcessingPending
-      ) {
-        sessionTerminal.isProcessingPending = true;
-
-        const pendingCount = sessionTerminal.pendingLines.length;
-        logger.log(
-          chalk.green(
-            `Buffer pressure normalized for session ${sessionId}: ${Math.round(bufferUtilization * 100)}% ` +
-              `(${currentLines}/${maxLines} lines). Processing ${pendingCount} pending lines.`
-          )
-        );
-
-        // Process pending lines asynchronously to avoid blocking
-        setImmediate(() => {
-          const lines = sessionTerminal.pendingLines || [];
-          sessionTerminal.pendingLines = [];
-          sessionTerminal.isPaused = false;
-          sessionTerminal.pausedAt = undefined;
-          sessionTerminal.isProcessingPending = false;
-
-          for (const pendingLine of lines) {
-            this.processStreamLine(sessionId, sessionTerminal, pendingLine);
-          }
-
-          // Resume file watching after processing pending lines
-          this.resumeFileWatcher(sessionId).catch((error) => {
-            logger.error(
-              `Failed to resume file watcher for session ${truncateForLog(sessionId)}:`,
-              error
-            );
-          });
-        });
-      } else if (!sessionTerminal.pendingLines || sessionTerminal.pendingLines.length === 0) {
-        // No pending lines, just resume
-        sessionTerminal.isPaused = false;
-        sessionTerminal.pausedAt = undefined;
-
-        // Resume file watching
-        this.resumeFileWatcher(sessionId).catch((error) => {
-          logger.error(
-            `Failed to resume file watcher for session ${truncateForLog(sessionId)}:`,
-            error
-          );
-        });
-
-        logger.log(
-          chalk.green(
-            `Buffer pressure normalized for session ${sessionId}: ${Math.round(bufferUtilization * 100)}% ` +
-              `(${currentLines}/${maxLines} lines). Resuming file watcher.`
-          )
-        );
-      }
-      return false;
-    }
-
-    return wasPaused;
-  }
-
-  /**
-   * Handle stream line
-   */
-  private handleStreamLine(sessionId: string, sessionTerminal: SessionTerminal, line: string) {
-    // Initialize line counter if needed
-    if (sessionTerminal.linesProcessedSinceCheck === undefined) {
-      sessionTerminal.linesProcessedSinceCheck = 0;
-    }
-
-    // Check buffer pressure periodically or if already paused
-    let isPaused = sessionTerminal.isPaused || false;
-    if (
-      !isPaused &&
-      sessionTerminal.linesProcessedSinceCheck >= FLOW_CONTROL_CONFIG.bufferCheckInterval
-    ) {
-      isPaused = this.checkBufferPressure(sessionId);
-      sessionTerminal.linesProcessedSinceCheck = 0;
-    }
-
-    if (isPaused) {
-      // Queue the line for later processing
-      if (!sessionTerminal.pendingLines) {
-        sessionTerminal.pendingLines = [];
-      }
-
-      // Limit pending lines to prevent memory issues
-      if (sessionTerminal.pendingLines.length < FLOW_CONTROL_CONFIG.maxPendingLines) {
-        sessionTerminal.pendingLines.push(line);
-      } else {
-        logger.warn(
-          chalk.red(
-            `Pending lines limit reached for session ${sessionId}. Dropping new data to prevent memory overflow.`
-          )
-        );
-      }
-      return;
-    }
-
-    sessionTerminal.linesProcessedSinceCheck++;
-    this.processStreamLine(sessionId, sessionTerminal, line);
-  }
-
-  /**
-   * Process a stream line (separated from handleStreamLine for flow control)
-   */
-  private processStreamLine(sessionId: string, sessionTerminal: SessionTerminal, line: string) {
+  private processStreamLine(
+    sessionId: string,
+    sessionTerminal: SessionTerminal,
+    line: string,
+    output: LiveOutput
+  ) {
     try {
       const data = JSON.parse(line);
+      // Output first: the line may change the terminal, or close it.
+      const isOutput = Array.isArray(data) && data.length >= 3 && data[1] === 'o';
+      if (!isOutput) output.flush();
+      if (this.terminals.get(sessionId) !== sessionTerminal) return;
 
       // Handle asciinema header
       if (data.version && data.width && data.height) {
@@ -823,9 +644,7 @@ export class TerminalManager {
         }
 
         if (type === 'o') {
-          // Output event - queue write to terminal with rate limiting
-          this.queueTerminalWrite(sessionId, sessionTerminal, eventData);
-          this.scheduleBufferChangeNotification(sessionId);
+          if (typeof eventData === 'string') output.push(eventData);
         } else if (type === 'r') {
           // Resize event
           const match = eventData.match(/^(\d+)x(\d+)$/);
@@ -872,7 +691,6 @@ export class TerminalManager {
     const cursor = terminal.getCursor();
     const scrollbackLength = terminal.getScrollbackLength();
     const totalRows = scrollbackLength + terminal.rows;
-    const sessionTerminal = this.terminals.get(sessionId);
     logger.debug(
       `Getting buffer stats for session ${truncateForLog(sessionId)}: ${totalRows} total rows`
     );
@@ -888,9 +706,6 @@ export class TerminalManager {
       cursorX: cursor.x,
       cursorY: cursor.y,
       scrollback: scrollbackLength,
-      // Flow control metrics
-      isPaused: sessionTerminal?.isPaused || false,
-      pendingLines: sessionTerminal?.pendingLines?.length || 0,
       bufferUtilization: Math.round(bufferUtilization * 100),
       maxBufferLines: maxLines,
     };
@@ -1316,16 +1131,6 @@ export class TerminalManager {
       sessionTerminal.terminal.free();
       this.terminals.delete(sessionId);
 
-      // Clear write timer if exists
-      const writeTimer = this.writeTimers.get(sessionId);
-      if (writeTimer) {
-        clearTimeout(writeTimer);
-        this.writeTimers.delete(sessionId);
-      }
-
-      // Clear write queue
-      this.writeQueues.delete(sessionId);
-
       logger.log(chalk.yellow(`Terminal closed for session ${truncateForLog(sessionId)}`));
     }
   }
@@ -1355,43 +1160,11 @@ export class TerminalManager {
     }
   }
 
-  /**
-   * Queue terminal write with rate limiting to prevent flow control issues
-   */
-  private queueTerminalWrite(sessionId: string, sessionTerminal: SessionTerminal, data: string) {
-    // Get or create write queue for this session
-    let queue = this.writeQueues.get(sessionId);
-    if (!queue) {
-      queue = [];
-      this.writeQueues.set(sessionId, queue);
-    }
-
-    // Add data to queue
-    queue.push(data);
-
-    // If no write timer is active, start processing the queue
-    if (!this.writeTimers.has(sessionId)) {
-      this.processWriteQueue(sessionId, sessionTerminal);
-    }
-  }
-
-  /**
-   * Process write queue with rate limiting
-   */
-  private processWriteQueue(sessionId: string, sessionTerminal: SessionTerminal) {
-    const queue = this.writeQueues.get(sessionId);
-    if (!queue || queue.length === 0) {
-      this.writeTimers.delete(sessionId);
-      return;
-    }
-
-    // Process a batch of writes (limit batch size to prevent overwhelming the terminal)
-    const batchSize = 10;
-    const batch = queue.splice(0, batchSize);
-    const combinedData = batch.join('');
-
+  /** Write live output to the terminal, then let listeners know (debounced). */
+  private writeOutput(sessionId: string, sessionTerminal: SessionTerminal, data: string) {
+    if (this.terminals.get(sessionId) !== sessionTerminal) return;
     try {
-      sessionTerminal.terminal.write(combinedData);
+      sessionTerminal.terminal.write(data);
     } catch (error) {
       // Use error deduplicator to prevent log spam
       const contextKey = `${sessionId}:terminal-write`;
@@ -1421,15 +1194,7 @@ export class TerminalManager {
       }
     }
 
-    // Schedule next batch processing
-    if (queue.length > 0) {
-      const timer = setTimeout(() => {
-        this.processWriteQueue(sessionId, sessionTerminal);
-      }, 10); // 10ms delay between batches
-      this.writeTimers.set(sessionId, timer);
-    } else {
-      this.writeTimers.delete(sessionId);
-    }
+    this.scheduleBufferChangeNotification(sessionId);
   }
 
   /**
@@ -1547,18 +1312,6 @@ export class TerminalManager {
   }
 
   /**
-   * Resume file watching for a paused session
-   */
-  private async resumeFileWatcher(sessionId: string): Promise<void> {
-    const sessionTerminal = this.terminals.get(sessionId);
-    if (!sessionTerminal || sessionTerminal.watcher) {
-      return; // Already watching or session doesn't exist
-    }
-
-    await this.watchStreamFile(sessionId);
-  }
-
-  /**
    * Destroy the terminal manager and restore console overrides
    */
   destroy(): void {
@@ -1572,20 +1325,5 @@ export class TerminalManager {
       clearTimeout(timer);
     }
     this.changeTimers.clear();
-
-    // Clear write timers
-    for (const timer of this.writeTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.writeTimers.clear();
-
-    // Clear write queues
-    this.writeQueues.clear();
-
-    // Clear flow control timer
-    if (this.flowControlTimer) {
-      clearInterval(this.flowControlTimer);
-      this.flowControlTimer = undefined;
-    }
   }
 }
