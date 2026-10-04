@@ -32,8 +32,26 @@
     <!-- Web App Manifest (important for iOS/Android home screen apps) -->
     <link rel="manifest" href="/manifest.json" />
 
-    <!-- Styles -->
-    <link href="/bundle/styles.css" rel="stylesheet" />
+    <!-- Styles, without holding the first paint: as media="print" it is fetched but never
+         blocks rendering, and the script below applies it once it has loaded. Until then the
+         app stays hidden behind the boot screen (no flash of an unstyled app). -->
+    <link rel="preload" href="/bundle/styles.css" as="style" />
+    <link id="vt-styles" href="/bundle/styles.css" rel="stylesheet" media="print" />
+    <script>
+(() => {
+  const link = document.getElementById('vt-styles');
+  // A failed load shows the app unstyled rather than a boot screen that never goes away.
+  const apply = () => {
+    link.media = 'all';
+    document.documentElement.setAttribute('data-vt-styles', '');
+  };
+  if (link.sheet) apply();
+  else {
+    link.addEventListener('load', apply, { once: true });
+    link.addEventListener('error', apply, { once: true });
+  }
+})();
+</script>
     <!-- The app's code, fetched and compiled while the head is still being parsed (its
          <script> is at the end of <body>) -->
     <link rel="modulepreload" href="/bundle/client-bundle.js" />
@@ -69,9 +87,27 @@
         width: 100%;
         min-height: 100%;
       }
-      /* Until the app's script runs (seconds on a phone or a slow link) the page was blank and
-         looked broken: the icon and a spinner, faded in after 0.4 s so fast loads don't flash.
-         Gone as soon as <vibetunnel-app> is defined. */
+      /* The first frame's colours with nothing loaded: the theme script below sets the same
+         on <html>; this covers storage being blocked. */
+      html {
+        background-color: #0a0a0a;
+      }
+      @media (prefers-color-scheme: light) {
+        html:not([data-theme='dark']) {
+          background-color: #fafafa;
+        }
+      }
+      html[data-theme='light'] {
+        background-color: #fafafa;
+      }
+      /* Hidden (still laid out) until styles.css applies: see the script after its <link>. */
+      html:not([data-vt-styles]) vibetunnel-app {
+        visibility: hidden;
+      }
+      /* Until the app's script runs and its styles apply (seconds on a phone or a slow link)
+         the page was blank and looked broken: the icon and a spinner. Everything it needs is in
+         this page, so it paints as soon as the HTML arrives, with no fade-in. Gone once
+         <vibetunnel-app> is defined and styled. */
       #vt-boot {
         position: fixed;
         inset: 0;
@@ -81,10 +117,8 @@
         justify-content: center;
         gap: 20px;
         pointer-events: none;
-        opacity: 0;
-        animation: vt-boot-in 0.25s ease-out 0.4s forwards;
       }
-      vibetunnel-app:defined ~ #vt-boot {
+      html[data-vt-styles] vibetunnel-app:defined ~ #vt-boot {
         display: none;
       }
       #vt-boot img {
@@ -99,11 +133,6 @@
         border: 2.5px solid rgba(127, 127, 127, 0.25);
         border-top-color: rgba(127, 127, 127, 0.85);
         animation: vt-boot-spin 0.8s linear infinite;
-      }
-      @keyframes vt-boot-in {
-        to {
-          opacity: 1;
-        }
       }
       @keyframes vt-boot-spin {
         to {
