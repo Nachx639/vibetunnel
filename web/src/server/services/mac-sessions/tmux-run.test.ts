@@ -213,12 +213,15 @@ describe.skipIf(!realTmux)('runMacTmux on a tmux server', () => {
       });
     try {
       tmux('new-session', '-d', '-s', 'café: 1', '-x', '80', '-y', '20', 'sleep 60');
+      // Older tmux releases (Ubuntu 24.04's) store ':' and '.' in a session name as '_'.
+      const name = tmux('display-message', '-p', '-t', '$0', '#{session_name}').trim();
+      expect(['café: 1', 'café_ 1']).toContain(name);
       const output = await runMacTmux(
         socket,
         ['list-panes', '-a', '-F', ['#{session_id}', '#{session_name}'].join(TMUX_FIELD_SEPARATOR)],
         { tmuxBin, env }
       );
-      expect(output.trim().split(TMUX_FIELD_SEPARATOR)).toEqual(['$0', 'café: 1']);
+      expect(output.trim().split(TMUX_FIELD_SEPARATOR)).toEqual(['$0', name]);
 
       const gone = await runMacTmux(path.join(dir, 'gone'), ['list-panes', '-a'], {
         tmuxBin,

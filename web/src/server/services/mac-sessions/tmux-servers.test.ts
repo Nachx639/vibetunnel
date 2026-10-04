@@ -599,7 +599,16 @@ describe.skipIf(!realTmux)('TmuxServerFinder on private tmux servers', () => {
     const sessions = [
       ...new Set(server.panes.map((pane) => `${pane.sessionId} ${pane.sessionName}`)),
     ];
-    expect(sessions.sort()).toEqual(['$0 café: 1', '$1 a.b']);
+    // Older tmux releases (Ubuntu 24.04's) store ':' and '.' in a session name as '_'.
+    const names = tmux('default', 'list-sessions', '-F', '#{session_id} #{session_name}')
+      .trim()
+      .split('\n')
+      .sort();
+    expect([
+      ['$0 café: 1', '$1 a.b'],
+      ['$0 café_ 1', '$1 a_b'],
+    ]).toContainEqual(names);
+    expect(sessions.sort()).toEqual(names);
     expect(server.panes.find((pane) => pane.sessionId === '$0')).toMatchObject({
       paneId: '%0',
       sessionWindows: 2,
