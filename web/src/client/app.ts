@@ -1771,6 +1771,7 @@ export class VibeTunnelApp extends LitElement {
                     this.errorMessage = '';
                   }}
                   class="ml-2 text-bg-elevated hover:text-text-muted"
+                  aria-label=${t('common.close')}
                 >
                   ✕
                 </button>
@@ -1796,6 +1797,7 @@ export class VibeTunnelApp extends LitElement {
                     this.successMessage = '';
                   }}
                   class="ml-2 text-bg-elevated hover:text-text-muted"
+                  aria-label=${t('common.close')}
                 >
                   ✕
                 </button>

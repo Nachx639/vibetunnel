@@ -880,4 +880,13 @@ export const fr: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Or',
   'theme.clay': 'Argile',
+  'chat.send': 'Envoyer',
+  'a11y.key.enter': 'Entrée',
+  'a11y.key.command': 'Commande',
+  'a11y.key.tab': 'Tabulation',
+  'a11y.key.arrowUp': 'Flèche haut',
+  'a11y.key.arrowDown': 'Flèche bas',
+  'a11y.key.arrowLeft': 'Flèche gauche',
+  'a11y.key.arrowRight': 'Flèche droite',
+  'a11y.key.slash': 'Barre oblique',
 };

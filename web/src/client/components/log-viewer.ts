@@ -316,6 +316,7 @@ export class LogViewer extends LitElement {
               <!-- Back button -->
               <button
                 class="p-2 bg-bg border border-border/50 rounded text-sm text-primary hover:border-primary hover:text-primary transition-colors flex items-center gap-1 flex-shrink-0"
+                aria-label=${t('logs.back')}
                 @click=${() => {
                   window.location.href = '/';
                 }}

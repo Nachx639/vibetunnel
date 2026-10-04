@@ -870,4 +870,13 @@ export const ptBR: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Ouro',
   'theme.clay': 'Argila',
+  'chat.send': 'Enviar',
+  'a11y.key.enter': 'Enter',
+  'a11y.key.command': 'Command',
+  'a11y.key.tab': 'Tab',
+  'a11y.key.arrowUp': 'Seta para cima',
+  'a11y.key.arrowDown': 'Seta para baixo',
+  'a11y.key.arrowLeft': 'Seta para a esquerda',
+  'a11y.key.arrowRight': 'Seta para a direita',
+  'a11y.key.slash': 'Barra',
 };

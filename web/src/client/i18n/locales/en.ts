@@ -866,6 +866,15 @@ export const en = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Gold',
   'theme.clay': 'Clay',
+  'chat.send': 'Send',
+  'a11y.key.enter': 'Enter',
+  'a11y.key.command': 'Command',
+  'a11y.key.tab': 'Tab',
+  'a11y.key.arrowUp': 'Up arrow',
+  'a11y.key.arrowDown': 'Down arrow',
+  'a11y.key.arrowLeft': 'Left arrow',
+  'a11y.key.arrowRight': 'Right arrow',
+  'a11y.key.slash': 'Slash',
 };
 
 export type MessageKey = keyof typeof en;

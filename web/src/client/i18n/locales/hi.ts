@@ -846,4 +846,13 @@ export const hi: Messages = {
   'theme.cyber': 'साइबर',
   'theme.gold': 'सुनहरा',
   'theme.clay': 'मिट्टी',
+  'chat.send': 'भेजें',
+  'a11y.key.enter': 'एंटर',
+  'a11y.key.command': 'कमांड',
+  'a11y.key.tab': 'टैब',
+  'a11y.key.arrowUp': 'ऊपर तीर',
+  'a11y.key.arrowDown': 'नीचे तीर',
+  'a11y.key.arrowLeft': 'बायाँ तीर',
+  'a11y.key.arrowRight': 'दायाँ तीर',
+  'a11y.key.slash': 'स्लैश',
 };

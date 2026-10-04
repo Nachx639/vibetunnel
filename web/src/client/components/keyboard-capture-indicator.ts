@@ -200,6 +200,8 @@ export class KeyboardCaptureIndicator extends LitElement {
       >
         <button 
           class="${buttonClasses}"
+          aria-label="Keyboard capture"
+          aria-pressed=${this.active ? 'true' : 'false'}
           @click=${this.handleClick}
         >
           ${this.renderKeyboardIcon()}

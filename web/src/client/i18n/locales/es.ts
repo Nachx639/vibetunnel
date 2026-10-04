@@ -871,4 +871,13 @@ export const es: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Oro',
   'theme.clay': 'Arcilla',
+  'chat.send': 'Enviar',
+  'a11y.key.enter': 'Intro',
+  'a11y.key.command': 'Comando',
+  'a11y.key.tab': 'Tabulador',
+  'a11y.key.arrowUp': 'Flecha arriba',
+  'a11y.key.arrowDown': 'Flecha abajo',
+  'a11y.key.arrowLeft': 'Flecha izquierda',
+  'a11y.key.arrowRight': 'Flecha derecha',
+  'a11y.key.slash': 'Barra',
 };

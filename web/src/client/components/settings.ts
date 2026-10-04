@@ -614,6 +614,7 @@ export class Settings extends LitElement {
                 <button
                   role="switch"
                   aria-checked="${this.notificationPreferences.enabled}"
+                  aria-label=${t('settings.enableNotifications')}
                   @click=${this.handleToggleNotifications}
                   ?disabled=${this.isLoading}
                   class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-base ${
@@ -710,6 +711,7 @@ export class Settings extends LitElement {
         <button
           role="switch"
           aria-checked="${this.notificationPreferences[key]}"
+          aria-label=${label}
           @click=${() => this.handleNotificationPreferenceChange(key, !this.notificationPreferences[key])}
           class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-base ${
             this.notificationPreferences[key] ? 'bg-primary' : 'bg-border'

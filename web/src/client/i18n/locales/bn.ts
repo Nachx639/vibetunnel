@@ -848,4 +848,13 @@ export const bn: Messages = {
   'theme.cyber': 'সাইবার',
   'theme.gold': 'সোনালি',
   'theme.clay': 'মাটি',
+  'chat.send': 'পাঠান',
+  'a11y.key.enter': 'এন্টার',
+  'a11y.key.command': 'কমান্ড',
+  'a11y.key.tab': 'ট্যাব',
+  'a11y.key.arrowUp': 'উপরের তীর',
+  'a11y.key.arrowDown': 'নিচের তীর',
+  'a11y.key.arrowLeft': 'বাম তীর',
+  'a11y.key.arrowRight': 'ডান তীর',
+  'a11y.key.slash': 'স্ল্যাশ',
 };

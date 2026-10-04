@@ -845,4 +845,13 @@ export const ar: Messages = {
   'theme.cyber': 'سايبر',
   'theme.gold': 'ذهبي',
   'theme.clay': 'طيني',
+  'chat.send': 'إرسال',
+  'a11y.key.enter': 'إدخال',
+  'a11y.key.command': 'مفتاح الأوامر',
+  'a11y.key.tab': 'مفتاح Tab',
+  'a11y.key.arrowUp': 'سهم لأعلى',
+  'a11y.key.arrowDown': 'سهم لأسفل',
+  'a11y.key.arrowLeft': 'سهم لليسار',
+  'a11y.key.arrowRight': 'سهم لليمين',
+  'a11y.key.slash': 'شرطة مائلة',
 };

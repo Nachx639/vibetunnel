@@ -837,4 +837,13 @@ export const zhCN: Messages = {
   'theme.cyber': '赛博',
   'theme.gold': '金色',
   'theme.clay': '陶土',
+  'chat.send': '发送',
+  'a11y.key.enter': '回车',
+  'a11y.key.command': 'Command 键',
+  'a11y.key.tab': 'Tab 键',
+  'a11y.key.arrowUp': '上箭头',
+  'a11y.key.arrowDown': '下箭头',
+  'a11y.key.arrowLeft': '左箭头',
+  'a11y.key.arrowRight': '右箭头',
+  'a11y.key.slash': '斜杠',
 };

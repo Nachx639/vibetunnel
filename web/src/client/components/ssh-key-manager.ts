@@ -223,6 +223,7 @@ export class SSHKeyManager extends LitElement {
                       this.error = '';
                     }}
                     class="ml-2 text-bg hover:text-primary"
+                    aria-label=${t('common.close')}
                   >
                     ✕
                   </button>
@@ -242,6 +243,7 @@ export class SSHKeyManager extends LitElement {
                       this.success = '';
                     }}
                     class="ml-2 text-bg hover:text-primary"
+                    aria-label=${t('common.close')}
                   >
                     ✕
                   </button>

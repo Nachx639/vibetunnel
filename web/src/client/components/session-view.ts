@@ -1011,6 +1011,7 @@ export class SessionView extends LitElement {
           </button>
           <button
             class="mobile-action-key"
+            aria-label=${t('a11y.key.command')}
             @click=${() => {
               this.directKeyboardManager.handleQuickKeyPress('Command', true);
             }}
@@ -1026,6 +1027,7 @@ export class SessionView extends LitElement {
           </button>
           <button
             class="mobile-action-key"
+            aria-label=${t('a11y.key.slash')}
             @click=${() => {
               this.directKeyboardManager.handleQuickKeyPress('/');
             }}
@@ -1048,24 +1050,28 @@ export class SessionView extends LitElement {
           <button
             class="mobile-action-key"
             @click=${() => this.directKeyboardManager.handleQuickKeyPress('ArrowUp')}
+            aria-label=${t('a11y.key.arrowUp')}
           >
             ↑
           </button>
           <button
             class="mobile-action-key"
             @click=${() => this.directKeyboardManager.handleQuickKeyPress('ArrowDown')}
+            aria-label=${t('a11y.key.arrowDown')}
           >
             ↓
           </button>
           <button
             class="mobile-action-key"
             @click=${() => this.directKeyboardManager.handleQuickKeyPress('ArrowLeft')}
+            aria-label=${t('a11y.key.arrowLeft')}
           >
             ←
           </button>
           <button
             class="mobile-action-key"
             @click=${() => this.directKeyboardManager.handleQuickKeyPress('ArrowRight')}
+            aria-label=${t('a11y.key.arrowRight')}
           >
             →
           </button>
@@ -1670,24 +1676,28 @@ export class SessionView extends LitElement {
               <button
                 class="flex-1 font-mono px-3 py-2 text-sm transition-all cursor-pointer quick-start-btn"
                 @click=${() => this.handleSpecialKey('arrow_up')}
+                aria-label=${t('a11y.key.arrowUp')}
               >
                 <span class="text-xl">↑</span>
               </button>
               <button
                 class="flex-1 font-mono px-3 py-2 text-sm transition-all cursor-pointer quick-start-btn"
                 @click=${() => this.handleSpecialKey('arrow_down')}
+                aria-label=${t('a11y.key.arrowDown')}
               >
                 <span class="text-xl">↓</span>
               </button>
               <button
                 class="flex-1 font-mono px-3 py-2 text-sm transition-all cursor-pointer quick-start-btn"
                 @click=${() => this.handleSpecialKey('arrow_left')}
+                aria-label=${t('a11y.key.arrowLeft')}
               >
                 <span class="text-xl">←</span>
               </button>
               <button
                 class="flex-1 font-mono px-3 py-2 text-sm transition-all cursor-pointer quick-start-btn"
                 @click=${() => this.handleSpecialKey('arrow_right')}
+                aria-label=${t('a11y.key.arrowRight')}
               >
                 <span class="text-xl">→</span>
               </button>
@@ -1704,6 +1714,7 @@ export class SessionView extends LitElement {
               <button
                 class="font-mono text-sm transition-all cursor-pointer w-16 quick-start-btn"
                 @click=${() => this.handleSpecialKey('\t')}
+                aria-label=${t('a11y.key.tab')}
               >
                 <span class="text-xl">⇥</span>
               </button>
@@ -1717,6 +1728,7 @@ export class SessionView extends LitElement {
                 class="font-mono text-sm transition-all cursor-pointer w-16 quick-start-btn"
                 @click=${() => this.fileOperationsManager.openFilePicker()}
                 title=${t('session.uploadFile')}
+                aria-label=${t('session.uploadFile')}
               >
                 📷
               </button>
@@ -1724,6 +1736,7 @@ export class SessionView extends LitElement {
                 class="font-mono text-sm transition-all cursor-pointer w-16 quick-start-btn"
                 @click=${this.toggleDirectKeyboard}
                 title=${t('session.directKeyboard')}
+                aria-label=${t('session.directKeyboard')}
               >
                 ⌨️
               </button>
@@ -1736,6 +1749,7 @@ export class SessionView extends LitElement {
               <button
                 class="font-mono text-sm transition-all cursor-pointer w-16 quick-start-btn"
                 @click=${() => this.handleSpecialKey('enter')}
+                aria-label=${t('a11y.key.enter')}
               >
                 <span class="text-xl">⏎</span>
               </button>

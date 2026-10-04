@@ -111,6 +111,7 @@ export class FormOptionsSection extends LitElement {
                     <button
                       role="switch"
                       aria-checked="${this.spawnWindow}"
+                      aria-label=${t('create.spawnWindow')}
                       @click=${this.handleSpawnWindowToggle}
                       class="relative inline-flex h-4 w-8 sm:h-5 sm:w-10 lg:h-6 lg:w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-bg-secondary ${
                         this.spawnWindow ? 'bg-primary' : 'bg-border/50'
@@ -179,6 +180,7 @@ export class FormOptionsSection extends LitElement {
                     <button
                       role="switch"
                       aria-checked="${this.showFollowMode}"
+                      aria-label=${t('create.followMode')}
                       @click=${this.handleFollowModeToggle}
                       class="relative inline-flex h-4 w-8 sm:h-5 sm:w-10 lg:h-6 lg:w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-bg-secondary ${
                         this.showFollowMode ? 'bg-primary' : 'bg-border/50'
