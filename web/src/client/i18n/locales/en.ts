@@ -883,6 +883,13 @@ export const en = {
   'settings.ios.address.copy': 'Copy',
   'settings.ios.address.copied': 'Copied ✓',
   'settings.ios.address.copyFailed': "Couldn't copy: select the address and copy it by hand",
+
+  // App updates
+  'app.newVersion': 'A new version of VibeTunnel is ready',
+  'app.reload': 'Reload',
+  'settings.autoReload': 'Reload automatically after an update',
+  'settings.autoReload.description':
+    'When the server has a newer version, reload the next time you come back to the app instead of showing a Reload button. Never while you are typing.',
 };
 
 export type MessageKey = keyof typeof en;

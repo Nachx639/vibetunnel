@@ -866,4 +866,11 @@ export const bn: Messages = {
   'settings.ios.address.copy': 'কপি',
   'settings.ios.address.copied': 'কপি হয়েছে ✓',
   'settings.ios.address.copyFailed': 'কপি করা যায়নি: ঠিকানা বেছে নিয়ে হাতে কপি করুন',
+
+  // App updates
+  'app.newVersion': 'VibeTunnel-এর নতুন সংস্করণ তৈরি',
+  'app.reload': 'আবার লোড করুন',
+  'settings.autoReload': 'আপডেটের পরে নিজে থেকে আবার লোড করুন',
+  'settings.autoReload.description':
+    'সার্ভারে নতুন সংস্করণ এলে, আবার লোড করুন বোতাম না দেখিয়ে পরের বার অ্যাপে ফিরলেই নিজে থেকে লোড হবে। টাইপ করার সময় কখনও নয়।',
 };

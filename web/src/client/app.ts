@@ -9,7 +9,9 @@ import { keyed } from 'lit/directives/keyed.js';
 import type { Session } from '../shared/types.js';
 import { HttpMethod } from '../shared/types.js';
 import { LocaleController, t, whenLocaleReady } from './i18n/index.js';
+import { showActionToast } from './utils/action-toast.js';
 import { announce, ensureLiveRegion } from './utils/announce.js';
+import { getAutoReloadOnUpdate, startVersionWatch, userIsTyping } from './utils/app-version.js';
 import { isBrowserShortcut } from './utils/browser-shortcuts.js';
 // Import utilities
 import { BREAKPOINTS, SIDEBAR, TIMING, TRANSITIONS, Z_INDEX } from './utils/constants.js';
@@ -74,6 +76,7 @@ export class VibeTunnelApp extends LitElement {
   @state() private loading = false;
   @state() private currentView: 'list' | 'session' | 'auth' | 'file-browser' = 'auth';
   @state() private selectedSessionId: string | null = null;
+  private stopVersionWatch?: () => void;
   private loadFailures = 0;
   @state() private reconnecting = false;
   @state() private hideExited = this.loadHideExitedState();
@@ -125,6 +128,19 @@ export class VibeTunnelApp extends LitElement {
     super.connectedCallback();
     // Safari only announces live regions that existed before their text changed.
     ensureLiveRegion();
+    // An installed app never reloads on its own: offer new builds (see app-version.ts).
+    this.stopVersionWatch ??= startVersionWatch({
+      isBusy: userIsTyping,
+      autoReload: getAutoReloadOnUpdate,
+      onStale: () =>
+        showActionToast({
+          key: 'new-version',
+          text: t('app.newVersion'),
+          action: t('app.reload'),
+          onAction: () => window.location.reload(),
+          timeoutMs: 0,
+        }),
+    });
     this.setupHotReload();
     this.setupKeyboardShortcuts();
     this.setupNotificationHandlers();
@@ -191,6 +207,8 @@ export class VibeTunnelApp extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.stopVersionWatch?.();
+    this.stopVersionWatch = undefined;
     if (this.hotReloadWs) {
       this.hotReloadWs.close();
     }

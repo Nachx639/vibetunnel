@@ -12,6 +12,7 @@ import {
 import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
 import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
+import { getAutoReloadOnUpdate, setAutoReloadOnUpdate } from '../utils/app-version.js';
 import { iosBrowser, needsIOSHomeScreenInstall } from '../utils/ios-install.js';
 import { createLogger } from '../utils/logger.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
@@ -39,6 +40,7 @@ export class Settings extends LitElement {
   @state() private subscription: PushSubscription | null = null;
   @state() private isLoading = false;
   @state() private testingNotification = false;
+  @state() private autoReloadOnUpdate = getAutoReloadOnUpdate();
 
   // App settings state
   @state() private repositoryBasePath = DEFAULT_REPOSITORY_BASE_PATH;
@@ -118,6 +120,11 @@ export class Settings extends LitElement {
       }
     }
   }
+
+  private toggleAutoReload = () => {
+    this.autoReloadOnUpdate = !this.autoReloadOnUpdate;
+    setAutoReloadOnUpdate(this.autoReloadOnUpdate);
+  };
 
   private async initializeNotifications(): Promise<void> {
     // whenInitialized(), not waitForInitialization(): the settings connect before the app
@@ -802,6 +809,30 @@ export class Settings extends LitElement {
             </div>
             <language-picker></language-picker>
           </div>
+        </div>
+
+        <!-- Reload automatically after an update (off: a "Reload" notice is shown instead) -->
+        <div class="flex items-center justify-between gap-3 p-4 bg-bg-tertiary rounded-lg border border-border/50">
+          <div class="flex-1 min-w-0">
+            <label class="text-primary font-medium" id="settings-auto-reload-label">${t('settings.autoReload')}</label>
+            <p class="text-muted text-xs mt-1">${t('settings.autoReload.description')}</p>
+          </div>
+          <button
+            role="switch"
+            aria-checked="${this.autoReloadOnUpdate}"
+            aria-labelledby="settings-auto-reload-label"
+            data-testid="settings-auto-reload"
+            @click=${this.toggleAutoReload}
+            class="relative flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-base ${
+              this.autoReloadOnUpdate ? 'bg-primary' : 'bg-border'
+            }"
+          >
+            <span
+              class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+                this.autoReloadOnUpdate ? 'translate-x-5' : 'translate-x-0.5'
+              }"
+            ></span>
+          </button>
         </div>
 
         <!-- Repository Base Path -->

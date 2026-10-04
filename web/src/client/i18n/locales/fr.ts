@@ -902,4 +902,11 @@ export const fr: Messages = {
   'settings.ios.address.copied': 'Copiée ✓',
   'settings.ios.address.copyFailed':
     'Copie impossible : sélectionnez l’adresse et copiez-la à la main',
+
+  // App updates
+  'app.newVersion': 'Une nouvelle version de VibeTunnel est prête',
+  'app.reload': 'Recharger',
+  'settings.autoReload': 'Recharger automatiquement après une mise à jour',
+  'settings.autoReload.description':
+    'Quand le serveur a une version plus récente, recharger la prochaine fois que vous revenez dans l’app au lieu d’afficher un bouton Recharger. Jamais pendant la saisie.',
 };

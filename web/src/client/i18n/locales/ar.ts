@@ -864,4 +864,11 @@ export const ar: Messages = {
   'settings.ios.address.copy': 'نسخ',
   'settings.ios.address.copied': 'تم النسخ ✓',
   'settings.ios.address.copyFailed': 'تعذّر النسخ: حدّد العنوان وانسخه يدويًا',
+
+  // App updates
+  'app.newVersion': 'يتوفر إصدار جديد من VibeTunnel',
+  'app.reload': 'إعادة التحميل',
+  'settings.autoReload': 'إعادة التحميل تلقائيًا بعد التحديث',
+  'settings.autoReload.description':
+    'عندما يتوفر إصدار أحدث على الخادم، يُعاد التحميل في المرة التالية التي تعود فيها إلى التطبيق بدلًا من عرض زر إعادة التحميل. لا يحدث ذلك أبدًا أثناء الكتابة.',
 };

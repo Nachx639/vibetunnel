@@ -863,4 +863,11 @@ export const hi: Messages = {
   'settings.ios.address.copy': 'कॉपी करें',
   'settings.ios.address.copied': 'कॉपी हो गया ✓',
   'settings.ios.address.copyFailed': 'कॉपी नहीं हो सका: पता चुनें और हाथ से कॉपी करें',
+
+  // App updates
+  'app.newVersion': 'VibeTunnel का नया संस्करण तैयार है',
+  'app.reload': 'फिर से लोड करें',
+  'settings.autoReload': 'अपडेट के बाद अपने-आप फिर से लोड करें',
+  'settings.autoReload.description':
+    'जब सर्वर पर नया संस्करण हो, तो फिर से लोड करें बटन दिखाने के बजाय अगली बार ऐप पर लौटने पर अपने-आप लोड करें। टाइप करते समय कभी नहीं।',
 };

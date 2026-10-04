@@ -152,6 +152,19 @@ describe('Settings', () => {
     });
   });
 
+  describe('reload after an update', () => {
+    it('is off by default and the switch stores the choice', async () => {
+      const toggle = button('settings-auto-reload');
+      expect(toggle?.getAttribute('aria-checked')).toBe('false');
+      toggle?.click();
+      await component.updateComplete;
+      expect(toggle?.getAttribute('aria-checked')).toBe('true');
+      expect(JSON.parse(localStorage.getItem('vibetunnel_app_preferences') ?? '{}')).toMatchObject({
+        autoReloadOnUpdate: true,
+      });
+    });
+  });
+
   describe('appearance', () => {
     it('starts on the default color theme', () => {
       expect(button('settings-accent-emerald')?.getAttribute('aria-pressed')).toBe('true');

@@ -2766,3 +2766,47 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
     animation-iteration-count: infinite !important;
   }
 }
+
+/* Notice with one action (a new app version); see utils/action-toast.ts. */
+.vt-action-toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  margin: 0 auto;
+  width: auto;
+  max-width: 480px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 14px;
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  font-size: 14px;
+}
+.vt-action-toast > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vt-action-toast > button {
+  flex: none;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: var(--color-text-bright, #fff);
+  font-weight: 600;
+  font-size: 14px;
+}
+.vt-action-toast > button.vt-action-toast-close {
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 6px 8px;
+  font-size: 18px;
+}

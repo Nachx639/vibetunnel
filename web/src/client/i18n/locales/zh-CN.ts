@@ -854,4 +854,11 @@ export const zhCN: Messages = {
   'settings.ios.address.copy': '复制',
   'settings.ios.address.copied': '已复制 ✓',
   'settings.ios.address.copyFailed': '无法复制：请选中地址手动复制',
+
+  // App updates
+  'app.newVersion': 'VibeTunnel 有新版本',
+  'app.reload': '重新加载',
+  'settings.autoReload': '更新后自动重新加载',
+  'settings.autoReload.description':
+    '服务器有新版本时，在你下次回到应用时自动重新加载，而不是显示“重新加载”按钮。输入时不会重新加载。',
 };
