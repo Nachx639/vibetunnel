@@ -882,6 +882,7 @@ export const bn: Messages = {
   'terminal.scrollToNewOutput': 'নতুন আউটপুটে যান',
   'terminal.newOutput': 'নতুন আউটপুট',
   'terminal.bottom': 'নিচে',
+  'terminal.loadingHistory': 'ইতিহাস লোড হচ্ছে…',
 
   // Copy mode (Select text)
   'copyMode.menuItem': 'টেক্সট নির্বাচন করুন',

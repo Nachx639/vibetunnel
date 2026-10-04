@@ -879,6 +879,7 @@ export const ar: Messages = {
   'terminal.scrollToNewOutput': 'التمرير إلى المخرجات الجديدة',
   'terminal.newOutput': 'مخرجات جديدة',
   'terminal.bottom': 'الأسفل',
+  'terminal.loadingHistory': 'جارٍ تحميل السجل…',
 
   // Copy mode (Select text)
   'copyMode.menuItem': 'تحديد النص',

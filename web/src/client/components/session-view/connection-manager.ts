@@ -12,6 +12,9 @@ import type { Terminal } from '../terminal.js';
 
 const logger = createLogger('connection-manager');
 
+/** While a replay holds the paint, output is written once this much has come in. */
+const REPLAY_DRAIN_CHARS = 256 * 1024;
+
 export class ConnectionManager {
   private unsubscribe: (() => void) | null = null;
   private terminal: Terminal | null = null;
@@ -70,9 +73,24 @@ export class ConnectionManager {
 
     const enqueue = (chunk: string) => {
       this.outputBuffer += chunk;
+      // A held replay is written as it comes, nothing is painted until its end: no reason to
+      // wait for a frame between large chunks of it.
+      if (this.outputBuffer.length >= REPLAY_DRAIN_CHARS && this.terminal?.isPaintHeld?.()) {
+        if (this.batchTimeout !== null) clearTimeout(this.batchTimeout);
+        flush();
+        return;
+      }
       if (this.batchTimeout === null) {
         this.batchTimeout = window.setTimeout(flush, 16);
       }
+    };
+
+    // A replay painted as it came scrolled up to 16 MB of history past from the top on every
+    // open. A server that marks the replay's end says so in its header: the terminal then
+    // holds its paint until the end and paints once, at the bottom.
+    const endReplay = () => {
+      flush();
+      this.terminal?.releasePaint?.();
     };
 
     this.unsubscribe = terminalSocketClient.subscribe(this.session.id, {
@@ -97,8 +115,18 @@ export class ConnectionManager {
             sessionId?: string;
           } & Record<string, unknown>;
 
+          if (e.kind === 'header') {
+            if (e.replayEnd === true) this.terminal?.holdPaint?.();
+            return;
+          }
+
+          if (e.kind === 'replay-end') {
+            endReplay();
+            return;
+          }
+
           if (e.kind === 'exit') {
-            flush();
+            endReplay();
             this.onSessionExit(this.session.id);
             return;
           }
@@ -138,5 +166,6 @@ export class ConnectionManager {
     this.outputBuffer = '';
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.terminal?.releasePaint?.();
   }
 }

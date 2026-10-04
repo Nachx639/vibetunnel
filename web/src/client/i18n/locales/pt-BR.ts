@@ -904,6 +904,7 @@ export const ptBR: Messages = {
   'terminal.scrollToNewOutput': 'Rolar até a nova saída',
   'terminal.newOutput': 'Nova saída',
   'terminal.bottom': 'Fim',
+  'terminal.loadingHistory': 'Carregando histórico…',
 
   // Copy mode (Select text)
   'copyMode.menuItem': 'Selecionar texto',

@@ -880,6 +880,7 @@ export const hi: Messages = {
   'terminal.scrollToNewOutput': 'नए आउटपुट तक स्क्रॉल करें',
   'terminal.newOutput': 'नया आउटपुट',
   'terminal.bottom': 'नीचे',
+  'terminal.loadingHistory': 'इतिहास लोड हो रहा है…',
 
   // Copy mode (Select text)
   'copyMode.menuItem': 'टेक्स्ट चुनें',

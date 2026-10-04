@@ -905,6 +905,7 @@ export const es: Messages = {
   'terminal.scrollToNewOutput': 'Ir a la salida nueva',
   'terminal.newOutput': 'Salida nueva',
   'terminal.bottom': 'Final',
+  'terminal.loadingHistory': 'Cargando historial…',
 
   // Copy mode (Select text)
   'copyMode.menuItem': 'Seleccionar texto',

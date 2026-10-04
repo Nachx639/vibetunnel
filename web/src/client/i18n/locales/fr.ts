@@ -914,6 +914,7 @@ export const fr: Messages = {
   'terminal.scrollToNewOutput': 'Défiler jusqu’à la nouvelle sortie',
   'terminal.newOutput': 'Nouvelle sortie',
   'terminal.bottom': 'Bas',
+  'terminal.loadingHistory': "Chargement de l'historique…",
 
   // Copy mode (Select text)
   'copyMode.menuItem': 'Sélectionner du texte',

@@ -900,6 +900,7 @@ export const en = {
   'terminal.scrollToNewOutput': 'Scroll to the new output',
   'terminal.newOutput': 'New output',
   'terminal.bottom': 'Bottom',
+  'terminal.loadingHistory': 'Loading history…',
 
   // Copy mode (Select text)
   'copyMode.menuItem': 'Select text',

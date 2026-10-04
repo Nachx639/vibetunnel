@@ -1227,7 +1227,12 @@ describe('SessionView', () => {
         setConnected: (c: boolean) => void;
         connectToStream: () => void;
       };
-      connectionManager.setTerminal({ write: vi.fn() });
+      connectionManager.setTerminal({
+        write: vi.fn(),
+        holdPaint: vi.fn(),
+        releasePaint: vi.fn(),
+        isPaintHeld: () => false,
+      });
       connectionManager.setSession(mockSession);
       connectionManager.setConnected(true);
       connectionManager.connectToStream();

@@ -40,6 +40,13 @@ const SCROLLBAR_HIDE_MS = 1000;
 /** Gap above and below its thumb's travel, and the thumb's least height (CSS px). */
 const SCROLLBAR_INSET = 3;
 const SCROLLBAR_MIN_THUMB = 24;
+/**
+ * Longest a history replay holds the paint (holdPaint): 16 MB over a slow link takes a
+ * while, but a replay whose end never comes must not leave the canvas frozen.
+ */
+const PAINT_HOLD_MAX_MS = 15000;
+/** A replay holding the paint longer than this shows "Loading history…" over the terminal. */
+const LOADING_HISTORY_AFTER_MS = 300;
 
 type TerminalResizeDetail = {
   cols: number;
@@ -93,6 +100,12 @@ export class Terminal extends LitElement {
   userOverrideWidth = false;
 
   @state() private followCursorEnabled = true;
+  /** While a history replay is written, nothing is painted (see holdPaint). */
+  private paintHeld = false;
+  private paintHoldTimer: number | null = null;
+  /** Shown over the terminal while a replay holds the paint for long (see holdPaint). */
+  @state() private loadingHistory = false;
+  private loadingHistoryTimer: number | null = null;
   /**
    * Output came while the user read back: the view stayed put and the scroll-to-bottom button
    * says "New output" until the view is back at the bottom (by hand or with the button).
@@ -203,6 +216,10 @@ export class Terminal extends LitElement {
     window.removeEventListener('vibetunnel-accent-changed', this.handleAccentChange);
     this.touchScrollModeUnsubscribe?.();
     this.touchScrollModeUnsubscribe = undefined;
+    if (this.paintHoldTimer !== null) clearTimeout(this.paintHoldTimer);
+    this.paintHoldTimer = null;
+    this.paintHeld = false;
+    this.stopLoadingHistory();
     this.cleanup();
     this.themeObserver?.disconnect();
     this.themeObserver = null;
@@ -367,6 +384,57 @@ export class Terminal extends LitElement {
     // The rows being read were dropped as well (even when a burst grew the history): the
     // oldest left are the nearest. If nothing could be dropped, the index stands.
     return most > 0 || fewest > 0 ? 0 : top;
+  }
+
+  /**
+   * Holds the canvas's paint while a history replay is written, until releasePaint(): the
+   * replay (up to 16 MB) arrives over many frames and ghostty painted between them, following
+   * the output, so opening a long session showed its history from the top scrolling past at
+   * full speed. The canvas keeps what it showed; at most
+   * PAINT_HOLD_MAX_MS, in case the end of the replay never comes.
+   */
+  public holdPaint() {
+    this.paintHeld = true;
+    if (this.paintHoldTimer !== null) clearTimeout(this.paintHoldTimer);
+    this.paintHoldTimer = window.setTimeout(() => this.releasePaint(), PAINT_HOLD_MAX_MS);
+    // A replay that takes a while (a long history over a slow link) says so, not a blank.
+    if (this.loadingHistoryTimer === null && !this.loadingHistory) {
+      this.loadingHistoryTimer = window.setTimeout(() => {
+        this.loadingHistoryTimer = null;
+        if (this.paintHeld) this.loadingHistory = true;
+      }, LOADING_HISTORY_AFTER_MS);
+    }
+  }
+
+  private stopLoadingHistory() {
+    if (this.loadingHistoryTimer !== null) clearTimeout(this.loadingHistoryTimer);
+    this.loadingHistoryTimer = null;
+    this.loadingHistory = false;
+  }
+
+  /** Whether a history replay is still being written, its paint held (see holdPaint). */
+  public isPaintHeld(): boolean {
+    return this.paintHeld;
+  }
+
+  /** Ends holdPaint(): one paint, at the bottom unless the reader has scrolled away. */
+  public releasePaint() {
+    if (this.paintHoldTimer !== null) {
+      clearTimeout(this.paintHoldTimer);
+      this.paintHoldTimer = null;
+    }
+    this.stopLoadingHistory();
+    if (!this.paintHeld) return;
+    this.paintHeld = false;
+    const term = this.terminal;
+    if (!term) return;
+    if (this.followCursorEnabled && term.getViewportY() !== 0) term.scrollToBottom();
+    this.canvasStale = true;
+    if (term.renderer && term.wasmTerm) {
+      // Every row: the frames skipped while held may have left some undrawn.
+      term.renderer.render(term.wasmTerm, true, term.getViewportY(), term, 0);
+    }
+    this.updateScrollbar(false);
   }
 
   public clear() {
@@ -1412,6 +1480,8 @@ export class Terminal extends LitElement {
     });
 
     renderer.render = (buffer, forceAll, viewportY, scrollback) => {
+      // A history replay is being written: painted once it is all in (see holdPaint).
+      if (this.paintHeld) return;
       const line = viewportY ?? term.getViewportY();
       // A selection ghostty clears says nothing: one more paint after it takes the highlight off.
       const selection = term.hasSelection();
@@ -1786,6 +1856,32 @@ export class Terminal extends LitElement {
           opacity: 1;
           transition: none;
         }
+        .terminal-loading-history {
+          position: absolute;
+          inset: 0;
+          z-index: 15;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          font: 500 13px/1 ${TERMINAL_FONT_FAMILY};
+          color: rgba(255, 255, 255, 0.7);
+          pointer-events: none;
+        }
+        .terminal-loading-history::before {
+          content: '';
+          width: 14px;
+          height: 14px;
+          border: 2px solid currentColor;
+          border-right-color: transparent;
+          border-radius: 50%;
+          animation: terminal-loading-spin 0.8s linear infinite;
+        }
+        @keyframes terminal-loading-spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
         .terminal-scrollbar-thumb {
           position: absolute;
           top: 0;
@@ -1832,6 +1928,13 @@ export class Terminal extends LitElement {
           style="view-transition-name: session-${this.sessionId};"
         ></div>
 
+        ${
+          this.loadingHistory
+            ? html`<div class="terminal-loading-history" role="status" data-testid="terminal-loading-history">
+                ${t('terminal.loadingHistory')}
+              </div>`
+            : null
+        }
         ${
           !this.hideScrollButton && !this.followCursorEnabled
             ? html`

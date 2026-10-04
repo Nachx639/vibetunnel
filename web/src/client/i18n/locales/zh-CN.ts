@@ -871,6 +871,7 @@ export const zhCN: Messages = {
   'terminal.scrollToNewOutput': '滚动到新输出',
   'terminal.newOutput': '新输出',
   'terminal.bottom': '底部',
+  'terminal.loadingHistory': '正在加载历史记录…',
 
   // Copy mode (Select text)
   'copyMode.menuItem': '选择文本',
