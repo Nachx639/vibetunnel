@@ -297,6 +297,73 @@ describe('Config Routes', () => {
     });
   });
 
+  describe('GET /api/quick-start/availability', () => {
+    function availabilityApp(
+      check: (programs: string[]) => Promise<Record<string, boolean>>,
+      enabled: boolean | 'unset' = true
+    ) {
+      const availabilityApp = express();
+      availabilityApp.use(
+        '/api',
+        createConfigRoutes({
+          configService: {
+            getConfig: () => ({
+              ...defaultConfig,
+              quickStartCommands: [
+                { name: '✨ claude', command: 'claude --dangerously-skip-permissions' },
+                { command: 'gemini' },
+                { command: 'opencode 4' },
+              ],
+              ...(enabled === 'unset' ? {} : { quickStartAvailability: enabled }),
+            }),
+          } as unknown as ConfigService,
+          quickStartAvailability: { check },
+        })
+      );
+      return availabilityApp;
+    }
+
+    it('runs no check and offers everything unless config.json turns it on', async () => {
+      for (const enabled of ['unset', false] as const) {
+        const check = vi.fn(async () => ({ gemini: false }));
+        const response = await request(availabilityApp(check, enabled)).get(
+          '/api/quick-start/availability'
+        );
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({});
+        expect(check).not.toHaveBeenCalled();
+      }
+    });
+
+    it('answers for the program of each quick start when turned on', async () => {
+      const check = vi.fn(async (programs: string[]) =>
+        Object.fromEntries(programs.map((program) => [program, program !== 'gemini']))
+      );
+
+      const response = await request(availabilityApp(check)).get('/api/quick-start/availability');
+
+      expect(check).toHaveBeenCalledWith(['claude', 'gemini', 'opencode']);
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ claude: true, gemini: false, opencode: true });
+    });
+
+    it('answers {} (every quick start offered) when the check fails', async () => {
+      const response = await request(
+        availabilityApp(async () => {
+          throw new Error('boom');
+        })
+      ).get('/api/quick-start/availability');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({});
+    });
+
+    it('cannot be turned on through PUT /api/config', async () => {
+      await request(app).put('/api/config').send({ quickStartAvailability: true });
+      expect(mockConfigService.updateConfig).not.toHaveBeenCalled();
+    });
+  });
+
   describe('notification preferences', () => {
     describe('GET /api/config with notification preferences', () => {
       it('should include notification preferences in response', async () => {

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
+import { quickStartProgram } from '../../shared/quick-start.js';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   type NotificationPreferences,
@@ -8,6 +9,7 @@ import {
   type VibeTunnelConfig,
 } from '../../types/config.js';
 import type { ConfigService } from '../services/config-service.js';
+import { QuickStartAvailability } from '../services/quick-start-availability.js';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('config');
@@ -40,6 +42,8 @@ export interface AppConfig {
 
 interface ConfigRouteOptions {
   configService: ConfigService;
+  /** Which quick-start programs exist here; tests pass one that starts no shell. */
+  quickStartAvailability?: Pick<QuickStartAvailability, 'check'>;
 }
 
 /**
@@ -48,6 +52,30 @@ interface ConfigRouteOptions {
 export function createConfigRoutes(options: ConfigRouteOptions): Router {
   const router = Router();
   const { configService } = options;
+  const quickStartAvailability = options.quickStartAvailability ?? new QuickStartAvailability();
+
+  /**
+   * Which quick starts can run on this machine: { "<program>": true|false } for the first
+   * word of each configured command (services/quick-start-availability.ts). The check runs
+   * the user's interactive login shell, so it only happens with `"quickStartAvailability":
+   * true` in config.json. Off (the default), or when the check fails, the answer is {} and
+   * the client offers every quick start, as before.
+   * GET /api/quick-start/availability
+   */
+  router.get('/quick-start/availability', async (_req, res) => {
+    try {
+      const config = configService.getConfig();
+      if (config.quickStartAvailability !== true) {
+        res.json({});
+        return;
+      }
+      const programs = config.quickStartCommands.map((entry) => quickStartProgram(entry.command));
+      res.json(await quickStartAvailability.check(programs));
+    } catch (error) {
+      logger.warn('[GET /api/quick-start/availability] check failed:', error);
+      res.json({});
+    }
+  });
 
   /**
    * Get application configuration

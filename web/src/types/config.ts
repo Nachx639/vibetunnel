@@ -25,6 +25,11 @@ export interface VibeTunnelConfig {
   version: number;
   quickStartCommands: QuickStartCommand[];
   repositoryBasePath?: string;
+  /**
+   * Dim quick starts whose program isn't installed. The check runs the user's interactive
+   * login shell (`$SHELL -i -l -c`), so it is off when missing.
+   */
+  quickStartAvailability?: boolean;
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {
