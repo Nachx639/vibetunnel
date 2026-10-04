@@ -1065,4 +1065,16 @@ export const hi: Messages = {
   'codex.slash.review': 'अपने मौजूदा बदलावों की समीक्षा करें',
   'codex.slash.diff': 'git diff दिखाएँ, अनट्रैक की गई फ़ाइलों सहित',
   'codex.slash.init': 'AGENTS.md बनाएँ',
+  // Phone chat view and composer for Gemini CLI sessions
+  'gemini.chat.empty': 'नीचे Gemini को संदेश भेजें।',
+  'gemini.chat.working': 'Gemini काम कर रहा है',
+  'gemini.chat.finished': 'Gemini ने काम पूरा किया',
+  'gemini.chat.stop': 'Gemini रोकें',
+  'gemini.slash.chat': 'बातचीत के चेकपॉइंट सहेजें, फिर शुरू करें या सूची देखें',
+  'gemini.slash.memory': 'Gemini की मेमोरी देखें, उसमें जोड़ें या फिर से लोड करें',
+  'gemini.slash.stats': 'सत्र के आँकड़े और टोकन उपयोग देखें',
+  'gemini.slash.tools': 'उपलब्ध टूल की सूची देखें',
+  'gemini.slash.settings': 'Gemini CLI की सेटिंग देखें और बदलें',
+  'gemini.slash.init': 'GEMINI.md बनाएँ',
+  'gemini.slash.quit': 'Gemini CLI से बाहर निकलें',
 };

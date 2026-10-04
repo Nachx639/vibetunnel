@@ -21,6 +21,8 @@ import {
 } from '../services/claude-initial-input.js';
 import { readCodexChat } from '../services/codex-chat.js';
 import { codexSessionRef } from '../services/codex-process.js';
+import { readGeminiChat } from '../services/gemini-chat.js';
+import { geminiSessionRef } from '../services/gemini-process.js';
 import { menuKeyHash } from '../services/menu-key-hash.js';
 import type { RemoteRegistry } from '../services/remote-registry.js';
 import { createScreenMenu } from '../services/screen-menu.js';
@@ -410,6 +412,25 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     }
   }
 
+  /**
+   * Gemini CLI on each running local session where neither Claude Code nor Codex runs (agent
+   * chat): its first prompt as the title.
+   */
+  async function addGeminiTitles(sessions: Session[]): Promise<void> {
+    for (const session of sessions) {
+      if (session.status !== 'running' || session.claudeStatus || session.codexActive) continue;
+      try {
+        const ref = await geminiSessionRef(session);
+        if (!ref) continue;
+        session.geminiActive = true;
+        const title = readGeminiChat(ref).title;
+        if (title) session.geminiTitle = title;
+      } catch (error) {
+        logger.debug(`[GET /sessions] Could not read Gemini title of ${session.id}: ${error}`);
+      }
+    }
+  }
+
   // List all sessions (aggregate local + remote in HQ mode)
   router.get('/sessions', async (req, res) => {
     logger.debug('[GET /sessions] Listing all sessions');
@@ -463,6 +484,7 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       if (config.agentChatEnabled?.()) {
         await addClaudeStatuses(localSessionsWithSource as Session[]);
         await addCodexTitles(localSessionsWithSource as Session[]);
+        await addGeminiTitles(localSessionsWithSource as Session[]);
       }
       // The compact phone list shows a shell's last line of output instead of a preview.
       if (req.query?.lastLine === '1') {

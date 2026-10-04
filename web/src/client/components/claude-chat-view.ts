@@ -72,7 +72,7 @@ interface ChatResponse {
   messagesUnchanged?: boolean;
 }
 
-type ChatAgent = 'claude' | 'codex';
+type ChatAgent = 'claude' | 'codex' | 'gemini';
 
 /** Each agent's wording in the chat view. */
 const AGENT_TEXT: Record<
@@ -92,6 +92,13 @@ const AGENT_TEXT: Record<
     working: 'codex.chat.working',
     finished: 'codex.chat.finished',
     stop: 'codex.chat.stop',
+  },
+  gemini: {
+    name: 'Gemini',
+    empty: 'gemini.chat.empty',
+    working: 'gemini.chat.working',
+    finished: 'gemini.chat.finished',
+    stop: 'gemini.chat.stop',
   },
 };
 
@@ -1692,13 +1699,13 @@ export class ClaudeChatView extends LitElement {
     this.dispatchEvent(
       new CustomEvent('claude-chat-availability', { detail: chat.available, bubbles: true })
     );
-    this.agent = chat.agent === 'codex' ? chat.agent : 'claude';
+    this.agent = chat.agent === 'codex' || chat.agent === 'gemini' ? chat.agent : 'claude';
     this.backgroundWait = chat.status === 'busy' && chat.waitingForBackground === true;
     this.busy = chat.status === 'busy' && !this.backgroundWait;
     this.activity = this.busy ? (chat.activity ?? null) : null;
     this.conversationTitle = chat.title ?? '';
     const screen = this.getScreenTail?.() ?? '';
-    // Claude Code's permission mode; Codex has no such status line. Until the terminal's screen
+    // Claude Code's permission mode; Codex and Gemini have no such status line. Until the terminal's screen
     // has loaded (a moment after opening) the mode last read for this session stands in: the
     // chip turning up late would push the conversation up.
     if (this.agent !== 'claude') {

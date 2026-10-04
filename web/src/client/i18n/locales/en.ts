@@ -1086,6 +1086,18 @@ export const en = {
   'codex.slash.review': 'Review your current changes',
   'codex.slash.diff': 'Show the git diff, including untracked files',
   'codex.slash.init': 'Create AGENTS.md',
+  // Phone chat view and composer for Gemini CLI sessions
+  'gemini.chat.empty': 'Send Gemini a message below.',
+  'gemini.chat.working': 'Gemini is working',
+  'gemini.chat.finished': 'Gemini finished',
+  'gemini.chat.stop': 'Stop Gemini',
+  'gemini.slash.chat': 'Save, resume or list conversation checkpoints',
+  'gemini.slash.memory': "Show, add to or reload Gemini's memory",
+  'gemini.slash.stats': 'Show session stats and token usage',
+  'gemini.slash.tools': 'List available tools',
+  'gemini.slash.settings': 'View and edit Gemini CLI settings',
+  'gemini.slash.init': 'Create GEMINI.md',
+  'gemini.slash.quit': 'Exit Gemini CLI',
 };
 
 export type MessageKey = keyof typeof en;

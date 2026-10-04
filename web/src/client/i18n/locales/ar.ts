@@ -1064,4 +1064,16 @@ export const ar: Messages = {
   'codex.slash.review': 'مراجعة تغييراتك الحالية',
   'codex.slash.diff': 'عرض git diff بما في ذلك الملفات غير المتتبعة',
   'codex.slash.init': 'إنشاء AGENTS.md',
+  // Phone chat view and composer for Gemini CLI sessions
+  'gemini.chat.empty': 'أرسل رسالة إلى Gemini أدناه.',
+  'gemini.chat.working': 'Gemini يعمل',
+  'gemini.chat.finished': 'انتهى Gemini',
+  'gemini.chat.stop': 'إيقاف Gemini',
+  'gemini.slash.chat': 'حفظ نقاط حفظ المحادثة أو استئنافها أو عرضها',
+  'gemini.slash.memory': 'عرض ذاكرة Gemini أو الإضافة إليها أو إعادة تحميلها',
+  'gemini.slash.stats': 'عرض إحصاءات الجلسة واستخدام الرموز',
+  'gemini.slash.tools': 'عرض الأدوات المتاحة',
+  'gemini.slash.settings': 'عرض إعدادات Gemini CLI وتعديلها',
+  'gemini.slash.init': 'إنشاء GEMINI.md',
+  'gemini.slash.quit': 'الخروج من Gemini CLI',
 };

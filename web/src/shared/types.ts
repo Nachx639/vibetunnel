@@ -163,6 +163,12 @@ export interface Session extends SessionInfo {
 
   /** OpenAI Codex runs in this session (its command, or typed inside its shell; agent chat). */
   codexActive?: boolean;
+
+  /** Running Gemini CLI session: its first prompt, as the conversation title (agent chat). */
+  geminiTitle?: string;
+
+  /** Gemini CLI runs in this session (its command, or typed inside its shell; agent chat). */
+  geminiActive?: boolean;
 }
 
 /**

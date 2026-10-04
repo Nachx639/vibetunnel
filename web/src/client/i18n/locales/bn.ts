@@ -1067,4 +1067,16 @@ export const bn: Messages = {
   'codex.slash.review': 'আপনার বর্তমান পরিবর্তনগুলো পর্যালোচনা করুন',
   'codex.slash.diff': 'git diff দেখান, ট্র্যাক না করা ফাইলসহ',
   'codex.slash.init': 'AGENTS.md তৈরি করুন',
+  // Phone chat view and composer for Gemini CLI sessions
+  'gemini.chat.empty': 'নিচে Gemini-কে একটি বার্তা পাঠান।',
+  'gemini.chat.working': 'Gemini কাজ করছে',
+  'gemini.chat.finished': 'Gemini শেষ করেছে',
+  'gemini.chat.stop': 'Gemini থামান',
+  'gemini.slash.chat': 'কথোপকথনের চেকপয়েন্ট সংরক্ষণ, পুনরায় শুরু বা তালিকা দেখুন',
+  'gemini.slash.memory': 'Gemini-এর মেমরি দেখুন, যোগ করুন বা পুনরায় লোড করুন',
+  'gemini.slash.stats': 'সেশনের পরিসংখ্যান ও টোকেন ব্যবহার দেখুন',
+  'gemini.slash.tools': 'উপলব্ধ টুলের তালিকা দেখুন',
+  'gemini.slash.settings': 'Gemini CLI-এর সেটিংস দেখুন ও সম্পাদনা করুন',
+  'gemini.slash.init': 'GEMINI.md তৈরি করুন',
+  'gemini.slash.quit': 'Gemini CLI থেকে বেরিয়ে যান',
 };

@@ -1,13 +1,15 @@
 /**
  * The agent conversation running in a local session, in the chat shape, for the phone chat
  * view: Claude Code from its transcript (claude-chat.ts), Codex from its rollout
- * (codex-chat.ts).
+ * (codex-chat.ts), Gemini CLI from its chat recording (gemini-chat.ts).
  */
 import { createHash } from 'node:crypto';
 import type { SessionInfo } from '../../shared/types.js';
 import { type ClaudeChat, readClaudeChat } from './claude-chat.js';
 import { isCodexCommand, readCodexChat } from './codex-chat.js';
 import { codexSessionRef } from './codex-process.js';
+import { isGeminiCommand, readGeminiChat } from './gemini-chat.js';
+import { geminiSessionRef } from './gemini-process.js';
 
 type ChatSession = SessionInfo & { pid: number };
 
@@ -18,11 +20,16 @@ export async function readSessionChat(
 ): Promise<ClaudeChat> {
   // OpenAI Codex: the same chat shape, read from its rollout file.
   if (isCodexCommand(session.command)) return readCodexChat(session);
+  // Gemini CLI: the same chat shape, read from its chat recording.
+  if (isGeminiCommand(session.command)) return readGeminiChat(session);
   const claudeChat = await readClaudeChat(programPid);
   if (!claudeChat.available) {
     // A shell where `codex` was typed: its Codex process gives the rollout.
     const ref = await codexSessionRef({ ...session, pid: programPid });
     if (ref) return readCodexChat(ref);
+    // …or `gemini`: its process gives the chat file.
+    const geminiRef = await geminiSessionRef({ ...session, pid: programPid });
+    if (geminiRef) return readGeminiChat(geminiRef);
   }
   return claudeChat;
 }

@@ -377,6 +377,39 @@ describe('ClaudeChatView', () => {
     view.remove();
   });
 
+  it('speaks of Gemini and drops the Claude mode chip in a Gemini session', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ available: true, agent: 'gemini', status: 'idle', messages: [] }),
+      }))
+    );
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's';
+    view.getScreenTail = () => '⏵⏵ bypass permissions on';
+    document.body.appendChild(view);
+    try {
+      const internals = view as unknown as { apply(chat: unknown): void; loaded: boolean };
+      await vi.waitFor(() => expect(internals.loaded).toBe(true));
+      await view.updateComplete;
+      expect(view.shadowRoot?.textContent).toContain('Send Gemini a message below.');
+      expect(view.shadowRoot?.querySelector('[data-testid="mode-chip"]')).toBeNull();
+      internals.apply({
+        available: true,
+        agent: 'gemini',
+        status: 'busy',
+        messages: [{ id: 'u', role: 'user', text: 'explain this file' }],
+      });
+      await view.updateComplete;
+      expect(view.shadowRoot?.querySelector('.stop')?.getAttribute('aria-label')).toBe(
+        'Stop Gemini'
+      );
+    } finally {
+      view.remove();
+    }
+  });
+
   it("names each file of a patch that touches several, in the tool chip's diff", async () => {
     vi.stubGlobal(
       'fetch',

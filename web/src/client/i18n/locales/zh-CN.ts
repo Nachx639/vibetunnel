@@ -1054,4 +1054,16 @@ export const zhCN: Messages = {
   'codex.slash.review': '审查当前的更改',
   'codex.slash.diff': '显示 git diff（包括未跟踪的文件）',
   'codex.slash.init': '创建 AGENTS.md',
+  // Phone chat view and composer for Gemini CLI sessions
+  'gemini.chat.empty': '在下方给 Gemini 发送消息。',
+  'gemini.chat.working': 'Gemini 正在工作',
+  'gemini.chat.finished': 'Gemini 已完成',
+  'gemini.chat.stop': '停止 Gemini',
+  'gemini.slash.chat': '保存、恢复或列出对话检查点',
+  'gemini.slash.memory': '查看、添加或重新加载 Gemini 的记忆',
+  'gemini.slash.stats': '查看会话统计和令牌用量',
+  'gemini.slash.tools': '列出可用工具',
+  'gemini.slash.settings': '查看和编辑 Gemini CLI 设置',
+  'gemini.slash.init': '创建 GEMINI.md',
+  'gemini.slash.quit': '退出 Gemini CLI',
 };

@@ -119,6 +119,23 @@ describe('TerminalChatView', () => {
     expect(subscribe).not.toHaveBeenCalled();
   });
 
+  it('suggests Gemini CLI slash commands in a Gemini session', async () => {
+    component.composerOnly = true;
+    component.active = true;
+    component.agent = 'gemini';
+    await component.updateComplete;
+    const input = component.shadowRoot?.querySelector<HTMLTextAreaElement>('#chat-input-field');
+    if (!input) throw new Error('composer not rendered');
+
+    input.value = '/c';
+    input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await component.updateComplete;
+    const options = [...(component.shadowRoot?.querySelectorAll('.slash-list strong') ?? [])].map(
+      (el) => el.textContent
+    );
+    expect(options).toEqual(['/clear', '/compress', '/chat']);
+  });
+
   it('suggests Codex slash commands in a Codex session', async () => {
     component.composerOnly = true;
     component.active = true;
@@ -460,6 +477,9 @@ describe('TerminalChatView', () => {
 
       // Codex is a coding agent too: its sessions keep the prompts.
       component.agent = 'codex';
+      await component.updateComplete;
+      expect(chips().length).toBeGreaterThan(0);
+      component.agent = 'gemini';
       await component.updateComplete;
       expect(chips().length).toBeGreaterThan(0);
     });

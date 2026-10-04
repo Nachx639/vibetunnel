@@ -1,7 +1,7 @@
 # Agent chat on phones
 
 Off by default. When it is on, a phone in chat mode shows the agent conversation running in the
-session (Claude Code or OpenAI Codex) as message bubbles, read from the agent's own files, with
+session (Claude Code, OpenAI Codex or Gemini CLI) as message bubbles, read from the agent's own files, with
 a native composer under the live terminal. When it is off, chat mode works as before.
 
 ## Turning it on
@@ -44,6 +44,20 @@ messages, 20 rollouts cached). Codex sessions get Codex's slash commands and no 
 picker.
 The session list (agent chat on) also marks a running session as Codex (`codexActive`) and
 shows Codex's first prompt as its title (`codexTitle`), where no Claude Code runs.
+
+### Gemini CLI
+
+A session started with `gemini`, or a shell where `gemini` was typed (found in the session's
+process tree like Codex), is matched to the newest chat Gemini started in that directory after
+it began, in `$GEMINI_CLI_HOME/.gemini/tmp/<project>/chats/session-*.json[l]` (`GEMINI_CLI_HOME`
+defaults to the home folder). `<project>` is the sha256 of the project folder, or the short name
+Gemini records for it in `.gemini/projects.json`; a short name is used only if it is a plain
+folder name (letters, digits, `.`, `_`, `-`, not starting with `.`), so the registry can never
+point outside `tmp/`. Chat files are found by listing that `chats` folder; files over 20 MB are
+not read, at most 400 messages are kept and 20 chats cached. Gemini sessions get Gemini CLI's
+slash commands and no permission-mode picker. The session list (agent chat on) marks a running
+session as Gemini (`geminiActive`) with its first prompt as the title (`geminiTitle`), where
+neither Claude Code nor Codex runs.
 
 ## On the phone
 

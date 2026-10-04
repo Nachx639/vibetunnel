@@ -520,6 +520,7 @@ export class SessionHeader extends LitElement {
       session.claudeStatus?.title ||
       session.claudeTitle ||
       session.codexTitle ||
+      session.geminiTitle ||
       session.name ||
       command;
     const state = rowState(session);

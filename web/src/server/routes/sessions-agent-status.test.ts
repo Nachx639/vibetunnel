@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readClaudeStatuses } from '../services/claude-chat';
 import { readCodexChat } from '../services/codex-chat';
 import { codexSessionRef } from '../services/codex-process';
+import { readGeminiChat } from '../services/gemini-chat';
+import { geminiSessionRef } from '../services/gemini-process';
 import { createSessionRoutes } from './sessions';
 
 vi.mock('../websocket/control-unix-handler', () => ({
@@ -21,6 +23,11 @@ vi.mock('../services/codex-process', () => ({ codexSessionRef: vi.fn() }));
 vi.mock('../services/codex-chat', async (importActual) => ({
   ...(await importActual<typeof import('../services/codex-chat')>()),
   readCodexChat: vi.fn(),
+}));
+vi.mock('../services/gemini-process', () => ({ geminiSessionRef: vi.fn() }));
+vi.mock('../services/gemini-chat', async (importActual) => ({
+  ...(await importActual<typeof import('../services/gemini-chat')>()),
+  readGeminiChat: vi.fn(),
 }));
 
 type Handler = (req: Request, res: Response) => Promise<void>;
@@ -85,6 +92,34 @@ describe('GET /sessions agent status', () => {
     vi.mocked(codexSessionRef).mockReset();
     vi.mocked(codexSessionRef).mockResolvedValue(null);
     vi.mocked(readCodexChat).mockReset();
+    vi.mocked(geminiSessionRef).mockReset();
+    vi.mocked(geminiSessionRef).mockResolvedValue(null);
+    vi.mocked(readGeminiChat).mockReset();
+  });
+
+  it('looks for Gemini only with agent chat on, and only where no Claude Code or Codex runs', async () => {
+    const ref = { id: 'proc:43:2', workingDir: '/w', startedAt: '2025-10-02T10:00:00.000Z' };
+    vi.mocked(geminiSessionRef).mockImplementation(async (session) =>
+      session.id === 'shell' ? ref : null
+    );
+    vi.mocked(readGeminiChat).mockReturnValue({
+      available: true,
+      agent: 'gemini',
+      title: 'explain the build',
+      messages: [],
+    });
+
+    expect((await listRoute(false).list()).some((s) => s.geminiActive)).toBe(false);
+    expect(geminiSessionRef).not.toHaveBeenCalled();
+
+    const sessions = await listRoute(true).list();
+    expect(sessions.find((s) => s.id === 'shell')).toMatchObject({
+      geminiActive: true,
+      geminiTitle: 'explain the build',
+    });
+    expect(sessions.find((s) => s.id === 'claude')?.geminiActive).toBeUndefined();
+    expect(geminiSessionRef).toHaveBeenCalledTimes(1);
+    expect(readGeminiChat).toHaveBeenCalledWith(ref);
   });
 
   it('looks for Codex only with agent chat on, and only where no Claude Code runs', async () => {

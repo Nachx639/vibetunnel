@@ -1091,4 +1091,16 @@ export const ptBR: Messages = {
   'codex.slash.review': 'Revisar suas alterações atuais',
   'codex.slash.diff': 'Mostrar o diff do git, incluindo arquivos não rastreados',
   'codex.slash.init': 'Criar AGENTS.md',
+  // Phone chat view and composer for Gemini CLI sessions
+  'gemini.chat.empty': 'Envie uma mensagem ao Gemini abaixo.',
+  'gemini.chat.working': 'O Gemini está trabalhando',
+  'gemini.chat.finished': 'O Gemini terminou',
+  'gemini.chat.stop': 'Parar o Gemini',
+  'gemini.slash.chat': 'Salvar, retomar ou listar pontos de controle da conversa',
+  'gemini.slash.memory': 'Ver, ampliar ou recarregar a memória do Gemini',
+  'gemini.slash.stats': 'Ver estatísticas da sessão e uso de tokens',
+  'gemini.slash.tools': 'Listar as ferramentas disponíveis',
+  'gemini.slash.settings': 'Ver e editar as configurações do Gemini CLI',
+  'gemini.slash.init': 'Criar GEMINI.md',
+  'gemini.slash.quit': 'Sair do Gemini CLI',
 };

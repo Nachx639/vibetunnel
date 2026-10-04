@@ -69,9 +69,28 @@ const CODEX_SLASH_COMMANDS: Array<[string, MessageKey]> = [
   ['/mcp', 'slash.mcp'],
 ];
 
+/** Gemini CLI slash commands, offered instead when the session runs Gemini. */
+const GEMINI_SLASH_COMMANDS: Array<[string, MessageKey]> = [
+  ['/clear', 'slash.clear'],
+  ['/compress', 'slash.compact'],
+  ['/model', 'slash.model'],
+  ['/chat', 'gemini.slash.chat'],
+  ['/resume', 'slash.resume'],
+  ['/memory', 'gemini.slash.memory'],
+  ['/stats', 'gemini.slash.stats'],
+  ['/tools', 'gemini.slash.tools'],
+  ['/mcp', 'slash.mcp'],
+  ['/settings', 'gemini.slash.settings'],
+  ['/init', 'gemini.slash.init'],
+  ['/help', 'slash.help'],
+  ['/quit', 'gemini.slash.quit'],
+];
+
 /** The slash commands to offer for the agent a session runs. */
 export function slashCommandsFor(agent: string | undefined): Array<[string, MessageKey]> {
-  return agent === 'codex' ? CODEX_SLASH_COMMANDS : SLASH_COMMANDS;
+  if (agent === 'codex') return CODEX_SLASH_COMMANDS;
+  if (agent === 'gemini') return GEMINI_SLASH_COMMANDS;
+  return SLASH_COMMANDS;
 }
 
 const DRAFT_KEY_PREFIX = 'vt-chat-draft:';
@@ -2022,7 +2041,9 @@ export class TerminalChatView extends LitElement {
       return nothing;
     }
     // Quick prompts are for the agents, not plain shells.
-    if (this.claudeSession === false && this.agent !== 'codex') return nothing;
+    if (this.claudeSession === false && this.agent !== 'codex' && this.agent !== 'gemini') {
+      return nothing;
+    }
     const prompts = this.customPrompts ?? defaultQuickPrompts();
     return html`<div
       class="quick-prompts"
