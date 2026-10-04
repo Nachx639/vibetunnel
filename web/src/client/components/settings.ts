@@ -645,6 +645,7 @@ export class Settings extends LitElement {
                           ${this.renderNotificationToggle('commandError', t('settings.notify.commandError'), t('settings.notify.commandError.description'))}
                           ${this.renderNotificationToggle('commandCompletion', t('settings.notify.commandCompletion'), t('settings.notify.commandCompletion.description'))}
                           ${this.renderNotificationToggle('bell', t('settings.notify.bell'), t('settings.notify.bell.description'))}
+                          ${this.renderNotificationToggle('agentStatus', t('settings.notify.agentStatus'), t('settings.notify.agentStatus.description'))}
                         </div>
                       </div>
 
@@ -713,7 +714,7 @@ export class Settings extends LitElement {
         </div>
         <button
           role="switch"
-          aria-checked="${this.notificationPreferences[key]}"
+          aria-checked="${this.notificationPreferences[key] === true}"
           @click=${() => this.handleNotificationPreferenceChange(key, !this.notificationPreferences[key])}
           class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-base ${
             this.notificationPreferences[key] ? 'bg-primary' : 'bg-border'

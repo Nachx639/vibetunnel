@@ -1,6 +1,16 @@
 import { css, html, LitElement, nothing } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
+import {
+  compactDetail,
+  optionForTyped,
+  parseScreenChoices,
+  type ScreenChoices,
+  type ScreenLayout,
+  sameShownMenu,
+  takesReply,
+} from '../../shared/claude-screen.js';
 import { LocaleController, type MessageKey, t } from '../i18n/index.js';
+import { authClient } from '../services/auth-client.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { endsADrag } from '../utils/pointer-drag.js';
@@ -14,6 +24,9 @@ import {
 import { shellQuotePath } from '../utils/shell-quote.js';
 import { AttachmentQueue, type AttachmentUploader, uploadAttachment } from './chat-attachments.js';
 import type { SentChatMessage, SentChatMessageRef } from './claude-chat-view.js';
+
+/** How often the phone composer looks for a menu on screen. */
+const SCREEN_MENU_POLL_MS = 700;
 
 const logger = createLogger('terminal-chat-view');
 
@@ -211,6 +224,83 @@ export class TerminalChatView extends LitElement {
     .slash-list button span {
       color: var(--color-text-dim);
       font-size: 13px;
+    }
+
+    /* A menu on screen that typing cannot answer (trust this folder?): its options as buttons,
+       floating over the bottom of the terminal, where the menu itself is drawn. Taking layout
+       space, it shrank the terminal; the menu no longer fit there, Claude drew it cut off,
+       the block went, the terminal grew back, and round again (with the keyboard open). */
+    .screen-menu {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 100%;
+      z-index: 1;
+      padding: 8px 14px;
+      background-color: var(--color-bg-secondary);
+      border-top: 1px solid var(--color-border);
+      box-shadow: 0 -6px 16px rgb(0 0 0 / 0.18);
+    }
+
+    .screen-menu-note {
+      margin-bottom: 6px;
+      color: var(--color-status-error);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .screen-menu-detail {
+      display: -webkit-box;
+      margin-bottom: 2px;
+      overflow: hidden;
+      color: var(--color-text-dim);
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+    .screen-menu-question {
+      margin-bottom: 6px;
+      overflow: hidden;
+      color: var(--color-text-dim);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .screen-menu-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .screen-menu-option {
+      min-height: 40px;
+      padding: 0 14px;
+      border: 1px solid var(--color-primary);
+      border-radius: 20px;
+      background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      color: var(--color-text);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      font-size: 15px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .screen-menu-option:active {
+      background-color: color-mix(in srgb, var(--color-primary) 24%, transparent);
+    }
+
+    .screen-menu-option:disabled {
+      opacity: 0.5;
     }
 
     /* One-tap prompts above the composer; scrolls sideways, hidden while typing. */
@@ -701,6 +791,32 @@ export class TerminalChatView extends LitElement {
   @property({ type: String }) sessionId = '';
   /** Whether the session runs Claude Code, when the parent knows; quick prompts hide only on false. */
   @property({ attribute: false }) claudeSession?: boolean;
+  /**
+   * The terminal's last rows. The phone composer reads them for a menu that typing cannot
+   * answer (Claude Code's trust-folder dialog), whose options then replace the quick prompts.
+   */
+  @property({ attribute: false }) getScreenText?: () => string;
+  /** How getScreenText's lines are laid out: width, soft-wrapped rows, visible rows. */
+  @property({ attribute: false }) getScreenLayout?: () => ScreenLayout | undefined;
+  /** Claude Code reports it waits for the user (a permission, a plan to approve, a question). */
+  @property({ attribute: false }) claudeWaiting?: boolean;
+  /** The chat view above shows the menu's question and options itself: no second set here. */
+  @property({ attribute: false }) menuInChat = false;
+  /** A selection menu on screen: sending text would confirm its highlighted option. */
+  @state() private screenMenu: ScreenChoices | null = null;
+  @state() private screenMenuBusy = false;
+  private screenMenuTimer?: ReturnType<typeof setInterval>;
+  /** The menu just answered, ignored while the screen still shows it (it redraws first). */
+  private answeredMenu: { sessionId: string; menu: ScreenChoices; at: number } | null = null;
+  /** A message on its way through the server (an answer or a reply to a waiting Claude). */
+  @state() private replyInFlight = false;
+  /** Polls in a row that found no menu: one miss may be Claude redrawing it. */
+  private screenMenuMisses = 0;
+  /** The server said the menu changed: the next poll takes what is on screen as it is. */
+  private refreshScreenMenu = false;
+  /** Why a tap on a menu option did nothing, shown in the menu block (outside, it would resize). */
+  @state() private screenMenuNote = '';
+  private screenMenuNoteTimer?: ReturnType<typeof setTimeout>;
   /** Messages the chat view shows as not sent, by its bubble id, for its Retry. */
   private failedSends = new Map<string, { command: string; paths: string }>();
   /** Why a send did nothing, shown above the composer for a few seconds. */
@@ -745,6 +861,9 @@ export class TerminalChatView extends LitElement {
   disconnectedCallback() {
     clearTimeout(this.longPressTimer);
     clearTimeout(this.composerNoteTimer);
+    clearInterval(this.screenMenuTimer);
+    this.screenMenuTimer = undefined;
+    clearTimeout(this.screenMenuNoteTimer);
     this.unsubscribeFromTerminalOutput();
     this.stopTerminalSync();
     this.clearDelayedTasks();
@@ -879,11 +998,17 @@ export class TerminalChatView extends LitElement {
   }
 
   updated(changedProperties: Map<string, unknown>) {
-    // This view is reused across sessions: another session's images, note and failed sends
-    // are not this one's.
+    this.syncScreenMenuWatch();
+    // This view is reused across sessions: another session's images, note, menu and failed
+    // sends are not this one's.
     if (changedProperties.has('sessionId') && changedProperties.get('sessionId') !== undefined) {
       this.attachments.clear();
       this.composerNote = '';
+      this.screenMenu = null;
+      this.screenMenuNote = '';
+      this.screenMenuMisses = 0;
+      this.answeredMenu = null;
+      this.refreshScreenMenu = false;
       // The chat view drops another session's bubbles: there is nothing left to retry.
       this.failedSends.clear();
     }
@@ -1502,7 +1627,8 @@ export class TerminalChatView extends LitElement {
               </div>`
             : nothing
         }
-        ${this.renderQuickPrompts()} ${this.renderPromptEditor()} ${this.renderComposerNote()}
+        ${this.renderScreenMenu()} ${this.renderQuickPrompts()} ${this.renderPromptEditor()}
+        ${this.renderComposerNote()}
         ${
           this.composerOnly && this.attachments.items.length > 0
             ? html`<chat-attachment-strip
@@ -1580,7 +1706,7 @@ export class TerminalChatView extends LitElement {
           <button
             class="send-button"
             @click=${this.handleSend}
-            ?disabled=${this.composerOnly && this.attachments.busy}
+            ?disabled=${this.composerOnly && (this.attachments.busy || this.replyInFlight)}
             aria-label=${t('chat.send')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -1716,8 +1842,162 @@ export class TerminalChatView extends LitElement {
     this.composerEmpty = !this.inputElement?.value.trim();
   }
 
+  /** Watches the screen for a menu while this is the phone composer of an open session. */
+  private syncScreenMenuWatch() {
+    const watch = this.composerOnly && this.active && Boolean(this.getScreenText);
+    if (watch && !this.screenMenuTimer) {
+      this.screenMenuTimer = setInterval(this.readScreenMenu, SCREEN_MENU_POLL_MS);
+      queueMicrotask(this.readScreenMenu);
+    } else if (!watch && this.screenMenuTimer) {
+      clearInterval(this.screenMenuTimer);
+      this.screenMenuTimer = undefined;
+      this.screenMenu = null;
+    }
+  }
+
+  private readScreenMenu = () => {
+    const found = this.isAgentSession() ? this.parseScreen() : null;
+    // A selection menu (cursor and key hints): Enter confirms its highlighted option, such as
+    // Codex's "Update now" (a global npm install), whatever the user meant. Numbered lists in
+    // Claude's answers have neither and stay out of it.
+    const menu = found?.cursor !== undefined ? found : null;
+    if (
+      menu &&
+      this.answeredMenu?.sessionId === this.sessionId &&
+      sameShownMenu(this.answeredMenu.menu, menu) &&
+      Date.now() - this.answeredMenu.at < 3000
+    ) {
+      this.screenMenu = null;
+      return;
+    }
+    // A poll landing while Claude redraws the menu may find it cut off or gone: the same
+    // options keep the block as it is, and it goes only after two polls without a menu.
+    if (!menu) {
+      this.screenMenuMisses++;
+      if (this.screenMenu && this.screenMenuMisses >= 2) this.screenMenu = null;
+      return;
+    }
+    this.screenMenuMisses = 0;
+    // A new prompt may ask the same question with the same options (consecutive permissions):
+    // keeping the old one showed its detail and sent its key, and every tap got "changed". Its cursor moving, or a read cut off by a redraw, is the same.
+    if (this.refreshScreenMenu || !sameShownMenu(menu, this.screenMenu)) {
+      this.screenMenu = menu;
+      if (!this.refreshScreenMenu) this.screenMenuNote = '';
+      this.refreshScreenMenu = false;
+    } else if ((menu.key?.length ?? 0) > (this.screenMenu?.key?.length ?? 0)) {
+      // The same menu read whole after a cut-off read: its question and detail too.
+      this.screenMenu = menu;
+    }
+  };
+
+  private showScreenMenuNote(note: string) {
+    clearTimeout(this.screenMenuNoteTimer);
+    this.screenMenuNote = note;
+    this.screenMenuNoteTimer = setTimeout(() => (this.screenMenuNote = ''), 6000);
+  }
+
+  /** An unnumbered menu on screen: one button per option, since typing cannot answer it. */
+  private renderScreenMenu() {
+    const menu = this.screenMenu;
+    if (!this.composerOnly || !menu || this.menuInChat) return nothing;
+    return html`<div
+      class="screen-menu"
+      role="group"
+      aria-label=${menu.question || t('screenMenu.label')}
+      data-testid="screen-menu"
+      @click=${(e: Event) => e.stopPropagation()}
+    >
+      ${
+        // On top: the block grows upward from the composer, so a note here leaves the buttons
+        // where they are (one under them moved them up, then down under the finger at 6 s).
+        this.screenMenuNote
+          ? html`<div class="screen-menu-note" role="alert" data-testid="screen-menu-note">
+              ${this.screenMenuNote}
+            </div>`
+          : nothing
+      }
+      ${
+        // What it is about ("Bash command · rm -rf dist/"): the same question may be asked of
+        // another command next.
+        menu.detail?.length
+          ? html`<div class="screen-menu-detail" dir="ltr" data-testid="screen-menu-detail">
+              ${compactDetail(menu.detail)}
+            </div>`
+          : nothing
+      }
+      ${menu.question ? html`<div class="screen-menu-question" dir="auto">${menu.question}</div>` : nothing}
+      <div class="screen-menu-options">
+        ${menu.options.map(
+          (option, index) =>
+            html`<button
+              class="screen-menu-option"
+              dir="auto"
+              ?disabled=${this.screenMenuBusy}
+              @mousedown=${(e: Event) => e.preventDefault()}
+              @contextmenu=${(e: Event) => e.preventDefault()}
+              @pointerup=${this.quickPromptTap(() => void this.chooseScreenMenuOption(index))}
+              @click=${this.quickPromptTap(() => void this.chooseScreenMenuOption(index))}
+            >
+              ${option}
+            </button>`
+        )}
+      </div>
+    </div>`;
+  }
+
+  /** Picks a menu option through the server, which moves the cursor there and presses Enter. */
+  private async chooseScreenMenuOption(index: number) {
+    const menu = this.screenMenu;
+    const sessionId = this.sessionId;
+    if (!menu || this.screenMenuBusy || !sessionId) return;
+    this.screenMenuBusy = true;
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeader() },
+        body: JSON.stringify({
+          option: index + 1,
+          question: menu.question,
+          options: menu.options,
+          key: menu.key,
+        }),
+      });
+      // Another session opened meanwhile: this answer is not about what it shows (its result
+      // blanked the new session's menu or said its prompt changed).
+      if (this.sessionId !== sessionId) return;
+      if (response.ok) {
+        this.answeredMenu = { sessionId, menu, at: Date.now() };
+        this.screenMenu = null;
+      } else {
+        const error =
+          response.status === 409
+            ? ((await response.json().catch(() => ({}))) as { error?: string }).error
+            : undefined;
+        // A changed menu: the next poll shows the one on screen now, with this note.
+        if (response.status === 409 && error !== 'busy') this.refreshScreenMenu = true;
+        // "busy": another answer to this session is still on its way, not a changed menu.
+        this.showScreenMenuNote(
+          t(
+            error === 'busy'
+              ? 'screenMenu.sending'
+              : response.status === 409
+                ? 'screenMenu.changed'
+                : 'screenMenu.failed'
+          )
+        );
+      }
+    } catch {
+      if (this.sessionId === sessionId) this.showScreenMenuNote(t('screenMenu.failed'));
+    } finally {
+      this.screenMenuBusy = false;
+    }
+  }
+
   private renderQuickPrompts() {
-    if (!this.composerOnly || !this.composerEmpty) return nothing;
+    // Not while Claude waits on a menu: "Yes" or "Continue" are not answers to it.
+    if (!this.composerOnly || !this.composerEmpty || this.screenMenu || this.claudeWaiting) {
+      return nothing;
+    }
     // Quick prompts are for Claude Code, not plain shells.
     if (this.claudeSession === false) return nothing;
     const prompts = this.customPrompts ?? defaultQuickPrompts();
@@ -2062,13 +2342,166 @@ export class TerminalChatView extends LitElement {
   }
 
   /**
-   * "Retry" on a message the chat view shows as not sent (see claude-chat-view): sent again,
-   * and whatever is being written in the box stays there.
+   * The menu on screen right now, read when sending: the watch's copy may be a poll old, or
+   * hidden for a moment after an answer while the next menu shows the same options.
+   */
+  private menuOnScreen(): ScreenChoices | null {
+    if (!this.isAgentSession() || !this.getScreenText) return null;
+    const found = this.parseScreen();
+    return found?.navigate ? found : null;
+  }
+
+  /** The screen's menu, read with the terminal's layout (labels, and its key, read right). */
+  private parseScreen(): ScreenChoices | null {
+    return parseScreenChoices(this.getScreenText?.() ?? '', this.getScreenLayout?.());
+  }
+
+  private isAgentSession(): boolean {
+    return this.claudeSession === true;
+  }
+
+  /**
+   * A message for Claude waiting on a menu, sent through the server: an option's number (or a
+   * yes/no letter) picks that option; anything else is a reply: Esc (Claude's "tell Claude what
+   * to do differently"), then the text once Claude is back at its prompt. The message stays in
+   * the box until the server says it was typed. When Claude turns out not to be waiting, it is
+   * typed as usual.
+   */
+  private async sendToWaitingClaude(
+    out: Outgoing,
+    choices: ScreenChoices | null,
+    option: number | null
+  ) {
+    const { command, paths } = out;
+    const sessionId = this.sessionId;
+    const [endpoint, body] =
+      option !== null && choices
+        ? [
+            'answer',
+            {
+              option,
+              question: choices.question,
+              options: choices.options,
+              key: choices.key,
+            },
+          ]
+        : [
+            'reply',
+            {
+              text: [paths, command].filter(Boolean).join(' '),
+              question: choices?.question ?? null,
+              options: choices?.options ?? null,
+              key: choices?.key ?? null,
+            },
+          ];
+    logger.log(`composer: Claude may be waiting on a menu, sent as ${endpoint}`);
+    // A reply is a message of the conversation: the chat view shows it at once. An option picked
+    // by its number answers the menu and is no message.
+    if (endpoint === 'reply') this.announceSent(out);
+    this.replyInFlight = true;
+    let response: Response | null = null;
+    try {
+      response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeader() },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      response = null;
+    } finally {
+      this.replyInFlight = false;
+    }
+    // Switched to another session meanwhile: its box is not this message's.
+    if (this.sessionId !== sessionId) return;
+    const input = this.inputElement;
+    const unchanged = Boolean(input && input.value.trim() === command);
+    if (response?.ok) {
+      // Leave anything typed since the send.
+      if (input && unchanged) {
+        input.value = '';
+        if (input instanceof HTMLTextAreaElement) this.autoSize(input);
+        saveDraft(this.sessionId, '');
+        this.syncComposerEmpty();
+      }
+      if (paths && (!out.retry || this.attachmentPaths() === paths)) this.attachments.clear();
+      return;
+    }
+    const error = (
+      response && !response.ok
+        ? ((await response.json().catch(() => ({}))) as { error?: string })
+        : {}
+    ).error;
+    if (error === 'not-waiting') {
+      const menu = this.menuOnScreen();
+      if (menu) {
+        this.showMenuFirst(menu);
+        this.announceFailed(out);
+      } else if (unchanged || out.retry) {
+        this.writeComposer(out);
+      } else {
+        // Edited while it was on its way: not typed after all, and the chat view says so.
+        this.announceFailed(out);
+      }
+      return;
+    }
+    const note: MessageKey =
+      error === 'busy'
+        ? 'screenMenu.sending'
+        : error === 'not-delivered'
+          ? 'screenMenu.notDelivered'
+          : response?.status === 409
+            ? 'screenMenu.changed'
+            : 'screenMenu.sendFailed';
+    this.showComposerNote(t(note));
+    this.announceFailed(out);
+  }
+
+  /**
+   * Sends a message the safe way for what is on screen. A menu takes Enter as confirming its
+   * highlighted option, whatever was typed: "Yes" sent to Claude's trust-folder dialog picked
+   * "No, exit", a plan correction executed the plan, and Codex's update prompt would have run
+   * "Update now". An option's number picks it; a reply to a waiting Claude goes
+   * through the server; anything else waits for a tap on one of the options.
+   */
+  private send(out: Outgoing) {
+    const menu = this.menuOnScreen();
+    if (menu) {
+      // A retry is a message again, never an option's number.
+      const option = out.paths || out.retry ? null : optionForTyped(out.command, menu);
+      if (option !== null) {
+        void this.sendToWaitingClaude(out, menu, option);
+      } else if (this.claudeWaiting && takesReply(menu)) {
+        void this.sendToWaitingClaude(out, menu, null);
+      } else {
+        this.showMenuFirst(menu);
+      }
+      return;
+    }
+    // Claude waits on something this cannot read (or a yes/no question): the server answers.
+    if (this.claudeWaiting) {
+      const choices = this.getScreenText ? this.parseScreen() : null;
+      const option =
+        choices && !out.paths && !out.retry ? optionForTyped(out.command, choices) : null;
+      void this.sendToWaitingClaude(out, choices, option);
+      return;
+    }
+    logger.log(`composer: typed into the terminal (claudeWaiting=${this.claudeWaiting})`);
+    this.writeComposer(out);
+  }
+
+  /**
+   * "Retry" on a message the chat view shows as not sent (see claude-chat-view): sent again
+   * the way a send would go now, never as an option's number, and whatever is being written in
+   * the box stays there.
    */
   resendMessage(ref: SentChatMessageRef) {
     const failed = this.failedSends.get(ref.id);
     if (!this.composerOnly || ref.sessionId !== this.sessionId || !failed) return;
-    this.writeComposer({ ...failed, id: ref.id, retry: true, startedAt: performance.now() });
+    if (this.replyInFlight) {
+      this.showComposerNote(t('screenMenu.sending'));
+      return;
+    }
+    this.send({ ...failed, id: ref.id, retry: true, startedAt: performance.now() });
   }
 
   /**
@@ -2108,6 +2541,19 @@ export class TerminalChatView extends LitElement {
   }
 
   /** Uploaded images go in the message as their paths (Claude Code turns them into images). */
+  /** Shows the menu (even one hidden after an answer) with the note to tap an option. */
+  private showMenuFirst(menu: ScreenChoices) {
+    if (this.menuInChat) {
+      this.showComposerNote(t('screenMenu.pickFirst'));
+      return;
+    }
+    this.answeredMenu = null;
+    this.screenMenuMisses = 0;
+    if (!sameShownMenu(menu, this.screenMenu)) {
+      this.screenMenu = menu;
+    }
+    this.showScreenMenuNote(t('screenMenu.pickFirst'));
+  }
   private attachmentPaths(): string {
     return this.attachments.paths.map(shellQuotePath).join(' ');
   }
@@ -2136,7 +2582,12 @@ export class TerminalChatView extends LitElement {
       const failed = [...this.failedSends].find(
         ([, sent]) => sent.command === command && sent.paths === paths
       );
-      this.writeComposer({ command, paths, startedAt, id: failed?.[0] });
+      // A second send while the first is on its way would answer whatever comes next.
+      if (this.replyInFlight) {
+        this.showComposerNote(t('screenMenu.sending'));
+        return;
+      }
+      this.send({ command, paths, startedAt, id: failed?.[0] });
       return;
     }
 

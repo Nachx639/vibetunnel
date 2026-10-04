@@ -47,6 +47,13 @@ export class Terminal extends LitElement {
   @property({ type: String }) sessionStatus = 'running';
   @property({ type: Number }) cols = 80;
   @property({ type: Number }) rows = 24;
+  /**
+   * Keep the rows when the container only gets shorter: under the phone's chat view nobody
+   * sees the terminal, and the keyboard opening shrank the PTY until Claude Code paged its
+   * menus ("↓ 2.", the rest hidden) and neither the phone nor the server could read them.
+   * Released, it fits.
+   */
+  @property({ type: Boolean }) holdRows = false;
   @property({ type: Number }) fontSize = 14;
   @property({ type: Boolean }) fitHorizontally = false;
   @property({ type: Number }) maxCols = 0; // 0 = unlimited
@@ -128,6 +135,7 @@ export class Terminal extends LitElement {
   }
 
   updated(changed: PropertyValues) {
+    if (changed.has('holdRows') && !this.holdRows) this.requestResize('rows-released');
     if (changed.has('sessionId') && this.sessionId) {
       this.restoreUserOverrideWidthFromStorage(this.sessionId);
       this.requestResize('session-id-change');
@@ -463,10 +471,13 @@ export class Terminal extends LitElement {
     const prevCols = this.lastCols || this.terminal.cols;
     const prevRows = this.lastRows || this.terminal.rows;
 
-    if (cols === prevCols && rows === prevRows) return;
+    // Under the chat view the rows never shrink: not with a rotation, nor in a new terminal
+    // fitted while the keyboard is up.
+    const fitRows = this.holdRows ? Math.max(rows, prevRows) : rows;
+    if (cols === prevCols && fitRows === prevRows) return;
 
     this.requestResizeMeta(source);
-    this.terminal.resize(cols, rows);
+    this.terminal.resize(cols, fitRows);
   }
 
   private async initializeTerminal() {
@@ -686,6 +697,18 @@ export class Terminal extends LitElement {
       lines.push(text.trimEnd());
     }
     return lines.join('\n');
+  }
+
+  /** Which of getScreenText's lines go on in the next one (the terminal soft-wrapped them). */
+  public getScreenWrapped(maxLines = 30): boolean[] {
+    if (!this.terminal) return [];
+    const buffer = this.terminal.buffer.active;
+    const wrapped: boolean[] = [];
+    for (let row = Math.max(0, buffer.length - maxLines); row < buffer.length; row++) {
+      const line = buffer.getLine(row);
+      if (line) wrapped.push(line.isWrapped);
+    }
+    return wrapped;
   }
 
   public getCurrentInputLine(): string {

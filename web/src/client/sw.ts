@@ -62,7 +62,15 @@ interface CommandErrorData {
   timestamp: string;
 }
 
+/** Claude Code's own status (claude-status-notifier.ts): finished, replied, needs you. */
+interface ClaudeStatusData {
+  type: 'claude-finished' | 'claude-replied' | 'claude-waiting';
+  sessionId: string;
+  timestamp: string;
+}
+
 type NotificationData =
+  | ClaudeStatusData
   | SessionExitData
   | SessionStartData
   | SessionErrorData
@@ -237,6 +245,11 @@ function getVibrationPattern(notificationType: string): number[] {
       return [75, 50, 75]; // Medium notification
     case 'system-alert':
       return [150, 75, 150]; // Moderate pattern
+    case 'claude-finished':
+    case 'claude-replied':
+      return [75, 50, 75]; // Like a finished command
+    case 'claude-waiting':
+      return [120, 60, 120, 60, 120]; // Needs an answer
     default:
       return [100]; // Default brief vibration
   }
@@ -272,8 +285,16 @@ async function handleNotificationClick(action: string, data: NotificationData): 
   let url = self.location.origin;
 
   switch (action) {
+    case 'answer':
     case 'view-session': {
       if (
+        data.type === 'claude-finished' ||
+        data.type === 'claude-replied' ||
+        data.type === 'claude-waiting'
+      ) {
+        // "Answer" opens the session with Claude's prompt in a sheet; it never answers by itself.
+        url += `/session/${data.sessionId}${action === 'answer' ? '?answer=1' : ''}`;
+      } else if (
         data.type === 'session-exit' ||
         data.type === 'session-error' ||
         data.type === 'session-start' ||

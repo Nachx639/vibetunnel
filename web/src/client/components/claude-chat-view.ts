@@ -9,9 +9,17 @@
 import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
+import {
+  parseScreenChoices,
+  type ScreenChoices,
+  type ScreenLayout,
+  sameShownMenu,
+} from '../../shared/claude-screen.js';
 import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 import { announce } from '../utils/announce.js';
+import { type ClaudeActivity, formatActivity } from '../utils/claude-activity.js';
+import { claudeWaitingLabel } from '../utils/claude-waiting-label.js';
 import { isSwallowingGhostClick, swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { endsADrag } from '../utils/pointer-drag.js';
@@ -52,6 +60,9 @@ interface ChatResponse {
   status?: string;
   waitingFor?: string;
   title?: string;
+  activity?: ClaudeActivity;
+  /** Busy only because background agents or tasks run: the reply is over. */
+  waitingForBackground?: boolean;
   messages: ChatMessage[];
   /** Fingerprint of `messages`, sent back as `?have=`. */
   messagesVersion?: string;
@@ -313,15 +324,7 @@ export function extractUploadedImages(text: string): { text: string; images: str
  * mode line visible under it; Shift+Tab there means "allow all edits this session").
  */
 export function modeSwitchBlocked(screen: string): boolean {
-  return !parseClaudeMode(screen) || showsNumberedOptions(screen);
-}
-
-/** Two or more numbered option lines ("❯ 1. Yes", "2. No"): a dialog is waiting for a choice. */
-function showsNumberedOptions(screen: string): boolean {
-  const options = screen
-    .split('\n')
-    .filter((line) => /^\s*(?:[❯›>]\s*)?\d{1,2}[.)]\s+\S/.test(line));
-  return options.length >= 2;
+  return !parseClaudeMode(screen) || parseScreenChoices(screen) !== null;
 }
 
 /** Claude Code's permission mode, read from its status line at the bottom of the screen. */
@@ -368,6 +371,9 @@ function canShare(): boolean {
 const SHARE_ICON = html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12" /><path d="M8 7l4-4 4 4" /><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>`;
 
 const COPY_ICON = html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" /></svg>`;
+
+/** How long a menu just answered stays hidden while the screen still shows it. */
+const ANSWERED_MENU_HIDE_MS = 4000;
 
 /** A message the phone composer just sent (see ClaudeChatView.addSentMessage). */
 export interface SentChatMessage {
@@ -1103,6 +1109,32 @@ export class ClaudeChatView extends LitElement {
     .busy-row .typing {
       margin-top: 0;
     }
+    .busy-row .activity {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      color: var(--chat-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    /* Claude replied; background agents still run: a quiet line, not the typing dots. */
+    .background-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--chat-muted);
+    }
+    .background-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      border: 1.5px solid var(--chat-muted);
+      flex: none;
+    }
     .stop {
       border: 1px solid var(--chat-border-strong);
       border-radius: 999px;
@@ -1181,6 +1213,16 @@ export class ClaudeChatView extends LitElement {
       padding: 2px 4px 4px;
       font-size: 15px;
     }
+    .question-detail {
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: var(--chat-panel);
+      color: var(--chat-muted);
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
     .question button {
       border: 1px solid var(--chat-border-strong);
       border-radius: 8px;
@@ -1192,8 +1234,24 @@ export class ClaudeChatView extends LitElement {
       /* A path in an option has no spaces to wrap at: it would run past the edge. */
       overflow-wrap: anywhere;
     }
+    .question button.link {
+      border: none;
+      background: none;
+      color: var(--chat-muted);
+      font-size: 13px;
+      padding: 4px;
+      min-height: 44px;
+    }
     .question button:active {
       background: var(--chat-border-strong);
+    }
+    .question button:disabled {
+      opacity: 0.55;
+    }
+    .question-note {
+      padding: 2px 4px;
+      font-size: 13px;
+      color: var(--color-status-warning-text, #b45309);
     }
     .waiting {
       align-self: center;
@@ -1238,6 +1296,13 @@ export class ClaudeChatView extends LitElement {
   @property({ type: Boolean, reflect: true }) unavailable = false;
   /** Last lines of the terminal screen, where Claude Code shows its mode. */
   @property({ attribute: false }) getScreenTail?: () => string;
+  /**
+   * The screen's last lines for reading a menu, as the composer and the server read them:
+   * enough to reach its dialog's top (getScreenTail's 30 may not; its key then lacked the
+   * command). With their layout.
+   */
+  @property({ attribute: false }) getMenuScreen?: () => string;
+  @property({ attribute: false }) getScreenLayout?: () => ScreenLayout | undefined;
 
   @state() private messages: ChatMessage[] = [];
   /** Messages sent from the phone that the transcript does not have yet, in send order. */
@@ -1247,6 +1312,13 @@ export class ClaudeChatView extends LitElement {
   /** Transcript messages (base ids) that took a sent bubble's place: each stands for one. */
   private claimedIds = new Set<string>();
   @state() private busy = false;
+  /**
+   * Claude Code says "busy" while background agents run, even after its reply: then it
+   * waits for the user, and the view says so instead of showing the typing dots.
+   */
+  @state() private backgroundWait = false;
+  /** What Claude is doing while busy ("Editing app.ts"), shown next to the typing dots. */
+  @state() private activity: ClaudeActivity | null = null;
   @state() private waitingFor: string | null = null;
   @state() private loaded = false;
   /** The last poll could not reach the server: what is shown may be out of date. */
@@ -1257,6 +1329,21 @@ export class ClaudeChatView extends LitElement {
   @state() private imageUrls = new Map<string, string>();
   private loadingImages = new Set<string>();
   @state() private mode: string | null = null;
+  @state() private screenChoices: ScreenChoices | null = null;
+  /** An option of the question card on its way through the server. */
+  @state() private answering = false;
+  /** Why the last tap on the card did nothing (the menu changed, the request failed). */
+  @state() private answerNote = '';
+  /**
+   * The menu just answered: its card stays hidden while the screen still shows it (Claude
+   * redraws after the Enter), for a few seconds at most.
+   */
+  private answeredMenu: { menu: ScreenChoices; at: number } | null = null;
+  /**
+   * Whether a question with its options shows here, as last told to the phone composer;
+   * unset until told once, so a view mounted again says where it stands.
+   */
+  private askingShown: boolean | undefined;
   private signature = '';
   /** The server's fingerprint of the messages shown (null: none yet, or an older server). */
   private messagesVersion: string | null = null;
@@ -1367,7 +1454,13 @@ export class ClaudeChatView extends LitElement {
       this.loaded = false;
       this.offline = false;
       this.busy = false;
+      this.backgroundWait = false;
       this.waitingFor = null;
+      this.screenChoices = null;
+      // The question card's state was the last session's.
+      this.answering = false;
+      this.answerNote = '';
+      this.answeredMenu = null;
       this.mode = null;
       closeClaudeModePicker();
       this.conversationTitle = '';
@@ -1381,7 +1474,12 @@ export class ClaudeChatView extends LitElement {
       this.forgetSent();
       this.poll();
     }
-    if (changed.has('busy') || changed.has('waitingFor') || changed.has('loaded')) {
+    if (
+      changed.has('busy') ||
+      changed.has('backgroundWait') ||
+      changed.has('waitingFor') ||
+      changed.has('loaded')
+    ) {
       this.announceStatus();
     }
     const timing = this.sentTiming;
@@ -1393,9 +1491,16 @@ export class ClaudeChatView extends LitElement {
         this.logSentTiming(timing.busy ? 'already showing' : `${ms} ms`);
       }
     }
-    const grew = ['messages', 'pendingSent', 'busy', 'waitingFor', 'imageUrls', 'mode'].some(
-      (key) => changed.has(key)
-    );
+    const grew = [
+      'messages',
+      'pendingSent',
+      'busy',
+      'backgroundWait',
+      'waitingFor',
+      'screenChoices',
+      'imageUrls',
+      'mode',
+    ].some((key) => changed.has(key));
     if (grew && this.stickToBottom) this.scrollToBottom();
     if (
       ['messages', 'pendingSent', 'searchQuery', 'searchOpen', 'expandedTools'].some((key) =>
@@ -1403,6 +1508,20 @@ export class ClaudeChatView extends LitElement {
       )
     ) {
       this.highlightMatches();
+    }
+    // The phone composer shows a menu's options as buttons too; while this view asks, it
+    // leaves them here (otherwise the same buttons showed twice, one set over the other).
+    const asking =
+      !this.unavailable && Boolean(this.pendingQuestion || (this.waitingFor && this.screenChoices));
+    if (asking !== this.askingShown) {
+      this.askingShown = asking;
+      this.dispatchEvent(
+        new CustomEvent<boolean>('claude-chat-asking', {
+          detail: asking,
+          bubbles: true,
+          composed: true,
+        })
+      );
     }
   }
 
@@ -1415,13 +1534,20 @@ export class ClaudeChatView extends LitElement {
    */
   private announceStatus() {
     if (!this.loaded) return;
-    const status = this.waitingFor ? `waiting:${this.waitingFor}` : this.busy ? 'busy' : 'idle';
+    const status = this.waitingFor
+      ? `waiting:${this.waitingFor}`
+      : this.busy
+        ? 'busy'
+        : this.backgroundWait
+          ? 'background'
+          : 'idle';
     const before = this.spokenStatus;
     this.spokenStatus = status;
     if (before === null || before === status) return;
     if (this.waitingFor) announce(t('chat.waiting', { reason: this.waitingFor }));
     else if (this.busy) announce(t('chat.working'));
-    else if (before === 'busy') announce(t('a11y.chat.finished'));
+    else if (this.backgroundWait) announce(t('a11y.chat.replied'));
+    else if (before === 'busy' || before === 'background') announce(t('a11y.chat.finished'));
   }
 
   private pollGeneration = 0;
@@ -1488,7 +1614,8 @@ export class ClaudeChatView extends LitElement {
         }
         const changed = this.apply(chat);
         // No status means no Claude here: that's not activity, so don't keep polling fast.
-        const active = chat.available && chat.status !== 'idle';
+        // Background agents can keep Claude "busy" for an hour after its reply: poll like idle.
+        const active = chat.available && chat.status !== 'idle' && !this.backgroundWait;
         this.unchangedPolls = changed || active ? 0 : this.unchangedPolls + 1;
       }
     } catch (error) {
@@ -1522,12 +1649,14 @@ export class ClaudeChatView extends LitElement {
 
   /** Shows a poll's answer; returns whether anything on screen changed. */
   private apply(chat: ChatResponse): boolean {
-    const before = `${this.unavailable}|${this.busy}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}`;
+    const before = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${JSON.stringify(this.screenChoices)}|${JSON.stringify(this.activity)}`;
     this.unavailable = !chat.available;
     this.dispatchEvent(
       new CustomEvent('claude-chat-availability', { detail: chat.available, bubbles: true })
     );
-    this.busy = chat.status === 'busy';
+    this.backgroundWait = chat.status === 'busy' && chat.waitingForBackground === true;
+    this.busy = chat.status === 'busy' && !this.backgroundWait;
+    this.activity = this.busy ? (chat.activity ?? null) : null;
     this.conversationTitle = chat.title ?? '';
     const screen = this.getScreenTail?.() ?? '';
     // Claude Code's permission mode. Until the terminal's screen has loaded (a moment after
@@ -1539,7 +1668,21 @@ export class ClaudeChatView extends LitElement {
     } else {
       this.mode = rememberedMode(this.sessionId);
     }
-    this.waitingFor = chat.status === 'waiting' ? chat.waitingFor || t('chat.yourInput') : null;
+    const screenChoices =
+      chat.status === 'waiting'
+        ? parseScreenChoices(this.getMenuScreen?.() ?? screen, this.getScreenLayout?.())
+        : null;
+    // A fresh object every poll re-rendered (and re-scrolled) the view each 1.5 s while
+    // Claude waited on a question; keep the old one when the choices are the same.
+    if (JSON.stringify(screenChoices) !== JSON.stringify(this.screenChoices)) {
+      this.screenChoices = screenChoices;
+      this.answerNote = '';
+      if (!sameShownMenu(this.answeredMenu?.menu, screenChoices)) this.answeredMenu = null;
+    }
+    this.waitingFor =
+      chat.status === 'waiting'
+        ? (claudeWaitingLabel(chat.waitingFor) ?? t('chat.yourInput'))
+        : null;
     // Tool results attach to existing messages, so compare more than the last id.
     const signature = `${chat.messages.length}:${chat.messages[chat.messages.length - 1]?.id}:${
       chat.messages.filter((m) => m.result !== undefined).length
@@ -1568,7 +1711,7 @@ export class ClaudeChatView extends LitElement {
     }
     const wasLoaded = this.loaded;
     this.loaded = true;
-    const after = `${this.unavailable}|${this.busy}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}`;
+    const after = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${JSON.stringify(this.screenChoices)}|${JSON.stringify(this.activity)}`;
     return !wasLoaded || after !== before;
   }
 
@@ -1581,17 +1724,82 @@ export class ClaudeChatView extends LitElement {
       : null;
   }
 
-  /** Answer the question read from the conversation: Claude takes its option number. */
-  private answer(optionIndex: number) {
-    this.waitingFor = null;
-    this.dispatchEvent(
-      new CustomEvent('claude-chat-input', {
-        detail: String(optionIndex + 1),
-        bubbles: true,
-        composed: true,
-      })
+  /**
+   * The menu on screen is the one just answered, a few seconds ago at most: same options and
+   * key. By its options alone, the next command's prompt stayed hidden for 4 s, with no buttons
+   * anywhere.
+   */
+  private justAnswered(): boolean {
+    return (
+      this.answeredMenu !== null &&
+      sameShownMenu(this.answeredMenu.menu, this.screenChoices) &&
+      Date.now() - this.answeredMenu.at < ANSWERED_MENU_HIDE_MS
     );
-    this.pollSoon();
+  }
+
+  /**
+   * Answer what Claude asks. A question read from the conversation (no menu on screen to
+   * check) takes its option number; a menu on screen is answered by the server, which checks
+   * it is still the same menu before pressing any key.
+   */
+  private async answer(optionIndex: number) {
+    if (this.answering) return;
+    const choices = this.pendingQuestion ? null : this.screenChoices;
+    if (!choices) {
+      this.waitingFor = null;
+      this.dispatchEvent(
+        new CustomEvent('claude-chat-input', {
+          detail: String(optionIndex + 1),
+          bubbles: true,
+          composed: true,
+        })
+      );
+      this.pollSoon();
+      return;
+    }
+    const sessionId = this.sessionId;
+    // The card keeps showing the menu (buttons off) until the server answers, so the composer
+    // does not show it again under it, and a failed answer says so instead of the buttons just
+    // coming back.
+    this.answering = true;
+    this.answerNote = '';
+    let response: Response | null = null;
+    try {
+      response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeader() },
+        body: JSON.stringify({
+          option: optionIndex + 1,
+          question: choices.question,
+          options: choices.options,
+          key: choices.key,
+        }),
+      });
+    } catch {
+      response = null;
+    } finally {
+      if (this.sessionId === sessionId) this.answering = false;
+    }
+    // Another session opened meanwhile: this answer is not about what it shows.
+    if (this.sessionId !== sessionId) return;
+    if (response?.ok) {
+      this.answeredMenu = { menu: choices, at: Date.now() };
+      // Shown again if the screen still has it then (the answer did not take).
+      setTimeout(() => this.requestUpdate(), ANSWERED_MENU_HIDE_MS + 50);
+      this.pollSoon();
+      return;
+    }
+    const error =
+      response?.status === 409
+        ? ((await response.json().catch(() => ({}))) as { error?: string }).error
+        : undefined;
+    this.answerNote = t(
+      error === 'busy'
+        ? 'screenMenu.sending'
+        : response?.status === 409
+          ? 'screenMenu.changed'
+          : 'screenMenu.failed'
+    );
   }
 
   private toggleTool(id: string) {
@@ -1632,7 +1840,7 @@ export class ClaudeChatView extends LitElement {
       isBlocked: () =>
         sessionId !== this.sessionId ||
         !this.isConnected ||
-        Boolean(this.waitingFor) ||
+        Boolean(this.waitingFor || this.screenChoices) ||
         modeSwitchBlocked(this.getScreenTail?.() ?? ''),
       onModeChange: (mode) => {
         if (sessionId === this.sessionId && mode) this.mode = mode;
@@ -2249,6 +2457,32 @@ export class ClaudeChatView extends LitElement {
         )}
       </div>`;
     }
+    if (this.waitingFor && this.screenChoices && !this.justAnswered()) {
+      return html`<div class="question">
+        ${
+          // What an answer approves ("Bash command", the command): the same question
+          // comes for every permission.
+          this.screenChoices.detail?.length
+            ? html`<div class="question-detail" dir="ltr" data-testid="question-detail">
+                ${this.screenChoices.detail.map((line) => html`<div>${line}</div>`)}
+              </div>`
+            : nothing
+        }
+        <div class="question-text">${this.screenChoices.question}</div>
+        ${
+          this.answerNote
+            ? html`<div class="question-note" role="alert">${this.answerNote}</div>`
+            : nothing
+        }
+        ${this.screenChoices.options.map(
+          (option, index) =>
+            html`<button ?disabled=${this.answering} @click=${() => this.answer(index)}>
+              ${option}
+            </button>`
+        )}
+        <button class="link" @click=${this.openTerminal}>${t('chat.openTerminal')}</button>
+      </div>`;
+    }
     if (this.waitingFor) {
       return html`<div class="waiting" role="status">
         <span>${t('chat.waiting', { reason: this.waitingFor })}</span>
@@ -2353,9 +2587,24 @@ export class ClaudeChatView extends LitElement {
           this.busy
             ? html`<div class="busy-row">
                 <div class="typing" role="img" aria-label=${t('chat.working')}><span></span><span></span><span></span></div>
+                ${
+                  this.activity
+                    ? html`<span class="activity" data-testid="chat-activity"
+                        >Claude · <bdi>${formatActivity(this.activity)}</bdi>${
+                          this.activity.since
+                            ? html` · <claude-activity-elapsed since=${this.activity.since}></claude-activity-elapsed>`
+                            : nothing
+                        }</span
+                      >`
+                    : nothing
+                }
                 <button class="stop" @click=${this.stop} aria-label=${t('chat.stopClaude')}>■ ${t('chat.stop')}</button>
               </div>`
-            : nothing
+            : this.backgroundWait
+              ? html`<div class="background-row" role="status" data-testid="chat-background">
+                  <span class="background-dot" aria-hidden="true"></span>${t('activity.backgroundWait')}
+                </div>`
+              : nothing
         }
       </div>
       ${

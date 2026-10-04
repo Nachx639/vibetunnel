@@ -15,6 +15,7 @@
  */
 import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import type { ScreenLayout } from '../../shared/claude-screen.js';
 import type { Session } from '../../shared/types.js';
 import { LocaleController, t } from '../i18n/index.js';
 import './clickable-path.js';
@@ -199,6 +200,8 @@ export class SessionView extends LitElement {
   @state() private agentChat = false;
   /** The chat view shows this session's conversation, over the terminal. */
   @state() private chatCovers = false;
+  /** The chat view shows a question with its options; the composer then shows none. */
+  @state() private chatAsking = false;
 
   /**
    * Phone chat mode with agent chat on: the agent's conversation (when the session runs one)
@@ -927,6 +930,14 @@ export class SessionView extends LitElement {
     this.scheduleMobileHardwareFocus();
   }
 
+  /** How the terminal laid out its last lines, for reading Claude's menus off them. */
+  private screenLayout(lines: number): ScreenLayout | undefined {
+    const terminal = this.terminalLifecycleManager.getTerminal();
+    if (!terminal) return undefined;
+    const { cols, rows } = terminal.getTerminalSize();
+    return { cols, visibleRows: rows, wrappedRows: terminal.getScreenWrapped(lines) };
+  }
+
   private scheduleMobileHardwareFocus() {
     // In phone chat mode the composer takes what is typed (see mobileHardwareKeyboardHandler).
     if (!this.uiStateManager.getState().isMobile || this.phoneChat()) {
@@ -1616,6 +1627,7 @@ export class SessionView extends LitElement {
                   .disableClick=${uiState.isMobile && uiState.useDirectKeyboard}
                   .hideScrollButton=${uiState.showQuickKeys}
                   .isMobile=${uiState.isMobile}
+                  .holdRows=${terminalUnderChat}
                   .showQuickKeys=${uiState.showQuickKeys}
                   .onTerminalClick=${this.boundHandleTerminalClick}
                   .onTerminalInput=${this.boundHandleTerminalInput}
@@ -1634,6 +1646,12 @@ export class SessionView extends LitElement {
                   .getScreenTail=${() =>
                     this.terminalLifecycleManager.getTerminal()?.getScreenText(30) ?? ''}
                   @claude-chat-open-terminal=${() => this.handleToggleChatMode()}
+                  .getMenuScreen=${() =>
+                    this.terminalLifecycleManager.getTerminal()?.getScreenText(60) ?? ''}
+                  .getScreenLayout=${() => this.screenLayout(60)}
+                  @claude-chat-asking=${(e: CustomEvent<boolean>) => {
+                    this.chatAsking = e.detail;
+                  }}
                   @claude-chat-availability=${(e: CustomEvent<boolean>) => {
                     this.chatCovers = e.detail;
                   }}
@@ -1674,7 +1692,12 @@ export class SessionView extends LitElement {
             ? html`
           <terminal-chat-view
             composerOnly
-            .claudeSession=${this.session?.command?.some((part) => /(^|\/)claude$/.test(part)) ?? false}
+            .claudeSession=${Boolean(this.session?.claudeStatus) || (this.session?.command?.some((part) => /(^|\/)claude$/.test(part)) ?? false)}
+            .getScreenText=${() =>
+              this.terminalLifecycleManager.getTerminal()?.getScreenText(60) ?? ''}
+            .getScreenLayout=${() => this.screenLayout(60)}
+            .claudeWaiting=${this.session?.claudeStatus?.status === 'waiting'}
+            .menuInChat=${this.chatAsking}
             @composer-attach=${() => this.fileOperationsManager.pickImagesForComposer()}
             @composer-focus=${this.handleComposerFocus}
             @chat-message-sent=${this.handleChatMessageSent}

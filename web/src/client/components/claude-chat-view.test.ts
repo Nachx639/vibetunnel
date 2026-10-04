@@ -2,6 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { parseScreenChoices } from '../../shared/claude-screen.js';
 import { setLocale } from '../i18n/index.js';
 import { es } from '../i18n/locales/es.js';
 import {
@@ -168,6 +169,45 @@ describe('modeSwitchBlocked', () => {
     expect(modeSwitchBlocked(dialog)).toBe(true);
     expect(modeSwitchBlocked('  ⏵⏵ accept edits on (shift+tab to cycle)')).toBe(false);
     expect(modeSwitchBlocked('$ ls')).toBe(true);
+  });
+});
+
+describe('parseScreenChoices', () => {
+  it('reads a permission prompt with wrapped options', () => {
+    const screen = [
+      ' Read(/tmp/a.jpeg)',
+      ' Do you want to proceed?',
+      ' ❯ 1. Yes',
+      '   2. Yes, allow reading from',
+      '      /tmp during this session',
+      '   3. No',
+      ' Esc to cancel · Tab to amend',
+    ].join('\n');
+    expect(parseScreenChoices(screen)).toEqual({
+      question: 'Do you want to proceed?',
+      options: ['Yes', 'Yes, allow reading from /tmp during this session', 'No'],
+      cursor: 0,
+      navigate: true,
+      numbered: true,
+      key: expect.any(String),
+    });
+  });
+
+  it('joins a label the terminal hard-wrapped mid-word', () => {
+    const screen = [
+      ' Do you want to proceed?',
+      ' ❯ 1. Yes',
+      '   2. Yes, and always allow access to /tmp/alexandra.m',
+      '      ontgomery.jr from this project',
+      '   3. No',
+    ].join('\n');
+    expect(parseScreenChoices(screen, 54)?.options[1]).toBe(
+      'Yes, and always allow access to /tmp/alexandra.montgomery.jr from this project'
+    );
+  });
+
+  it('ignores numbered lists that are not a question', () => {
+    expect(parseScreenChoices('Ideas:\n1. Salt\n2. Pepper')).toBeNull();
   });
 });
 
@@ -756,6 +796,299 @@ describe('ClaudeChatView', () => {
     expect(root.querySelector('.search-bar')).toBeNull();
     expect(root.querySelector('mark.hit')).toBeNull();
     expect(root.querySelector('.row.assistant .md')?.innerHTML).toContain('<strong>build</strong>');
+  });
+
+  it('says it waits for background agents instead of the typing dots, until a turn starts', async () => {
+    await setLocale('es');
+    resetAnnouncerForTests();
+    let view: ClaudeChatView | undefined;
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          json: async () => ({ available: true, status: 'busy', messages: [] }),
+        }))
+      );
+      view = document.createElement('claude-chat-view') as ClaudeChatView;
+      view.sessionId = 's';
+      document.body.appendChild(view);
+      const internals = view as unknown as { apply(chat: unknown): void; loaded: boolean };
+      await vi.waitFor(() => expect(internals.loaded).toBe(true));
+      await view.updateComplete;
+      // A turn in progress: the typing dots.
+      expect(view.shadowRoot?.querySelector('.typing')).not.toBeNull();
+
+      internals.apply({
+        available: true,
+        status: 'busy',
+        waitingForBackground: true,
+        messages: [
+          { id: 'u', role: 'user', text: 'lanza un agente' },
+          { id: 'a', role: 'assistant', text: 'Lanzado; te aviso.' },
+        ],
+      });
+      await view.updateComplete;
+      const row = view.shadowRoot?.querySelector('[data-testid="chat-background"]');
+      expect(row?.textContent?.trim()).toBe('Esperando a agentes en segundo plano');
+      expect(view.shadowRoot?.querySelector('.typing')).toBeNull();
+      expect(view.shadowRoot?.querySelector('.stop')).toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(document.querySelector('[data-testid="a11y-live-region"]')?.textContent).toBe(
+        'Claude ha respondido; los agentes en segundo plano siguen en marcha'
+      );
+
+      // A task notification starts a real turn again.
+      internals.apply({
+        available: true,
+        status: 'busy',
+        activity: { kind: 'thinking' },
+        messages: [
+          { id: 'u', role: 'user', text: 'lanza un agente' },
+          { id: 'a', role: 'assistant', text: 'Lanzado; te aviso.' },
+        ],
+      });
+      await view.updateComplete;
+      expect(view.shadowRoot?.querySelector('[data-testid="chat-background"]')).toBeNull();
+      expect(view.shadowRoot?.querySelector('.typing')).not.toBeNull();
+    } finally {
+      view?.remove();
+      await setLocale('en');
+    }
+  });
+
+  it('tells the phone composer while it shows a question with its options', async () => {
+    // Both showed the options as buttons, one set over the other.
+    let status = 'waiting';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ available: true, status, waitingFor: 'permission', messages: [] }),
+      }))
+    );
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's1';
+    view.getScreenTail = () =>
+      ' Do you want to proceed?\n ❯ 1. Yes\n   2. No, and tell Claude what to do differently (esc)';
+    const asking = vi.fn();
+    view.addEventListener('claude-chat-asking', (e) => asking((e as CustomEvent<boolean>).detail));
+    document.body.appendChild(view);
+    await vi.waitFor(() => expect(asking).toHaveBeenLastCalledWith(true));
+
+    status = 'idle';
+    (view as unknown as { apply(chat: unknown): void }).apply({
+      available: true,
+      status: 'idle',
+      messages: [],
+    });
+    await vi.waitFor(() => expect(asking).toHaveBeenLastCalledWith(false));
+    view.remove();
+
+    // Mounted again (back to chat mode) with nothing to ask: it says so at once, or the
+    // composer would keep leaving a menu to a view that no longer shows it.
+    const again = document.createElement('claude-chat-view') as ClaudeChatView;
+    again.sessionId = 's1';
+    const told = vi.fn();
+    again.addEventListener('claude-chat-asking', (e) => told((e as CustomEvent<boolean>).detail));
+    document.body.appendChild(again);
+    await vi.waitFor(() => expect(told).toHaveBeenCalledWith(false));
+    again.remove();
+  });
+
+  it('answers a menu on screen through the server, which checks it and presses Enter', async () => {
+    // A yes/no letter alone left a line-reading prompt waiting; the server adds Enter.
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) =>
+      url.endsWith('/answer')
+        ? new Response('{}', { status: 200 })
+        : Response.json({
+            available: true,
+            status: 'waiting',
+            waitingFor: 'input needed',
+            messages: [],
+          })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's1';
+    view.getScreenTail = () => '⏺ Done.\n\nOverwrite it with the new defaults? (y/n)';
+    const sent = vi.fn();
+    view.addEventListener('claude-chat-input', (e) => sent((e as CustomEvent<string>).detail));
+    document.body.appendChild(view);
+    await vi.waitFor(() => expect(view.shadowRoot?.querySelector('.question')).toBeTruthy());
+
+    const buttons = view.shadowRoot?.querySelectorAll<HTMLButtonElement>('.question button');
+    expect([...(buttons ?? [])].map((b) => b.textContent?.trim()).slice(0, 2)).toEqual([
+      'Yes',
+      'No',
+    ]);
+    buttons?.[1].click();
+    await vi.waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/sessions/s1/answer', expect.anything())
+    );
+    const call = fetchMock.mock.calls.find(([url]) => url.endsWith('/answer'));
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ option: 2 });
+    expect(sent).not.toHaveBeenCalled();
+    view.remove();
+  });
+
+  it("shows at once the next command's prompt with the same options as the one answered", async () => {
+    // Told apart from the answered one by its options alone, it stayed hidden for 4 s with no
+    // buttons anywhere.
+    const permission = (command: string) =>
+      [
+        '────────────────────────────────────────',
+        ' Bash command',
+        '',
+        `   ${command}`,
+        '',
+        ' Do you want to proceed?',
+        ' ❯ 1. Yes',
+        '   2. No',
+        ' Esc to cancel',
+      ].join('\n');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.endsWith('/answer')
+          ? new Response('{}', { status: 200 })
+          : Response.json({ available: true, status: 'waiting', waitingFor: 'Bash', messages: [] })
+      )
+    );
+    let screen = permission('rm -rf dist/');
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's1';
+    view.getScreenTail = () => screen;
+    view.getMenuScreen = () => screen;
+    document.body.appendChild(view);
+    const buttons = () => view.shadowRoot?.querySelectorAll<HTMLButtonElement>('.question button');
+    await vi.waitFor(() => expect(buttons()?.length).toBeGreaterThan(0));
+    buttons()?.[0].click();
+    const internals = view as unknown as { apply(chat: unknown): void; answering: boolean };
+    await vi.waitFor(() => expect(internals.answering).toBe(false));
+    await view.updateComplete;
+
+    screen = permission('rm -rf src/');
+    internals.apply({ available: true, status: 'waiting', waitingFor: 'Bash', messages: [] });
+    await view.updateComplete;
+    expect(view.shadowRoot?.querySelector('.question')?.textContent).toContain('rm -rf src/');
+    expect(buttons()?.[0]?.textContent?.trim()).toBe('Yes');
+    view.remove();
+  });
+
+  it("forgets the question card's answer in flight when another session opens", async () => {
+    let finish: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        url.endsWith('/answer')
+          ? new Promise<Response>((resolve) => (finish = resolve))
+          : Promise.resolve(
+              Response.json({
+                available: true,
+                status: 'waiting',
+                waitingFor: 'permission',
+                messages: [],
+              })
+            )
+      )
+    );
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 'a';
+    view.getScreenTail = () =>
+      ' Do you want to proceed?\n ❯ 1. Yes\n   2. No, and tell Claude what to do differently (esc)';
+    document.body.appendChild(view);
+    const buttons = () => [
+      ...(view.shadowRoot?.querySelectorAll<HTMLButtonElement>('.question button') ?? []),
+    ];
+    await vi.waitFor(() => expect(buttons().length).toBeGreaterThan(0));
+    buttons()[0].click();
+    await view.updateComplete;
+    view.sessionId = 'b';
+    // B's card is not A's: its buttons work (A's answer is still on its way)...
+    await vi.waitFor(() => expect(buttons()[0]?.disabled).toBe(false));
+    // ...and A's refusal says nothing on it.
+    finish(new Response(JSON.stringify({ error: 'The prompt changed' }), { status: 409 }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await view.updateComplete;
+    expect(view.shadowRoot?.querySelector('.question-note')).toBeNull();
+    view.remove();
+  });
+
+  it('shows on the card what an answer approves', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          available: true,
+          status: 'waiting',
+          waitingFor: 'permission',
+          messages: [],
+        })
+      )
+    );
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's1';
+    view.getScreenTail = () =>
+      [
+        '─'.repeat(40),
+        ' Bash command',
+        '',
+        '   rm -rf dist/',
+        '',
+        ' Do you want to proceed?',
+        ' ❯ 1. Yes',
+        '   2. No, and tell Claude what to do differently (esc)',
+      ].join('\n');
+    document.body.appendChild(view);
+    await vi.waitFor(() =>
+      expect(
+        view.shadowRoot?.querySelector('[data-testid="question-detail"]')?.textContent
+      ).toContain('rm -rf dist/')
+    );
+    view.remove();
+  });
+
+  it('says why a tap on the card did nothing, and keeps asking while it answers', async () => {
+    let finish: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        url.endsWith('/answer')
+          ? new Promise<Response>((resolve) => (finish = resolve))
+          : Promise.resolve(
+              Response.json({
+                available: true,
+                status: 'waiting',
+                waitingFor: 'permission',
+                messages: [],
+              })
+            )
+      )
+    );
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's1';
+    view.getScreenTail = () =>
+      ' Do you want to proceed?\n ❯ 1. Yes\n   2. No, and tell Claude what to do differently (esc)';
+    const asking = vi.fn();
+    view.addEventListener('claude-chat-asking', (e) => asking((e as CustomEvent<boolean>).detail));
+    document.body.appendChild(view);
+    await vi.waitFor(() => expect(asking).toHaveBeenLastCalledWith(true));
+    const buttons = () => [
+      ...(view.shadowRoot?.querySelectorAll<HTMLButtonElement>('.question button') ?? []),
+    ];
+    buttons()[0].click();
+    await view.updateComplete;
+    // While it answers: buttons off, and still asking (the composer would show them again).
+    expect(buttons()[0].disabled).toBe(true);
+    expect(asking).toHaveBeenLastCalledWith(true);
+
+    finish(new Response(JSON.stringify({ error: 'The prompt changed' }), { status: 409 }));
+    await vi.waitFor(() =>
+      expect(view.shadowRoot?.querySelector('.question-note')?.textContent).toContain('changed')
+    );
+    expect(buttons()[0].disabled).toBe(false);
+    view.remove();
   });
 });
 

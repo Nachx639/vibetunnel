@@ -26,6 +26,7 @@ const logger = createLogger('session-card');
 import './vibe-terminal-buffer.js';
 import './clickable-path.js';
 import './inline-edit.js';
+import { renderClaudeStatusBadge } from '../utils/claude-status-badge.js';
 
 // Magic wand icon constant
 const MAGIC_WAND_ICON = html`
@@ -474,6 +475,7 @@ export class SessionCard extends LitElement {
               <div class="w-2 h-2 rounded-full ${this.getStatusDotColor()}"></div>
               ${this.getActivityStatusText()}
             </span>
+            ${renderClaudeStatusBadge(this.session)}
             ${this.renderGitStatus()}
           </div>
           <div class="text-xs opacity-75 min-w-0 mt-1">

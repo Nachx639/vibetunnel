@@ -4,7 +4,7 @@
  * Header bar for session view with navigation, session info, status, and controls.
  * Includes back button, sidebar toggle, session details, and terminal controls.
  */
-import { html, LitElement } from 'lit';
+import { html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../../shared/types.js';
 import { LocaleController, t } from '../../i18n/index.js';
@@ -22,6 +22,9 @@ import './compact-menu.js';
 import '../theme-toggle-icon.js';
 import './image-upload-menu.js';
 import './session-status-dropdown.js';
+import { formatActivity, sessionActivity } from '../../utils/claude-activity.js';
+import { claudeWaitingLabel } from '../../utils/claude-waiting-label.js';
+import { rowState } from '../phone-session-row.js';
 
 const logger = createLogger('session-header');
 
@@ -511,7 +514,31 @@ export class SessionHeader extends LitElement {
    */
   private renderPhoneTitle(session: Session) {
     const command = Array.isArray(session.command) ? session.command.join(' ') : '';
-    const title = session.name || command;
+    // Claude's conversation title when the server reports one (agent chat on): the session
+    // name is often just "claude (~/project)". Under it, what Claude is doing right now.
+    const title = session.claudeStatus?.title || session.claudeTitle || session.name || command;
+    const state = rowState(session);
+    const claude = session.claudeStatus;
+    let detail: unknown = nothing;
+    if (state === 'waiting') {
+      detail = html`<span class="text-status-warning font-semibold" data-testid="header-claude-status"
+        >${t('sessions.row.needsYou')}${claude?.waitingFor ? ` · ${claudeWaitingLabel(claude.waitingFor)}` : ''}</span
+      >`;
+    } else if (state === 'working') {
+      const activity = sessionActivity(session);
+      detail = activity
+        ? html`<span class="text-status-info font-semibold" data-testid="header-claude-status"
+              ><bdi>${formatActivity(activity)}</bdi></span
+            >${
+              activity.since
+                ? html`<span class="text-text-muted">
+                    · <claude-activity-elapsed since=${activity.since}></claude-activity-elapsed></span>`
+                : nothing
+            }`
+        : html`<span class="text-status-info font-semibold" data-testid="header-claude-status"
+            >${t('sessions.row.working')}<span class="psr-dots"></span
+          ></span>`;
+    }
     return html`
       <button
         type="button"
@@ -521,9 +548,12 @@ export class SessionHeader extends LitElement {
         aria-label=${`${title} — ${t('switcher.title')}`}
         @click=${() => this.openSwitcher(session)}
       >
-        <span class="block min-w-0 truncate text-sm font-semibold text-text" title=${title}
-          ><bdi>${title}</bdi></span
-        >
+        <span class="flex flex-col min-w-0">
+          <span class="block min-w-0 truncate text-sm font-semibold text-text" title=${title}
+            ><bdi>${title}</bdi></span
+          >
+          ${detail === nothing ? nothing : html`<span class="block min-w-0 truncate text-xs">${detail}</span>`}
+        </span>
         <svg class="flex-shrink-0 opacity-60" width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/>
         </svg>

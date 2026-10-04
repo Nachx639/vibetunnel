@@ -19,10 +19,13 @@
 
 import { html, LitElement, nothing, render } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { compactDetail } from '../../shared/claude-screen.js';
 import type { Session } from '../../shared/types.js';
 import { getLocale, LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import { sessionActionService } from '../services/session-action-service.js';
+import { formatActivity, isBackgroundWait, sessionActivity } from '../utils/claude-activity.js';
+import { claudeWaitingLabel } from '../utils/claude-waiting-label.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
 import { endsADrag } from '../utils/pointer-drag.js';
@@ -127,10 +130,16 @@ export function toolHue(tool: string): number {
   return hash;
 }
 
-export type RowState = 'running' | 'exited';
+export type RowState = 'running' | 'exited' | 'working' | 'waiting';
 
-export function rowState(session: Pick<Session, 'status'>): RowState {
-  return session.status === 'exited' ? 'exited' : 'running';
+/** Claude Code's status, when the server reports one (agent chat on), else running/exited. */
+export function rowState(session: Pick<Session, 'status' | 'claudeStatus'>): RowState {
+  if (session.status === 'exited') return 'exited';
+  const claude = session.claudeStatus?.status;
+  if (claude === 'waiting') return 'waiting';
+  // Busy only for background agents: the reply is over, so the row rests like an idle one.
+  if (claude === 'busy' && !isBackgroundWait(session.claudeStatus)) return 'working';
+  return 'running';
 }
 
 /** Avatar for a session: a prompt for shells, else the program's initial on its own color. */
@@ -169,6 +178,10 @@ export class PhoneSessionRow extends LitElement {
    */
   @property({ type: String }) stamp = '';
   @state() private killing = false;
+  /** The quick answer on its way (its option number), until the next poll replaces the prompt. */
+  @state() private answering: number | null = null;
+  @state() private answerFailed: false | 'busy' | 'changed' = false;
+  private answerTimer: ReturnType<typeof setTimeout> | null = null;
   protected readonly i18n = new LocaleController(this);
 
   private pressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -197,6 +210,8 @@ export class PhoneSessionRow extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    if (this.answerTimer) clearTimeout(this.answerTimer);
+    this.answerTimer = null;
     this.cancelPress();
     if (swipeOpenRow === this) swipeOpenRow = null;
     // repeat() moves rows when their order changes (disconnect + reconnect in the same task);
@@ -447,7 +462,157 @@ export class PhoneSessionRow extends LitElement {
   }
 
   private displayTitle(): string {
-    return this.session.name || this.session.command?.join(' ') || '';
+    return (
+      this.session.claudeStatus?.title ||
+      this.session.claudeTitle ||
+      this.session.name ||
+      this.session.command?.join(' ') ||
+      ''
+    );
+  }
+
+  /**
+   * Answer Claude's on-screen prompt by its option number, without opening the session. The
+   * server re-checks that this prompt is still the one on screen before pressing any key.
+   */
+  private async answer(
+    option: number,
+    choices: { question: string; options: string[]; detail?: string[]; key?: string },
+    e: Event
+  ) {
+    e.stopPropagation();
+    if (this.answering !== null) return;
+    this.answering = option;
+    this.answerFailed = false;
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(this.session.id)}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authClient?.getAuthHeader() },
+        // The options and what the menu is about tell it apart from the next prompt.
+        body: JSON.stringify({
+          option,
+          question: choices.question,
+          options: choices.options,
+          key: choices.key,
+        }),
+      });
+      if (!response.ok) {
+        const error =
+          response.status === 409
+            ? ((await response.json().catch(() => ({}))) as { error?: string }).error
+            : undefined;
+        this.answerFailed = error === 'busy' ? 'busy' : 'changed';
+      }
+    } catch {
+      this.answerFailed = 'changed';
+    }
+    // On success the next poll replaces the prompt; keep the button marked until then.
+    this.answerTimer = setTimeout(
+      () => {
+        this.answering = null;
+        this.answerTimer = null;
+      },
+      this.answerFailed ? 0 : 3000
+    );
+  }
+
+  /** Quick answers: the menu Claude waits on, answered from the list. */
+  private renderChoices() {
+    const choices = this.session.claudeStatus?.choices;
+    if (this.session.claudeStatus?.status !== 'waiting' || !choices) return nothing;
+    return html`
+      <div class="psr-choices" @pointerdown=${(e: Event) => e.stopPropagation()}>
+        ${
+          // What an answer approves ("Edit file · notes.txt"): the same question may come next
+          // for another command.
+          choices.detail?.length
+            ? html`<div class="psr-choices-detail" dir="ltr">${compactDetail(choices.detail)}</div>`
+            : nothing
+        }
+        <div class="psr-choices-q"><bdi>${choices.question}</bdi></div>
+        ${
+          this.answerFailed
+            ? html`<div class="psr-choices-error">
+                ${t(this.answerFailed === 'busy' ? 'screenMenu.sending' : 'sessions.row.promptChanged')}
+              </div>`
+            : nothing
+        }
+        ${choices.options.map(
+          (option, index) => html`
+            <button
+              class="psr-choice ${this.answering === index + 1 ? 'sending' : ''}"
+              ?disabled=${this.answering !== null}
+              @click=${(e: Event) => this.answer(index + 1, choices, e)}
+            >
+              <span class="psr-choice-n">${index + 1}</span><bdi>${option}</bdi>
+            </button>
+          `
+        )}
+      </div>
+    `;
+  }
+
+  /** What the row says under its title: Claude's state and last message, or the folder. */
+  private renderPreview(state: RowState) {
+    const claude = this.session.claudeStatus;
+    if (state === 'waiting') {
+      // Tapping the chip opens the answer sheet (app.ts) instead of the session. It acts on
+      // pointerup like the sheets; the click that follows is swallowed so the row underneath
+      // doesn't open the session too. A mouse uses the click.
+      let touchedAt = 0;
+      const open = () =>
+        window.dispatchEvent(
+          new CustomEvent('vt-open-answer-sheet', { detail: { sessionId: this.session.id } })
+        );
+      return html`<span
+        class="psr-needs psr-needs-btn"
+        data-testid="psr-needs-chip"
+        @pointerdown=${(e: Event) => e.stopPropagation()}
+        @pointerup=${(e: PointerEvent) => {
+          e.stopPropagation();
+          if (e.pointerType === 'mouse') return;
+          if (endsADrag(e)) return;
+          touchedAt = Date.now();
+          swallowNextClick();
+          open();
+        }}
+        @click=${(e: Event) => {
+          e.stopPropagation();
+          if (Date.now() - touchedAt < 700) return;
+          open();
+        }}
+        >${t('sessions.row.needsYou')}${claude?.waitingFor ? html` · ${claudeWaitingLabel(claude.waitingFor)}` : nothing}</span
+      >`;
+    }
+    const preview = claude?.preview;
+    const text = preview
+      ? html`${preview.role === 'user' ? html`<span class="psr-you">${t('sessions.row.you')}</span>` : nothing}${preview.text}`
+      : html`<span class="psr-path" dir="ltr">${formatPathForDisplay(this.session.workingDir)}</span>`;
+    if (state === 'working') {
+      // What Claude is doing right now ("Editing app.ts · 1m 20s"), else just "Working...".
+      const activity = sessionActivity(this.session);
+      const status = activity
+        ? html`<span class="psr-working" data-testid="row-activity"><bdi>${formatActivity(activity)}</bdi></span>${
+            activity.since
+              ? html` · <claude-activity-elapsed class="psr-elapsed" since=${activity.since}></claude-activity-elapsed>`
+              : nothing
+          }`
+        : html`<span class="psr-working">${t('sessions.row.working')}<span class="psr-dots"></span></span>`;
+      return html`${status} ${preview ? html`· ${text}` : nothing}`;
+    }
+    if (isBackgroundWait(claude) && this.session.status === 'running') {
+      // The reply is in; background agents still run. Calm, no dots: nothing to wait for here.
+      return html`<span class="psr-background" data-testid="row-background">${t('activity.backgroundWait')}</span> ${preview ? html`· ${text}` : nothing}`;
+    }
+    return text;
+  }
+
+  /** Last output line of a shell session (the server sends it to the compact list). */
+  private lastLine(): string | undefined {
+    const { lastLine, claudeStatus } = this.session;
+    return lastLine && !claudeStatus?.preview && this.session.status === 'running'
+      ? lastLine
+      : undefined;
   }
 
   /** Phones rename through a prompt: an inline editor is too small to hit. */
@@ -504,13 +669,37 @@ export class PhoneSessionRow extends LitElement {
    * ~/Projects/app". The row's visible parts are many small spans; read as one.
    */
   private accessibleName(tool: string, title: string, time: string): string {
+    const claude = this.session.claudeStatus;
+    const state = rowState(this.session);
+    const status =
+      state === 'waiting'
+        ? [t('sessions.row.needsYou'), claudeWaitingLabel(claude?.waitingFor)]
+            .filter(Boolean)
+            .join(' · ')
+        : state === 'working'
+          ? (() => {
+              const activity = sessionActivity(this.session);
+              return activity ? formatActivity(activity) : t('sessions.row.working');
+            })()
+          : state === 'exited'
+            ? t('a11y.row.exited')
+            : isBackgroundWait(claude)
+              ? t('activity.backgroundWait')
+              : '';
+    const preview =
+      state === 'waiting'
+        ? ''
+        : claude?.preview
+          ? `${claude.preview.role === 'user' ? t('sessions.row.you') : ''}${claude.preview.text}`
+          : formatPathForDisplay(this.session.workingDir);
     return [
       tool,
       title,
-      this.session.status === 'exited' ? t('a11y.row.exited') : '',
+      status,
       time,
       this.pinned ? t('organize.pinned') : '',
-      formatPathForDisplay(this.session.workingDir),
+      preview,
+      state === 'waiting' ? '' : this.lastLine(),
     ]
       .map((part) => part?.trim())
       .filter((part, index, parts) => part && parts.indexOf(part) === index)
@@ -619,10 +808,14 @@ export class PhoneSessionRow extends LitElement {
               }
               <span class="psr-time"><vt-row-time at=${timeIso ?? ''}></vt-row-time></span>
             </div>
-            <div class="psr-preview">
-              <span class="psr-path" dir="ltr">${formatPathForDisplay(session.workingDir)}</span>
-            </div>
+            <div class="psr-preview">${this.renderPreview(rowState(session))}</div>
+            ${
+              rowState(session) !== 'waiting' && this.lastLine()
+                ? html`<div class="psr-last-line" data-testid="row-last-line"><bdi>${this.lastLine()}</bdi></div>`
+                : nothing
+            }
           </div>
+          ${this.renderChoices()}
         </div>
         <button
           class="psr-menu"

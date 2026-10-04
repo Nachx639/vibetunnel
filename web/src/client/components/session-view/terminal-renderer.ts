@@ -34,6 +34,8 @@ export class TerminalRenderer extends LitElement {
   @property({ type: Boolean }) disableClick = false;
   @property({ type: Boolean }) hideScrollButton = false;
   @property({ type: Boolean }) isMobile = false;
+  /** Under the phone's chat view: the terminal keeps its rows (see vibe-terminal holdRows). */
+  @property({ type: Boolean }) holdRows = false;
   @property({ type: Boolean }) showQuickKeys = false;
 
   // Event handlers passed as properties
@@ -61,6 +63,7 @@ export class TerminalRenderer extends LitElement {
         .initialRows=${this.session.initialRows || 0}
         .disableClick=${this.disableClick}
         .hideScrollButton=${this.hideScrollButton}
+        .holdRows=${this.holdRows}
         class="w-full h-full p-0 m-0 terminal-container"
         @click=${(e: Event) => this.handleClick(e)}
         @touchend=${(e: Event) => this.handleClick(e)}

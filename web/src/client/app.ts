@@ -35,10 +35,12 @@ import './components/notification-status.js';
 import './components/auth-login.js';
 import './components/ssh-key-manager.js';
 
+import { openAnswerSheet } from './components/answer-sheet.js';
 import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
+import { usesCompactPhoneUi } from './utils/phone-ui.js';
 import { prunePinned } from './utils/pinned-sessions.js';
 import { VisibilityPoller } from './utils/visibility-poller.js';
 
@@ -148,6 +150,47 @@ export class VibeTunnelApp extends LitElement {
     );
   }
 
+  private handleOpenAnswerSheet = (e: CustomEvent<{ sessionId?: string }>) => {
+    if (e.detail?.sessionId) this.showAnswerSheet(e.detail.sessionId);
+  };
+
+  /**
+   * A tapped Claude status push, forwarded by the service worker to an open window: it opens
+   * its session, and "Answer" also opens the answer sheet on top of it.
+   */
+  private handleClaudeNotification = (
+    e: CustomEvent<{ action?: string; data?: { type?: string; sessionId?: string } }>
+  ) => {
+    const { action, data } = e.detail ?? {};
+    if (action === 'dismiss' || !data?.sessionId || !data.type?.startsWith('claude-')) return;
+    const sessionId = data.sessionId;
+    void this.handleNavigateToSession(
+      new CustomEvent('navigate-to-session', { detail: { sessionId } })
+    ).then(() => {
+      if (action === 'answer') this.showAnswerSheet(sessionId);
+    });
+  };
+
+  /** Claude's waiting prompt for a session, answerable in one tap (re-read live first). */
+  private showAnswerSheet(sessionId: string) {
+    const session = this.sessions.find((s) => s.id === sessionId);
+    const claude = session?.claudeStatus;
+    openAnswerSheet({
+      sessionId,
+      where: claude?.title || session?.claudeTitle || session?.name || '',
+      detail: claude?.waitingFor,
+      choices: claude?.choices ?? null,
+      authHeader: () => authClient.getAuthHeader(),
+      onOpenSession: () => {
+        if (this.selectedSessionId === sessionId && this.currentView === 'session') return;
+        void this.handleNavigateToSession(
+          new CustomEvent('navigate-to-session', { detail: { sessionId } })
+        );
+      },
+      onSent: (message) => this.showSuccess(message),
+    });
+  }
+
   connectedCallback() {
     super.connectedCallback();
     // Safari only announces live regions that existed before their text changed.
@@ -156,6 +199,9 @@ export class VibeTunnelApp extends LitElement {
     this.setupKeyboardShortcuts();
     this.setupNotificationHandlers();
     this.setupResponsiveObserver();
+    // The "needs you" chip of a phone list row opens Claude's prompt in a sheet.
+    window.addEventListener('vt-open-answer-sheet', this.handleOpenAnswerSheet as EventListener);
+    window.addEventListener('notification-action', this.handleClaudeNotification as EventListener);
     // Initialize title updater
     titleManager.initAutoUpdates();
     // Listen for keyboard capture toggle events from input manager
@@ -221,6 +267,11 @@ export class VibeTunnelApp extends LitElement {
     window.removeEventListener('popstate', this.handlePopState);
     // Clean up keyboard shortcuts
     window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('vt-open-answer-sheet', this.handleOpenAnswerSheet as EventListener);
+    window.removeEventListener(
+      'notification-action',
+      this.handleClaudeNotification as EventListener
+    );
     // Clean up capture toggle listener
     document.removeEventListener('capture-toggled', this.handleCaptureToggled as EventListener);
     // Clean up auto refresh interval
@@ -763,7 +814,11 @@ export class VibeTunnelApp extends LitElement {
     const performLoad = async () => {
       try {
         const headers = authClient.getAuthHeader();
-        const response = await fetch('/api/sessions', { headers });
+        // The compact phone list shows a shell's last line of output: only it asks for one.
+        const response = await fetch(
+          usesCompactPhoneUi() ? '/api/sessions?lastLine=1' : '/api/sessions',
+          { headers }
+        );
         if (response.ok) {
           this.loadFailures = 0;
           this.reconnecting = false;
@@ -782,6 +837,25 @@ export class VibeTunnelApp extends LitElement {
                 existingSession.name !== newSession.name ||
                 existingSession.workingDir !== newSession.workingDir ||
                 existingSession.exitCode !== newSession.exitCode ||
+                // Claude Code's status, title and last message (agent chat on).
+                existingSession.claudeStatus?.status !== newSession.claudeStatus?.status ||
+                // Busy for a turn or only for background agents: the row says which.
+                existingSession.claudeStatus?.waitingForBackground !==
+                  newSession.claudeStatus?.waitingForBackground ||
+                existingSession.claudeStatus?.waitingFor !== newSession.claudeStatus?.waitingFor ||
+                // A second identical prompt only differs in when it started.
+                existingSession.claudeStatus?.since !== newSession.claudeStatus?.since ||
+                existingSession.claudeStatus?.title !== newSession.claudeStatus?.title ||
+                existingSession.claudeStatus?.preview?.text !==
+                  newSession.claudeStatus?.preview?.text ||
+                JSON.stringify(existingSession.claudeStatus?.choices) !==
+                  JSON.stringify(newSession.claudeStatus?.choices) ||
+                // Live activity ("Editing app.ts"): each new step has its own start time.
+                JSON.stringify(existingSession.claudeStatus?.activity) !==
+                  JSON.stringify(newSession.claudeStatus?.activity) ||
+                existingSession.claudeTitle !== newSession.claudeTitle ||
+                // Shell rows: last output line (the server re-reads it at most every 2 s).
+                existingSession.lastLine !== newSession.lastLine ||
                 // Check if Git info has been added in the new data
                 (!existingSession.gitRepoPath && newSession.gitRepoPath) ||
                 // Don't check Git counts here - they are updated by git-status-badge component
@@ -1681,6 +1755,15 @@ export class VibeTunnelApp extends LitElement {
 
       // Force update to ensure render happens
       this.requestUpdate();
+
+      // Opened from a "Claude needs you" push's Answer: the answer sheet comes up at once. The
+      // parameter goes away so a reload or Back doesn't open it again.
+      const current = new URL(window.location.href);
+      if (current.searchParams.get('answer') === '1') {
+        current.searchParams.delete('answer');
+        window.history.replaceState(window.history.state, '', current.toString());
+        this.showAnswerSheet(sessionId);
+      }
 
       logger.log('📍 Navigation complete', {
         currentView: this.currentView,

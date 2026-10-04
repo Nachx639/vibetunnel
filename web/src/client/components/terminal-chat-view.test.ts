@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import type { SentChatMessage, SentChatMessageRef } from './claude-chat-view.js';
 import { TerminalChatView } from './terminal-chat-view.js';
@@ -534,6 +536,469 @@ describe('TerminalChatView', () => {
       touch(pencil, 102);
       await component.updateComplete;
       expect(component.shadowRoot?.querySelector('.prompt-editor')).not.toBeNull();
+    });
+  });
+
+  describe('a menu on screen that typing cannot answer', () => {
+    const trustFolder = readFileSync(
+      path.join(__dirname, '../../server/services/__fixtures__/claude-waiting/trust-folder.txt'),
+      'utf8'
+    );
+    const options = () => [
+      ...(component.shadowRoot?.querySelectorAll<HTMLButtonElement>('.screen-menu-option') ?? []),
+    ];
+    const show = async (screen: string) => {
+      component.getScreenText = () => screen;
+      component.composerOnly = true;
+      component.active = true;
+      component.sessionId = 's1';
+      await component.updateComplete;
+      await vi.advanceTimersByTimeAsync(800);
+      await component.updateComplete;
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      component.claudeSession = true;
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('offers its options instead of the quick prompts', async () => {
+      await show(trustFolder);
+      expect(options().map((el) => el.textContent?.trim())).toEqual([
+        'No, exit',
+        'Yes, I trust this folder',
+      ]);
+      expect(component.shadowRoot?.querySelector('.screen-menu-question')?.textContent).toBe(
+        'Quick safety check: Is this a project you created or one you trust?'
+      );
+      expect(component.shadowRoot?.querySelectorAll('.quick-prompt')).toHaveLength(0);
+    });
+
+    it('does not send typed text into it, where Enter would confirm "No, exit"', async () => {
+      await show(trustFolder);
+      const onSend = vi.fn();
+      component.onSend = onSend;
+      const input = component.shadowRoot?.querySelector<HTMLTextAreaElement>('#chat-input-field');
+      if (!input) throw new Error('composer not rendered');
+      input.value = 'yes';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      await vi.advanceTimersByTimeAsync(300);
+      await component.updateComplete;
+
+      expect(onSend).not.toHaveBeenCalled();
+      expect(input.value).toBe('yes');
+      // In the block: a note under the composer would resize the terminal.
+      expect(
+        component.shadowRoot?.querySelector('[data-testid="screen-menu-note"]')?.textContent
+      ).toContain('tap one of its options');
+      expect(component.shadowRoot?.querySelector('[data-testid="composer-note"]')).toBeNull();
+      // First in the block, which grows upward: the buttons stay put when it comes and goes.
+      expect(
+        component.shadowRoot
+          ?.querySelector('.screen-menu')
+          ?.firstElementChild?.classList.contains('screen-menu-note')
+      ).toBe(true);
+    });
+
+    it('drops an answer still on its way when another session opens', async () => {
+      // Its result landed on the new session: "the prompt changed" there, and its menu blanked
+      //.
+      let finish: (response: Response) => void = () => {};
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => new Promise<Response>((resolve) => (finish = resolve)))
+      );
+      await show(trustFolder);
+      options()[1].click();
+      component.sessionId = 's2';
+      await component.updateComplete;
+      finish(new Response(JSON.stringify({ error: 'The prompt changed' }), { status: 409 }));
+      await vi.advanceTimersByTimeAsync(10);
+      await component.updateComplete;
+      const internals = component as unknown as { refreshScreenMenu: boolean };
+      expect(internals.refreshScreenMenu).toBe(false);
+      expect(component.shadowRoot?.querySelector('[data-testid="screen-menu-note"]')).toBeNull();
+    });
+
+    it('never sends text into a menu hidden right after an answer', async () => {
+      // Codex's approvals come back to back with the same options; the
+      // next one stayed hidden for 3 s and a quick prompt sent its Enter to it.
+      const fetchMock = vi.fn(async () => new Response('{}'));
+      vi.stubGlobal('fetch', fetchMock);
+      await show(trustFolder);
+      options()[1].click();
+      await vi.advanceTimersByTimeAsync(50);
+      await component.updateComplete;
+      expect(options()).toHaveLength(0);
+      const onSend = vi.fn();
+      component.onSend = onSend;
+      const input = component.shadowRoot?.querySelector<HTMLTextAreaElement>('#chat-input-field');
+      if (!input) throw new Error('composer not rendered');
+      input.value = 'sigue';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      await vi.advanceTimersByTimeAsync(50);
+      await component.updateComplete;
+      expect(onSend).not.toHaveBeenCalled();
+      // Shown again, with the note.
+      expect(options()).toHaveLength(2);
+      expect(component.shadowRoot?.querySelector('[data-testid="screen-menu-note"]')).toBeTruthy();
+    });
+
+    it("forgets the last session's menu when another session opens", async () => {
+      const fetchMock = vi.fn(async () => new Response('{}'));
+      vi.stubGlobal('fetch', fetchMock);
+      await show(trustFolder);
+      options()[1].click();
+      await vi.advanceTimersByTimeAsync(50);
+      // Another new session with the same dialog, within the 3 s an answer hides it for.
+      component.sessionId = 's2';
+      await component.updateComplete;
+      await vi.advanceTimersByTimeAsync(800);
+      await component.updateComplete;
+      expect(options()).toHaveLength(2);
+    });
+
+    it('leaves the options to the chat view when it shows them, still never typing into it', async () => {
+      component.menuInChat = true;
+      await show(trustFolder);
+      expect(options()).toHaveLength(0);
+      const onSend = vi.fn();
+      component.onSend = onSend;
+      const input = component.shadowRoot?.querySelector<HTMLTextAreaElement>('#chat-input-field');
+      if (!input) throw new Error('composer not rendered');
+      input.value = 'yes';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      await vi.advanceTimersByTimeAsync(50);
+      await component.updateComplete;
+      expect(onSend).not.toHaveBeenCalled();
+      expect(
+        component.shadowRoot?.querySelector('[data-testid="composer-note"]')?.textContent
+      ).toContain('tap one of its options');
+      component.menuInChat = false;
+    });
+
+    it('says what the menu is about above its question', async () => {
+      await show(
+        readFileSync(
+          path.join(
+            __dirname,
+            '../../server/services/__fixtures__/claude-waiting/permission-bash.txt'
+          ),
+          'utf8'
+        )
+      );
+      expect(
+        component.shadowRoot?.querySelector('[data-testid="screen-menu-detail"]')?.textContent
+      ).toContain('rm -rf dist/ && pnpm build');
+    });
+
+    it('floats over the terminal instead of taking room from it', () => {
+      // Taking room, it shrank the terminal until the menu no longer fit, then went away, in a
+      // loop.
+      expect(TerminalChatView.styles.toString()).toMatch(
+        /\.screen-menu \{[^}]*position: absolute;[^}]*bottom: 100%;/
+      );
+    });
+
+    it('picks nothing at the end of a drag that began on an option; a still tap picks it', async () => {
+      const fetchMock = vi.fn(async () => new Response('{}'));
+      vi.stubGlobal('fetch', fetchMock);
+      await show(trustFolder);
+      const touch = (dy: number) => {
+        const at = (y: number) => ({
+          pointerType: 'touch',
+          pointerId: 7,
+          clientX: 200,
+          clientY: y,
+          bubbles: true,
+          composed: true,
+        });
+        options()[1].dispatchEvent(new PointerEvent('pointerdown', at(600)));
+        options()[1].dispatchEvent(new PointerEvent('pointerup', at(600 + dy)));
+      };
+      touch(-100);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(fetchMock).not.toHaveBeenCalled();
+      touch(2);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
+    it('picks an option through the server, which moves the cursor there', async () => {
+      const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{}'));
+      vi.stubGlobal('fetch', fetchMock);
+      await show(trustFolder);
+
+      options()[1].click();
+      await vi.advanceTimersByTimeAsync(10);
+      await component.updateComplete;
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('/api/sessions/s1/answer');
+      expect(JSON.parse(String(init?.body))).toEqual({
+        option: 2,
+        question: 'Quick safety check: Is this a project you created or one you trust?',
+        options: ['No, exit', 'Yes, I trust this folder'],
+        key: expect.stringContaining('Accessingworkspace'),
+      });
+      // Gone at once, and not shown again while the screen still draws it.
+      expect(options()).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(1500);
+      await component.updateComplete;
+      expect(options()).toHaveLength(0);
+    });
+
+    it('holds the block steady while Claude redraws the menu', async () => {
+      // The block resizes the terminal and Claude redraws: the question may scroll out of
+      // view, or a poll may land mid-redraw. Changing the block each time looped.
+      await show(trustFolder);
+      const question = () =>
+        component.shadowRoot?.querySelector('.screen-menu-question')?.textContent;
+      const full = 'Quick safety check: Is this a project you created or one you trust?';
+      expect(question()).toBe(full);
+
+      component.getScreenText = () => trustFolder.split('\n').slice(8).join('\n');
+      await vi.advanceTimersByTimeAsync(700);
+      await component.updateComplete;
+      expect(question()).toBe(full);
+
+      component.getScreenText = () => '';
+      await vi.advanceTimersByTimeAsync(700);
+      await component.updateComplete;
+      expect(options()).toHaveLength(2);
+
+      component.getScreenText = () => trustFolder;
+      await vi.advanceTimersByTimeAsync(700);
+      component.getScreenText = () => '';
+      await vi.advanceTimersByTimeAsync(1400);
+      await component.updateComplete;
+      expect(options()).toHaveLength(0);
+    });
+
+    it("leaves Claude's numbered answers alone (no cursor, no key hints)", async () => {
+      await show('⏺ Two ways to do it. Which one?\n\n1. Rewrite it\n2. Patch it\n\n❯ ');
+      expect(options()).toHaveLength(0);
+    });
+
+    it('leaves plain shells alone', async () => {
+      component.claudeSession = false;
+      await show(trustFolder);
+      expect(options()).toHaveLength(0);
+    });
+  });
+
+  describe('a message while Claude waits on a numbered menu', () => {
+    const planApproval = readFileSync(
+      path.join(
+        __dirname,
+        '../../server/services/__fixtures__/claude-waiting/plan-approval-live.txt'
+      ),
+      'utf8'
+    );
+    let fetchMock: ReturnType<typeof vi.fn>;
+    const respond = (status: number, body: unknown = {}) =>
+      fetchMock.mockResolvedValue(new Response(JSON.stringify(body), { status }));
+    const send = async (text: string) => {
+      const input = component.shadowRoot?.querySelector<HTMLTextAreaElement>('#chat-input-field');
+      if (!input) throw new Error('composer not rendered');
+      input.value = text;
+      input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      await vi.advanceTimersByTimeAsync(300);
+      return input;
+    };
+
+    beforeEach(async () => {
+      vi.useFakeTimers();
+      fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      component.composerOnly = true;
+      component.active = true;
+      component.claudeSession = true;
+      component.sessionId = 's1';
+      component.claudeWaiting = true;
+      component.getScreenText = () => planApproval;
+      await component.updateComplete;
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('sends a correction as a reply, never as text plus Enter on "Yes"', async () => {
+      // Typed into the menu, Enter executed the plan in QA.
+      const onSend = vi.fn();
+      component.onSend = onSend;
+      respond(200, { success: true });
+      const input = await send('no, call it goodbye.txt');
+
+      expect(onSend).not.toHaveBeenCalled();
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('/api/sessions/s1/reply');
+      expect(JSON.parse(String(init?.body))).toEqual({
+        text: 'no, call it goodbye.txt',
+        question: 'Would you like to proceed?',
+        options: [
+          'Yes, and switch to BYPASS PERMISSIONS (no further prompts) for this session',
+          'Yes, manually approve edits',
+          'Tell Claude what to change',
+        ],
+        key: expect.stringContaining('Claudehaswrittenupaplan'),
+      });
+      expect(input.value).toBe('');
+    });
+
+    it('picks an option when its number is typed', async () => {
+      respond(200, { success: true });
+      await send('2');
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('/api/sessions/s1/answer');
+      expect(JSON.parse(String(init?.body))).toMatchObject({ option: 2 });
+    });
+
+    it('types the message as usual when Claude turns out not to be waiting', async () => {
+      const onSend = vi.fn();
+      component.onSend = onSend;
+      respond(409, { error: 'not-waiting' });
+      // Claude moved on to its prompt: no menu any more.
+      component.getScreenText = () => `⏺ Done.\n\n${'─'.repeat(40)}\n❯ \n${'─'.repeat(40)}`;
+      await send('sigue');
+      expect(onSend.mock.calls).toEqual([['sigue'], ['\r']]);
+    });
+
+    it('never types into a menu still on screen when Claude says it is not waiting', async () => {
+      // Its Enter would confirm the highlighted option: here, the plan with bypass permissions.
+      const onSend = vi.fn();
+      component.onSend = onSend;
+      fetchMock.mockImplementation(async () => {
+        component.claudeWaiting = false;
+        return new Response(JSON.stringify({ error: 'not-waiting' }), { status: 409 });
+      });
+      const input = await send('sigue');
+      expect(onSend).not.toHaveBeenCalled();
+      expect(input.value).toBe('sigue');
+      expect(component.shadowRoot?.querySelector('[data-testid="screen-menu-note"]')).toBeTruthy();
+    });
+
+    it('keeps the message, and refuses a second send, until the server says it was typed', async () => {
+      // a double tap posted twice; the reply was cleared before it was typed.
+      let finish: (response: Response) => void = () => {};
+      fetchMock.mockImplementation(() => new Promise<Response>((resolve) => (finish = resolve)));
+      const input = await send('usa pnpm');
+      expect(input.value).toBe('usa pnpm');
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      await vi.advanceTimersByTimeAsync(300);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      finish(new Response(JSON.stringify({ error: 'not-delivered' }), { status: 504 }));
+      await vi.advanceTimersByTimeAsync(300);
+      // Not typed: the message stays for another try.
+      expect(input.value).toBe('usa pnpm');
+    });
+
+    it('sends an attached image with the reply, never typed into the menu', async () => {
+      // with an attachment the message skipped the server, and the
+      // Enter (or a digit in the upload's file name) answered the plan approval.
+      const onSend = vi.fn();
+      component.onSend = onSend;
+      respond(200, { success: true });
+      component.attachmentUploader = async () => ({ path: '/tmp/uploads/2b1c0d7e-shot.png' });
+      component.addAttachments([new File(['x'], 'shot.png', { type: 'image/png' })]);
+      await vi.advanceTimersByTimeAsync(50);
+      await send('mira esto');
+      expect(onSend).not.toHaveBeenCalled();
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('/api/sessions/s1/reply');
+      expect(JSON.parse(String(init?.body)).text).toBe('/tmp/uploads/2b1c0d7e-shot.png mira esto');
+    });
+
+    it('hides the quick prompts, which are not answers to it', () => {
+      expect(component.shadowRoot?.querySelectorAll('.quick-prompt')).toHaveLength(0);
+    });
+
+    describe('in the chat view above', () => {
+      let sent: Mock<(detail: SentChatMessage) => void>;
+      let failed: Mock<(detail: SentChatMessageRef) => void>;
+      const sentId = () => sent.mock.calls[0][0].id;
+
+      beforeEach(() => {
+        sent = vi.fn();
+        failed = vi.fn();
+        component.addEventListener('chat-message-sent', (e) => sent((e as CustomEvent).detail));
+        component.addEventListener('chat-message-failed', (e) => failed((e as CustomEvent).detail));
+      });
+
+      it('shows a reply at once, then that it was not delivered; Retry sends it again', async () => {
+        let finish: (response: Response) => void = () => {};
+        fetchMock.mockImplementation(() => new Promise<Response>((resolve) => (finish = resolve)));
+        const input = await send('usa pnpm');
+        // While the server is still on it.
+        expect(sent).toHaveBeenCalledOnce();
+        expect(sent.mock.calls[0][0]).toMatchObject({ sessionId: 's1', text: 'usa pnpm' });
+        finish(new Response(JSON.stringify({ error: 'not-delivered' }), { status: 504 }));
+        await vi.advanceTimersByTimeAsync(10);
+        expect(failed).toHaveBeenCalledWith({ sessionId: 's1', id: sentId() });
+        expect(input.value).toBe('usa pnpm');
+
+        respond(200, { success: true });
+        component.resendMessage({ sessionId: 's1', id: sentId() });
+        // The same bubble, sending again.
+        expect(sent).toHaveBeenCalledTimes(2);
+        expect(sent.mock.calls[1][0]).toMatchObject({ id: sentId(), text: 'usa pnpm' });
+        await vi.advanceTimersByTimeAsync(10);
+        const replies = fetchMock.mock.calls.filter(([url]) => url === '/api/sessions/s1/reply');
+        expect(replies).toHaveLength(2);
+        expect(JSON.parse(String(replies[1][1]?.body)).text).toBe('usa pnpm');
+        // Through: the box that still held it empties.
+        expect(input.value).toBe('');
+        expect(failed).toHaveBeenCalledOnce();
+      });
+
+      it('brings back the same bubble when the failed text is sent again from the box', async () => {
+        respond(409, { error: 'The prompt changed' });
+        const input = await send('usa pnpm');
+        expect(failed).toHaveBeenCalledOnce();
+        respond(200, { success: true });
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        await vi.advanceTimersByTimeAsync(300);
+        expect(sent).toHaveBeenCalledTimes(2);
+        expect(sent.mock.calls[1][0].id).toBe(sentId());
+      });
+
+      it('leaves what is being written in the box when a retry ends up typed', async () => {
+        const onSend = vi.fn();
+        component.onSend = onSend;
+        respond(504, { error: 'not-delivered' });
+        const input = await send('usa pnpm');
+        // Claude went back to its prompt meanwhile, and the next message is being written.
+        component.claudeWaiting = false;
+        component.getScreenText = () => `⏺ Done.\n\n${'─'.repeat(40)}\n❯ \n${'─'.repeat(40)}`;
+        input.value = 'otra cosa';
+        component.resendMessage({ sessionId: 's1', id: sentId() });
+        await vi.advanceTimersByTimeAsync(300);
+        expect(onSend.mock.calls).toEqual([['usa pnpm'], ['\r']]);
+        expect(input.value).toBe('otra cosa');
+        expect(sent).toHaveBeenCalledTimes(2);
+        expect(sent.mock.calls[1][0].id).toBe(sentId());
+      });
+
+      it('shows no bubble for an option picked by its number: an answer is no message', async () => {
+        respond(200, { success: true });
+        await send('2');
+        expect(fetchMock.mock.calls[0][0]).toBe('/api/sessions/s1/answer');
+        expect(sent).not.toHaveBeenCalled();
+      });
+
+      it('retries nothing for another session', async () => {
+        respond(409, { error: 'The prompt changed' });
+        await send('usa pnpm');
+        const id = sentId();
+        component.sessionId = 's2';
+        await component.updateComplete;
+        component.resendMessage({ sessionId: 's1', id });
+        component.resendMessage({ sessionId: 's2', id });
+        await vi.advanceTimersByTimeAsync(300);
+        expect(fetchMock).toHaveBeenCalledOnce();
+      });
     });
   });
 });

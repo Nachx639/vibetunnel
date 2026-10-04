@@ -18,6 +18,7 @@ import type { AuthClient } from '../../services/auth-client.js';
 import { sessionActionService } from '../../services/session-action-service.js';
 import { formatPathForDisplay } from '../../utils/path-utils.js';
 import '../inline-edit.js';
+import { renderClaudeStatusBadge } from '../../utils/claude-status-badge.js';
 
 @customElement('compact-session-card')
 export class CompactSessionCard extends LitElement {
@@ -227,6 +228,7 @@ export class CompactSessionCard extends LitElement {
           
           <!-- Row 2: Path, branch, and git changes -->
           <div class="text-xs ${pathColorClass} truncate flex items-center gap-1 mt-1">
+            ${renderClaudeStatusBadge(session)}
             <span class="truncate">${formatPathForDisplay(session.workingDir)}</span>
             ${
               session.gitBranch
