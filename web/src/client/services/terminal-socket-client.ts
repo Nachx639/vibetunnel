@@ -331,7 +331,9 @@ export class TerminalSocketClient {
    * The offline queue was never trimmed, so a phone that came back after an
    * hour replayed every old keystroke into the session (and every intermediate resize).
    * Keep typed input from the last 30 s, at most 64 KB of it (newest first), and only
-   * the last resize per session; pings are pointless on a new socket.
+   * the last resize per session; pings are pointless on a new socket. A KILL is kept
+   * whatever its age: it is an explicit request, not keystrokes typed against a
+   * screen that may have changed, and dropping it silently left the session running.
    */
   private trimOfflineQueue(queue: QueuedFrame[]): QueuedFrame[] {
     const now = Date.now();
@@ -356,7 +358,6 @@ export class TerminalSocketClient {
           break;
         case WsV3MessageType.INPUT_TEXT:
         case WsV3MessageType.INPUT_KEY:
-        case WsV3MessageType.KILL:
           // Walking newest to oldest: once the budget is spent, nothing older is kept,
           // so the kept input is one contiguous recent stretch.
           if (inputFull || now - item.queuedAt > OFFLINE_INPUT_MAX_AGE_MS) break;

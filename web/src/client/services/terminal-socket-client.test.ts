@@ -205,6 +205,26 @@ describe('TerminalSocketClient reconnect after the page was hidden', () => {
     expect(decodeWsV3ResizePayload(frames[0].payload)).toEqual({ cols: 100, rows: 30 });
   });
 
+  it('keeps a kill queued while offline, however long the phone was away', async () => {
+    const { client, socket } = await openClient();
+    socket.close();
+
+    client.sendInputText('s1', 'old typing');
+    client.kill('s1', 'SIGTERM');
+    for (let minute = 0; minute < 60; minute++) {
+      await vi.advanceTimersByTimeAsync(60_000);
+      FakeSocket.instances[FakeSocket.instances.length - 1].close();
+    }
+    client.resize('s1', 40, 20);
+
+    const next = await reopen();
+    const frames = sentFrames(next).filter((f) => f.type !== WsV3MessageType.PING);
+    expect(frames.map((f) => [WsV3MessageType[f.type], f.sessionId])).toEqual([
+      ['KILL', 's1'],
+      ['RESIZE', 's1'],
+    ]);
+  });
+
   it('caps input queued while offline to the most recent 64 KB', async () => {
     const { client, socket } = await openClient();
     socket.close();
