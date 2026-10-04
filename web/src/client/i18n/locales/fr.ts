@@ -1094,4 +1094,6 @@ export const fr: Messages = {
   'sessions.row.promptChanged': 'La question a changé — ouvrez la session pour répondre.',
   'screenMenu.sendFailed': 'Envoi impossible. Réessayez.',
   'screenMenu.changed': 'La question à l’écran a changé. Réessayez.',
+  'chat.menuTooNarrow':
+    'Claude vous attend · {reason}. Son menu a été dessiné pour un écran plus large : ouvrez le terminal pour répondre.',
 };

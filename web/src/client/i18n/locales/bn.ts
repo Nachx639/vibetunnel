@@ -1058,4 +1058,6 @@ export const bn: Messages = {
   'sessions.row.promptChanged': 'প্রশ্ন বদলে গেছে — উত্তর দিতে সেশন খুলুন।',
   'screenMenu.sendFailed': 'পাঠানো গেল না। আবার চেষ্টা করুন।',
   'screenMenu.changed': 'স্ক্রিনের প্রশ্নটি বদলে গেছে। আবার চেষ্টা করুন।',
+  'chat.menuTooNarrow':
+    'Claude আপনার জন্য অপেক্ষা করছে · {reason}। এর মেনু আরও চওড়া স্ক্রিনের জন্য আঁকা: উত্তর দিতে টার্মিনাল খুলুন।',
 };

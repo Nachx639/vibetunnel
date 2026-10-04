@@ -314,6 +314,44 @@ describe('ClaudeChatView', () => {
     view.remove();
   });
 
+  it('says to open the terminal for a menu drawn for a wider PTY, instead of a cut one', async () => {
+    // Another client had the PTY at 53 columns, the phone's copy 45: the menu's longer rows lost
+    // their tails, and a card would show cut labels nobody could answer.
+    const screen = [
+      ' Do you want to proceed?',
+      ' ❯ 1. Yes',
+      '   2. Yes, and always allow access to /home/u',
+      '      ongname/projects/acme/demo-repo-qa1 fro',
+      '   3. No',
+      ' Esc to cancel',
+    ].join('\n');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ available: true, status: 'waiting', waitingFor: 'Bash', messages: [] })
+      )
+    );
+    let ptyCols = 53;
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's1';
+    view.getScreenTail = () => screen;
+    view.getMenuScreen = () => screen;
+    view.getScreenLayout = () => ({ cols: 45, ptyCols });
+    document.body.appendChild(view);
+    const waiting = () => view.shadowRoot?.querySelector('.waiting')?.textContent ?? '';
+    await vi.waitFor(() => expect(waiting()).toContain('wider screen'));
+    expect(view.shadowRoot?.querySelector('.question')).toBeNull();
+
+    // The PTY back at the phone's width: the menu is read again, the note goes.
+    ptyCols = 45;
+    const internals = view as unknown as { apply(chat: unknown): void };
+    internals.apply({ available: true, status: 'waiting', waitingFor: 'Bash', messages: [] });
+    await view.updateComplete;
+    expect(view.shadowRoot?.querySelectorAll('.question button').length).toBeGreaterThan(0);
+    expect(waiting()).not.toContain('wider screen');
+    view.remove();
+  });
+
   it('shows the mode last read for a session before its screen has loaded', async () => {
     const store = new Map<string, string>();
     vi.stubGlobal('sessionStorage', {

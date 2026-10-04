@@ -1077,6 +1077,8 @@ export const en = {
   'sessions.row.promptChanged': 'The question changed — open the session to answer.',
   'screenMenu.sendFailed': 'Could not send it. Try again.',
   'screenMenu.changed': 'The question on screen changed. Try again.',
+  'chat.menuTooNarrow':
+    'Claude is waiting for you · {reason}. Its menu was drawn for a wider screen: open the terminal to answer.',
 };
 
 export type MessageKey = keyof typeof en;

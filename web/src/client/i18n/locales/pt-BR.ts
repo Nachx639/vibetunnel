@@ -1082,4 +1082,6 @@ export const ptBR: Messages = {
   'sessions.row.promptChanged': 'A pergunta mudou — abra a sessão para responder.',
   'screenMenu.sendFailed': 'Não foi possível enviar. Tente de novo.',
   'screenMenu.changed': 'A pergunta na tela mudou. Tente de novo.',
+  'chat.menuTooNarrow':
+    'Claude está esperando por você · {reason}. O menu foi desenhado para uma tela mais larga: abra o terminal para responder.',
 };

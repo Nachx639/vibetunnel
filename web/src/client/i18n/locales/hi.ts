@@ -1056,4 +1056,6 @@ export const hi: Messages = {
   'sessions.row.promptChanged': 'सवाल बदल गया है — जवाब देने के लिए सत्र खोलें।',
   'screenMenu.sendFailed': 'भेजा नहीं जा सका। फिर से कोशिश करें।',
   'screenMenu.changed': 'स्क्रीन पर सवाल बदल गया है। फिर से कोशिश करें।',
+  'chat.menuTooNarrow':
+    'Claude आपका इंतज़ार कर रहा है · {reason}। इसका मेनू चौड़ी स्क्रीन के लिए बना है: जवाब देने के लिए टर्मिनल खोलें।',
 };

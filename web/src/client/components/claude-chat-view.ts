@@ -10,6 +10,7 @@ import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import {
+  narrowerThanPty,
   parseScreenChoices,
   type ScreenChoices,
   type ScreenLayout,
@@ -1330,6 +1331,11 @@ export class ClaudeChatView extends LitElement {
   private loadingImages = new Set<string>();
   @state() private mode: string | null = null;
   @state() private screenChoices: ScreenChoices | null = null;
+  /**
+   * Claude waits on a menu this screen cannot read: its terminal is narrower than the PTY,
+   * sized by another client, and the menu's rows lost their tails here.
+   */
+  @state() private menuTooNarrow = false;
   /** An option of the question card on its way through the server. */
   @state() private answering = false;
   /** Why the last tap on the card did nothing (the menu changed, the request failed). */
@@ -1649,7 +1655,7 @@ export class ClaudeChatView extends LitElement {
 
   /** Shows a poll's answer; returns whether anything on screen changed. */
   private apply(chat: ChatResponse): boolean {
-    const before = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${JSON.stringify(this.screenChoices)}|${JSON.stringify(this.activity)}`;
+    const before = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${JSON.stringify(this.screenChoices)}|${this.menuTooNarrow}|${JSON.stringify(this.activity)}`;
     this.unavailable = !chat.available;
     this.dispatchEvent(
       new CustomEvent('claude-chat-availability', { detail: chat.available, bubbles: true })
@@ -1668,10 +1674,12 @@ export class ClaudeChatView extends LitElement {
     } else {
       this.mode = rememberedMode(this.sessionId);
     }
+    const layout = chat.status === 'waiting' ? this.getScreenLayout?.() : undefined;
     const screenChoices =
       chat.status === 'waiting'
-        ? parseScreenChoices(this.getMenuScreen?.() ?? screen, this.getScreenLayout?.())
+        ? parseScreenChoices(this.getMenuScreen?.() ?? screen, layout)
         : null;
+    this.menuTooNarrow = !screenChoices && narrowerThanPty(layout);
     // A fresh object every poll re-rendered (and re-scrolled) the view each 1.5 s while
     // Claude waited on a question; keep the old one when the choices are the same.
     if (JSON.stringify(screenChoices) !== JSON.stringify(this.screenChoices)) {
@@ -1711,7 +1719,7 @@ export class ClaudeChatView extends LitElement {
     }
     const wasLoaded = this.loaded;
     this.loaded = true;
-    const after = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${JSON.stringify(this.screenChoices)}|${JSON.stringify(this.activity)}`;
+    const after = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${JSON.stringify(this.screenChoices)}|${this.menuTooNarrow}|${JSON.stringify(this.activity)}`;
     return !wasLoaded || after !== before;
   }
 
@@ -2485,7 +2493,13 @@ export class ClaudeChatView extends LitElement {
     }
     if (this.waitingFor) {
       return html`<div class="waiting" role="status">
-        <span>${t('chat.waiting', { reason: this.waitingFor })}</span>
+        <span
+          >${
+            this.menuTooNarrow
+              ? t('chat.menuTooNarrow', { reason: this.waitingFor })
+              : t('chat.waiting', { reason: this.waitingFor })
+          }</span
+        >
         <button @click=${this.openTerminal}>${t('chat.openTerminal')}</button>
       </div>`;
     }

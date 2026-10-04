@@ -1045,4 +1045,6 @@ export const zhCN: Messages = {
   'sessions.row.promptChanged': '问题已变化——请打开会话作答。',
   'screenMenu.sendFailed': '无法发送，请重试。',
   'screenMenu.changed': '屏幕上的问题已变化，请重试。',
+  'chat.menuTooNarrow':
+    'Claude 正在等待你 · {reason}。它的菜单是为更宽的屏幕绘制的：请打开终端作答。',
 };

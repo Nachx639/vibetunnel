@@ -1055,4 +1055,5 @@ export const ar: Messages = {
   'sessions.row.promptChanged': 'تغيّر السؤال — افتح الجلسة للإجابة.',
   'screenMenu.sendFailed': 'تعذّر الإرسال. حاول مرة أخرى.',
   'screenMenu.changed': 'تغيّر السؤال على الشاشة. حاول مرة أخرى.',
+  'chat.menuTooNarrow': 'Claude بانتظارك · {reason}. رُسمت قائمته لشاشة أعرض: افتح الطرفية للرد.',
 };
