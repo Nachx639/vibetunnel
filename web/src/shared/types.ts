@@ -27,6 +27,8 @@ export enum ServerEventType {
   Bell = 'bell',
   Connected = 'connected',
   TestNotification = 'test-notification',
+  /** `vt preview` in a session: viewers of that session show its dev-server preview. */
+  PreviewOpen = 'preview-open',
 }
 
 /**
@@ -46,6 +48,11 @@ export interface ServerEvent {
   // Test notification specific fields
   title?: string;
   body?: string;
+  // Preview open specific fields
+  port?: number;
+  path?: string;
+  /** The persistent preview (its view is /preview/<previewId>). */
+  previewId?: string;
 }
 
 /**
@@ -115,6 +122,71 @@ export interface Session extends SessionInfo {
   remoteId?: string;
   remoteName?: string;
   remoteUrl?: string;
+
+  /** Dev servers seen in this session (announced in its output or opened with `vt preview`). */
+  previewPorts?: PreviewPort[];
+}
+
+/** How a preview got into the list: `vt preview`, a URL in a session's output, or by hand. */
+export type PreviewSource = 'detected' | 'vt-open' | 'manual';
+
+/** A dev server a session opened or announced (its preview chip). */
+export interface PreviewPort {
+  /** The persistent preview's id: its view is `/preview/<id>`. */
+  id?: string;
+  port: number;
+  /** URL as the dev server printed it. */
+  url?: string;
+  source: PreviewSource;
+  /** Last opened or announced (epoch ms). */
+  at: number;
+  /** Server-side health check (every ~10 s): answering or not; absent until first checked. */
+  state?: 'live' | 'down';
+  /** The app's page <title> (or the name the user gave it). */
+  title?: string;
+}
+
+/**
+ * A persistent preview (GET /api/previews): one per loopback port, kept across sessions and
+ * server restarts in previews.json.
+ */
+export interface PreviewItem {
+  id: string;
+  port: number;
+  /** Page inside the app to open. */
+  path: string;
+  /** The app's page <title>, when the health check could read it. */
+  title?: string;
+  /** Name the user gave it (Rename). */
+  customName?: string;
+  createdAt: number;
+  /** Last time its dev server answered (epoch ms). */
+  lastSeenAt?: number;
+  /** Last `vt preview`, announcement or manual add (epoch ms): newest first. */
+  lastOpenedAt: number;
+  /** Session that opened or announced it last (a link; it may be gone). */
+  sessionId?: string;
+  sessionName?: string;
+  /** That session still exists on this server. */
+  sessionAlive?: boolean;
+  pinned: boolean;
+  source: PreviewSource;
+  /** Absent until the first health check. */
+  state?: 'live' | 'down';
+}
+
+/**
+ * A web server listening on this computer that isn't a preview yet
+ * (GET /api/previews/candidates): one item of the "+ Add preview" sheet.
+ */
+export interface PreviewCandidate {
+  port: number;
+  /** Its page <title>, when `/` is an HTML page that has one. */
+  title?: string;
+  /** Process name as lsof reports it ("node", "Python"). */
+  process?: string;
+  /** Last part of the process's working directory (the project folder, usually). */
+  folder?: string;
 }
 
 /**

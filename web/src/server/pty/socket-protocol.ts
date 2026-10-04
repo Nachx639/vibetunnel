@@ -31,6 +31,9 @@ export enum MessageType {
   GIT_FOLLOW_RESPONSE = 0x31, // Response to follow request
   GIT_EVENT_NOTIFY = 0x32, // Git event notification
   GIT_EVENT_ACK = 0x33, // Git event acknowledgment
+  // Dev-server preview (`vt preview`)
+  PREVIEW_OPEN_REQUEST = 0x40,
+  PREVIEW_OPEN_RESPONSE = 0x41,
 }
 
 /**
@@ -138,6 +141,21 @@ export interface GitEventAck {
   handled: boolean;
 }
 
+/** `vt preview <port|url>` from inside a session. */
+export interface PreviewOpenRequest {
+  sessionId: string;
+  target: string;
+}
+
+export interface PreviewOpenResponse {
+  success: boolean;
+  /** The persistent preview's id (its view in the app is /preview/<id>). */
+  id?: string;
+  port?: number;
+  path?: string;
+  error?: string;
+}
+
 /**
  * Type-safe mapping of message types to their payload types
  */
@@ -153,6 +171,8 @@ export type MessagePayloadMap = {
   [MessageType.GIT_FOLLOW_RESPONSE]: GitFollowResponse;
   [MessageType.GIT_EVENT_NOTIFY]: GitEventNotify;
   [MessageType.GIT_EVENT_ACK]: GitEventAck;
+  [MessageType.PREVIEW_OPEN_REQUEST]: PreviewOpenRequest;
+  [MessageType.PREVIEW_OPEN_RESPONSE]: PreviewOpenResponse;
 };
 
 /**
@@ -295,6 +315,14 @@ export const MessageBuilder = {
     return frameMessage(MessageType.GIT_EVENT_ACK, ack);
   },
 
+  previewOpenRequest(request: PreviewOpenRequest): Buffer {
+    return frameMessage(MessageType.PREVIEW_OPEN_REQUEST, request);
+  },
+
+  previewOpenResponse(response: PreviewOpenResponse): Buffer {
+    return frameMessage(MessageType.PREVIEW_OPEN_RESPONSE, response);
+  },
+
   statusRequest(): Buffer {
     return frameMessage(MessageType.STATUS_REQUEST, {});
   },
@@ -321,6 +349,8 @@ export function parsePayload(type: MessageType, payload: Buffer): unknown {
     case MessageType.GIT_FOLLOW_RESPONSE:
     case MessageType.GIT_EVENT_NOTIFY:
     case MessageType.GIT_EVENT_ACK:
+    case MessageType.PREVIEW_OPEN_REQUEST:
+    case MessageType.PREVIEW_OPEN_RESPONSE:
       try {
         return JSON.parse(payload.toString('utf8'));
       } catch (e) {

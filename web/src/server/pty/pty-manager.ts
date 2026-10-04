@@ -188,6 +188,12 @@ export class PtyManager extends EventEmitter {
     this.sessionMonitor = monitor;
   }
 
+  /** Extra reader of every session's raw output (dev-server URL detection for previews). */
+  private outputObserver: ((sessionId: string, data: string) => void) | null = null;
+  public setOutputObserver(observer: (sessionId: string, data: string) => void): void {
+    this.outputObserver = observer;
+  }
+
   /**
    * Setup terminal resize detection for when the hosting terminal is resized
    */
@@ -647,6 +653,7 @@ export class PtyManager extends EventEmitter {
       if (this.sessionMonitor) {
         this.sessionMonitor.trackPtyOutput(session.id, data);
       }
+      this.outputObserver?.(session.id, data);
 
       // Track output activity for active/idle detection
       session.lastOutputTimestamp = Date.now();

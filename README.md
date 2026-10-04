@@ -655,6 +655,15 @@ vt gs  # Works as expected
 vt title "Building Production Release"
 ```
 
+**Dev-Server Preview** (off unless the server runs with `--preview-port <port>`): inside a
+session, `vt preview <port|url>` shows a local dev server (vite, next…) in the app, served on a
+separate origin behind the normal login (HMR included). See
+[docs/features/dev-server-previews.md](docs/features/dev-server-previews.md).
+```bash
+vt preview 5173
+vt preview localhost:3000/settings
+```
+
 ### Mac App Interoperability
 
 The npm package is designed to work seamlessly alongside the Mac app:

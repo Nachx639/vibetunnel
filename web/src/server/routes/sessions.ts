@@ -7,6 +7,7 @@ import { cellsToText } from '../../shared/terminal-text-formatter.js';
 import type { ServerStatus, Session, TitleMode } from '../../shared/types.js';
 import { HttpMethod } from '../../shared/types.js';
 import { PtyError, type PtyManager } from '../pty/index.js';
+import type { PreviewRegistry } from '../services/preview-registry.js';
 import type { RemoteRegistry } from '../services/remote-registry.js';
 import { tailscaleServeService } from '../services/tailscale-serve-service.js';
 import type { TerminalManager } from '../services/terminal-manager.js';
@@ -26,6 +27,8 @@ interface SessionRoutesConfig {
   terminalManager: TerminalManager;
   remoteRegistry: RemoteRegistry | null;
   isHQMode: boolean;
+  /** Dev-server previews, only while they are on (`--preview-port`). */
+  previewRegistry?: PreviewRegistry;
 }
 
 // Helper function to resolve path with default fallback
@@ -249,6 +252,15 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
           };
         })
       );
+
+      // Dev servers each running session started (its "Preview" chip), previews on only.
+      if (config.previewRegistry) {
+        for (const session of localSessionsWithSource as Session[]) {
+          const ports =
+            session.status === 'running' ? config.previewRegistry.forSession(session.id) : [];
+          if (ports.length > 0) session.previewPorts = ports;
+        }
+      }
 
       allSessions = [...localSessionsWithSource];
 

@@ -239,6 +239,16 @@ When creating pull requests, use the `vt` command to update the terminal title:
 - Update the title periodically as work progresses
 - If `vt` command fails (only works inside VibeTunnel), simply ignore the error and continue
 
+### Showing a Dev Server with VT
+
+When the server runs with previews on (`--preview-port`), after a visual change to a web app
+whose dev server runs in this session:
+- `vt preview 5173` (a port) or `vt preview localhost:3000/settings` (a URL with a path)
+- Screens showing this session switch to the preview; dev servers that print
+  `Local: http://localhost:<port>` are also detected automatically
+- If `vt preview` fails (previews off, or not inside VibeTunnel), mention the URL instead and
+  continue
+
 ## Testing on External Devices (iPad, Safari, etc.)
 
 When the user reports issues on external devices, use the development server method for testing:

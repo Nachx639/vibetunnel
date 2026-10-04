@@ -76,6 +76,8 @@ const ConfigSchema = z.object({
       titleMode: z.string(),
     })
     .optional(),
+  /** Process names "+ Add preview" never offers (dev-server previews). */
+  previewIgnoreProcesses: z.array(z.string()).optional(),
 });
 
 /**

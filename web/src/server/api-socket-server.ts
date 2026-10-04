@@ -16,6 +16,8 @@ import {
   MessageBuilder,
   MessageParser,
   MessageType,
+  type PreviewOpenRequest,
+  type PreviewOpenResponse,
   parsePayload,
   type StatusResponse,
 } from './pty/socket-protocol.js';
@@ -71,6 +73,16 @@ export class ApiSocketServer {
 
     // Use a different socket name to avoid conflicts
     this.socketPath = path.join(socketDir, 'api.sock');
+  }
+
+  /** Handles `vt preview` (wired by the server to the preview registry when previews are on). */
+  private previewOpenHandler:
+    | ((request: PreviewOpenRequest) => PreviewOpenResponse | Promise<PreviewOpenResponse>)
+    | null = null;
+  setPreviewOpenHandler(
+    handler: (request: PreviewOpenRequest) => PreviewOpenResponse | Promise<PreviewOpenResponse>
+  ): void {
+    this.previewOpenHandler = handler;
   }
 
   /**
@@ -173,6 +185,17 @@ export class ApiSocketServer {
         case MessageType.GIT_EVENT_NOTIFY:
           await this.handleGitEventNotify(socket, data as GitEventNotify);
           break;
+
+        case MessageType.PREVIEW_OPEN_REQUEST: {
+          const response: PreviewOpenResponse = this.previewOpenHandler
+            ? await this.previewOpenHandler(data as PreviewOpenRequest)
+            : {
+                success: false,
+                error: 'Previews are off on this server (start it with --preview-port <port>)',
+              };
+          socket.write(MessageBuilder.previewOpenResponse(response));
+          break;
+        }
 
         default:
           logger.warn(`Unhandled message type: ${type}`);

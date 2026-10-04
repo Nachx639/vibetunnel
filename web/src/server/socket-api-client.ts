@@ -14,6 +14,8 @@ import {
   type GitFollowResponse,
   type MessagePayload,
   MessageType,
+  type PreviewOpenRequest,
+  type PreviewOpenResponse,
 } from './pty/socket-protocol.js';
 import { createLogger } from './utils/logger.js';
 
@@ -128,6 +130,15 @@ export class SocketApiClient {
       MessageType.GIT_EVENT_NOTIFY,
       event,
       MessageType.GIT_EVENT_ACK
+    );
+  }
+
+  /** `vt preview`: show a dev server of this session in the app's preview. */
+  async openPreview(request: PreviewOpenRequest): Promise<PreviewOpenResponse> {
+    return this.sendRequest<MessageType.PREVIEW_OPEN_REQUEST, PreviewOpenResponse>(
+      MessageType.PREVIEW_OPEN_REQUEST,
+      request,
+      MessageType.PREVIEW_OPEN_RESPONSE
     );
   }
 }

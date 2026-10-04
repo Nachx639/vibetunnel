@@ -23,6 +23,11 @@ import { createFilesystemRoutes } from './routes/filesystem.js';
 import { createGitRoutes } from './routes/git.js';
 import { createLogRoutes } from './routes/logs.js';
 import { createMultiplexerRoutes } from './routes/multiplexer.js';
+import {
+  createPreviewDisabledRoutes,
+  createPreviewRoutes,
+  createVtOpenHandler,
+} from './routes/preview.js';
 import { createPushRoutes } from './routes/push.js';
 import { createRemoteRoutes } from './routes/remotes.js';
 import { createRepositoryRoutes } from './routes/repositories.js';
@@ -39,6 +44,11 @@ import { GitStatusHub } from './services/git-status-hub.js';
 import { HQClient } from './services/hq-client.js';
 import { mdnsService } from './services/mdns-service.js';
 import { NgrokService } from './services/ngrok-service.js';
+import { normalizeIgnoredProcesses } from './services/preview-candidates.js';
+import { createPreviewFeature, previewsRequested } from './services/preview-feature.js';
+import { VIBETUNNEL_SERVER_HEADER } from './services/preview-proxy.js';
+import { type PreviewOpenEvent, parseOpenTarget } from './services/preview-registry.js';
+import { foreignApiRequestReason, mainOriginPreviewGuard } from './services/preview-server.js';
 import { PushNotificationService } from './services/push-notification-service.js';
 import { RemoteRegistry } from './services/remote-registry.js';
 import { SessionMonitor } from './services/session-monitor.js';
@@ -104,6 +114,8 @@ export function setShuttingDown(value: boolean): void {
 interface Config {
   port: number | null;
   bind: string | null;
+  /** Dev-server preview listener port (`--preview-port`); previews are off when unset. */
+  previewPort: string | null;
   enableSSHKeys: boolean;
   disallowUserPassword: boolean;
   noAuth: boolean;
@@ -208,6 +220,8 @@ Options:
   --version             Show version information
   --port <number>       Server port (default: 4020 or PORT env var)
   --bind <address>      Bind address (default: 0.0.0.0, all interfaces)
+  --preview-port <port> Turn on dev-server previews, served on this port as a separate
+                        origin (default: off; env VIBETUNNEL_PREVIEW_PORT)
   --enable-ssh-keys     Enable SSH key authentication UI and functionality
   --disallow-user-password  Disable password auth, SSH keys only (auto-enables --enable-ssh-keys)
   --no-auth             Disable authentication (auto-login as current user)
@@ -252,6 +266,9 @@ Environment Variables:
   VIBETUNNEL_PASSWORD   Default password if --password not specified
   VIBETUNNEL_CONTROL_DIR Control directory for session data
   PUSH_CONTACT_EMAIL    Contact email for VAPID configuration
+  VIBETUNNEL_PREVIEW_PORT       Same as --preview-port
+  VIBETUNNEL_PREVIEW_ORIGIN     Public URL of the preview listener behind a reverse proxy
+  VIBETUNNEL_PREVIEW_DENY_PORTS Comma-separated ports that are never previewed
   NGROK_AUTHTOKEN       Ngrok auth token (used with --ngrok)
 
 Examples:
@@ -285,6 +302,7 @@ function parseArgs(): Config {
   const config = {
     port: null as number | null,
     bind: null as string | null,
+    previewPort: null as string | null,
     enableSSHKeys: false,
     disallowUserPassword: false,
     noAuth: false,
@@ -343,6 +361,9 @@ function parseArgs(): Config {
     } else if (args[i] === '--bind' && i + 1 < args.length) {
       config.bind = args[i + 1];
       i++; // Skip the bind value in next iteration
+    } else if (args[i] === '--preview-port' && i + 1 < args.length) {
+      config.previewPort = args[i + 1];
+      i++;
     } else if (args[i] === '--enable-ssh-keys') {
       config.enableSSHKeys = true;
     } else if (args[i] === '--disallow-user-password') {
@@ -586,6 +607,35 @@ export async function createApp(): Promise<AppInstance> {
   const CONTROL_DIR =
     process.env.VIBETUNNEL_CONTROL_DIR || path.join(os.homedir(), '.vibetunnel/control');
 
+  // Dev-server previews (docs/features/dev-server-previews.md): off unless --preview-port or
+  // VIBETUNNEL_PREVIEW_PORT names a port. They are served by a second listener, a separate
+  // origin (preview-proxy.ts / preview-server.ts) that starts after the main server; the main
+  // origin serves no preview content and, while previews are on, refuses requests coming
+  // from that origin.
+  const mainListenPort = () => {
+    const address = server.address();
+    return address && typeof address === 'object' ? address.port : config.port;
+  };
+  const previews = previewsRequested(config.previewPort, process.env.VIBETUNNEL_PREVIEW_PORT)
+    ? createPreviewFeature({
+        controlDir: CONTROL_DIR,
+        getMainPort: mainListenPort,
+        isVibeTunnelAuthorization: (value) =>
+          value.startsWith('Bearer ') &&
+          (authService.verifyToken(value.slice(7)).valid || value.slice(7) === remoteBearerToken),
+      })
+    : null;
+  if (previews) {
+    server.once('close', () => previews.close());
+    // Marks every response as VibeTunnel's, so another VibeTunnel's preview proxy never
+    // shows this server (see VIBETUNNEL_SERVER_HEADER).
+    app.use((_req, res, next) => {
+      res.setHeader(VIBETUNNEL_SERVER_HEADER, '1');
+      next();
+    });
+    app.use(mainOriginPreviewGuard(previews.listenPort, previews.publicOrigin));
+  }
+
   // Ensure control directory exists
   if (!fs.existsSync(CONTROL_DIR)) {
     fs.mkdirSync(CONTROL_DIR, { recursive: true });
@@ -631,6 +681,38 @@ export async function createApp(): Promise<AppInstance> {
 
   // Set the session monitor on PTY manager for data tracking
   ptyManager.setSessionMonitor(sessionMonitor);
+  if (previews) {
+    // Dev-server URLs a session prints become previews (preview-registry.ts).
+    const registry = previews.registry;
+    registry.setSessionNames((sessionId) => ptyManager.getSession(sessionId)?.name);
+    ptyManager.setOutputObserver((sessionId, data) => registry.trackOutput(sessionId, data));
+    // Previews outlive their session; only its output buffer goes.
+    ptyManager.on('sessionExited', (sessionId: string) => registry.forgetSessionOutput(sessionId));
+    // `vt preview` / "open" from a session: screens showing that session switch to it.
+    registry.on('open', (event: PreviewOpenEvent) => {
+      const openedIn = ptyManager.getSession(event.sessionId);
+      sessionMonitor.emit('notification', {
+        type: ServerEventType.PreviewOpen,
+        sessionId: event.sessionId,
+        sessionName: openedIn?.name || event.sessionId,
+        port: event.port,
+        path: event.path,
+        previewId: event.id,
+        timestamp: new Date().toISOString(),
+      });
+      void previews.health.check(event.port);
+    });
+    const vtPreview = createVtOpenHandler({
+      registry,
+      sessionExists: (sessionId) => ptyManager.getSession(sessionId) !== null,
+      portError: previews.portError,
+    });
+    apiSocketServer.setPreviewOpenHandler(async (request) => {
+      const target = typeof request.target === 'string' ? parseOpenTarget(request.target) : null;
+      if (target) await previews.identifyPort(target.port);
+      return vtPreview(request);
+    });
+  }
   logger.debug('Initialized session monitor');
 
   // Initialize configuration service
@@ -1160,9 +1242,35 @@ export async function createApp(): Promise<AppInstance> {
       terminalManager,
       remoteRegistry,
       isHQMode: config.isHQMode,
+      ...(previews ? { previewRegistry: previews.registry } : {}),
     })
   );
   logger.debug('Mounted session routes');
+
+  // Dev-server previews: the full API only when they are on; otherwise just the
+  // "previews are off" answer the app asks for.
+  if (previews) {
+    app.use(
+      '/api',
+      createPreviewRoutes({
+        previewProxy: previews.proxy,
+        previewRegistry: previews.registry,
+        getOwnPort: mainListenPort,
+        getPreviewPort: previews.listenPort,
+        previewOrigin: previews.publicOrigin,
+        sessionExists: (sessionId) => ptyManager.getSession(sessionId) !== null,
+        sessionRunning: (sessionId) => ptyManager.getSession(sessionId)?.status === 'running',
+        sessionName: (sessionId) => ptyManager.getSession(sessionId)?.name,
+        health: previews.health,
+        identifyPort: previews.identifyPort,
+        ignoredProcesses: () =>
+          normalizeIgnoredProcesses(configService.getConfig().previewIgnoreProcesses),
+      })
+    );
+  } else {
+    app.use('/api', createPreviewDisabledRoutes());
+  }
+  logger.debug(`Mounted preview routes (${previews ? 'on' : 'off'})`);
 
   app.use(
     '/api',
@@ -1252,6 +1360,15 @@ export async function createApp(): Promise<AppInstance> {
 
   // Handle WebSocket upgrade with authentication
   server.on('upgrade', async (request, socket, head) => {
+    if (
+      previews &&
+      foreignApiRequestReason(request.headers, previews.listenPort(), previews.publicOrigin)
+    ) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
     // Parse the URL to extract path and query parameters
     const parsedUrl = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`);
 
@@ -1398,6 +1515,13 @@ export async function createApp(): Promise<AppInstance> {
     res.sendFile(path.join(publicPath, 'index.html'));
   });
 
+  // A dev-server preview's own view in the app (/preview/<id>) is a client-side route.
+  if (previews) {
+    app.get('/preview/:id', (_req, res) => {
+      res.sendFile(path.join(publicPath, 'index.html'));
+    });
+  }
+
   // Handle /session/:id routes by serving the same index.html
   app.get('/session/:id', (_req, res) => {
     res.sendFile(path.join(publicPath, 'index.html'));
@@ -1479,6 +1603,17 @@ export async function createApp(): Promise<AppInstance> {
 
       // Update API socket server with actual port information
       apiSocketServer.setServerInfo(actualPort, `http://${displayAddress}:${actualPort}`);
+
+      // Dev-server preview listener (separate origin), same bind address. A failure leaves
+      // VibeTunnel running with previews unavailable.
+      void previews?.listen(config.previewPort, actualPort, bindAddress).then((preview) => {
+        if (preview.error) logger.error(`Previews unavailable: ${preview.error}`);
+        else if (preview.port !== null) {
+          logger.log(
+            chalk.green(`Dev-server previews on http://${displayAddress}:${preview.port}`)
+          );
+        }
+      });
 
       if (config.noAuth) {
         logger.warn(chalk.yellow('Authentication: DISABLED (--no-auth)'));

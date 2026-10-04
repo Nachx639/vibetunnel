@@ -57,6 +57,11 @@ export interface VibeTunnelConfig {
     spawnWindow: boolean;
     titleMode: string;
   };
+  /**
+   * Dev-server previews: process names (as `lsof` reports them, e.g. "cloudflared") that the
+   * "+ Add preview" list never offers. Only used while previews are on (`--preview-port`).
+   */
+  previewIgnoreProcesses?: string[];
 }
 
 export const DEFAULT_QUICK_START_COMMANDS: QuickStartCommand[] = [

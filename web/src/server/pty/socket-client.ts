@@ -16,6 +16,7 @@ import {
   MessageParser,
   type MessagePayload,
   MessageType,
+  type PreviewOpenRequest,
   parsePayload,
   type ResizeCommand,
   type StatusUpdate,
@@ -359,6 +360,8 @@ export class VibeTunnelSocketClient extends EventEmitter {
         return MessageBuilder.gitFollowRequest(payload as GitFollowRequest);
       case MessageType.GIT_EVENT_NOTIFY:
         return MessageBuilder.gitEventNotify(payload as GitEventNotify);
+      case MessageType.PREVIEW_OPEN_REQUEST:
+        return MessageBuilder.previewOpenRequest(payload as PreviewOpenRequest);
       default:
         throw new Error(`Unsupported message type: ${type}`);
     }

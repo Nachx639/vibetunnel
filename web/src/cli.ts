@@ -70,6 +70,9 @@ function printHelp(): void {
   console.log('  vibetunnel follow [branch]              Enable Git follow mode');
   console.log('  vibetunnel unfollow                     Disable Git follow mode');
   console.log('  vibetunnel git-event                    Notify server of Git event');
+  console.log(
+    '  vibetunnel preview <port|url>           Show a dev server in the app (in a session)'
+  );
   console.log('  vibetunnel systemd [action]             Manage systemd service (Linux)');
   console.log('  vibetunnel version                      Show version');
   console.log('  vibetunnel help                         Show this help');
@@ -262,6 +265,31 @@ async function handleSocketCommand(command: string): Promise<void> {
         break;
       }
 
+      case 'preview': {
+        const target = process.argv[3];
+        const sessionId = process.env.VIBETUNNEL_SESSION_ID;
+        if (!target) {
+          console.error(
+            'Usage: vt preview <port|url>   e.g. vt preview 5173, vt preview localhost:3000/about'
+          );
+          process.exit(1);
+        }
+        if (!sessionId) {
+          console.error("Error: 'vt preview' only works inside a VibeTunnel session.");
+          process.exit(1);
+        }
+        const response = await client.openPreview({ sessionId, target });
+        if (response.success) {
+          console.log(
+            `Preview opened in VibeTunnel: localhost:${response.port}${response.path ?? ''}`
+          );
+        } else {
+          console.error(`Could not open the preview: ${response.error || 'Unknown error'}`);
+          process.exit(1);
+        }
+        break;
+      }
+
       case 'git-event': {
         const repoPath = process.cwd();
 
@@ -321,6 +349,7 @@ async function parseCommandAndExecute(): Promise<void> {
     case 'status':
     case 'follow':
     case 'unfollow':
+    case 'preview':
     case 'git-event':
       await handleSocketCommand(command);
       break;
