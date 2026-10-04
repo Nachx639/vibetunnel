@@ -98,7 +98,16 @@ export class SessionActionsHandler {
           }
         },
         onSuccess: () => {
-          // For terminate, session status will be updated via v3 `EVENT`/polling.
+          // Its status follows by v3 `EVENT`/polling. The app still hears it was ended here,
+          // so it shows it as finished at once and doesn't report it as "not found" if the
+          // server removes it right away.
+          this.callbacks?.dispatchEvent(
+            new CustomEvent('session-killed', {
+              detail: { sessionId: session.id, session },
+              bubbles: true,
+              composed: true,
+            })
+          );
         },
       },
     });

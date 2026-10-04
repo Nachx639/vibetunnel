@@ -241,6 +241,9 @@ export class SessionList extends LitElement {
   }
 
   private async handleSessionKilled(e: CustomEvent) {
+    // The card's event bubbles and is composed: without this the app saw every kill twice
+    // (the original plus the re-dispatch below) and refreshed twice as often.
+    e.stopPropagation();
     const { sessionId } = e.detail;
     logger.debug(`session ${sessionId} killed, updating session list`);
 

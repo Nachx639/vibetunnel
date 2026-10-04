@@ -845,4 +845,7 @@ export const ar: Messages = {
   'theme.cyber': 'سايبر',
   'theme.gold': 'ذهبي',
   'theme.clay': 'طيني',
+  // Kill all
+  'sessions.killAllConfirm': 'إنهاء جميع الجلسات الـ {n} قيد التشغيل؟ سيضيع العمل غير المحفوظ.',
+  'sessions.killAllConfirm.one': 'إنهاء الجلسة قيد التشغيل؟ سيضيع العمل غير المحفوظ.',
 };

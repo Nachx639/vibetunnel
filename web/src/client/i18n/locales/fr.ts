@@ -880,4 +880,9 @@ export const fr: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Or',
   'theme.clay': 'Argile',
+  // Kill all
+  'sessions.killAllConfirm':
+    'Arrêter les {n} sessions actives ? Le travail non enregistré sera perdu.',
+  'sessions.killAllConfirm.one':
+    'Arrêter la session active ? Le travail non enregistré sera perdu.',
 };

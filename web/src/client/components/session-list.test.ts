@@ -289,23 +289,25 @@ describe('SessionList', () => {
       element.sessions = mockSessions;
       await element.updateComplete;
 
-      // Dispatch kill event from session card
+      // Dispatch kill event from session card (bubbling and composed, like the real one)
       const sessionCard = element.querySelector('session-card');
-      if (sessionCard) {
-        sessionCard.dispatchEvent(
-          new CustomEvent('session-killed', {
-            detail: { sessionId: 'session-1' },
-            bubbles: true,
-          })
-        );
+      expect(sessionCard).not.toBeNull();
+      sessionCard?.dispatchEvent(
+        new CustomEvent('session-killed', {
+          detail: { sessionId: 'session-1' },
+          bubbles: true,
+          composed: true,
+        })
+      );
 
-        // Should re-dispatch session-killed event with just the sessionId
-        expect(sessionKilledHandler).toHaveBeenCalledWith(
-          expect.objectContaining({
-            detail: 'session-1', // Just the sessionId, not an object
-          })
-        );
-      }
+      // The parent hears about the kill once, with just the sessionId: the original
+      // event must not bubble past the list as well.
+      expect(sessionKilledHandler).toHaveBeenCalledTimes(1);
+      expect(sessionKilledHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detail: 'session-1', // Just the sessionId, not an object
+        })
+      );
     });
 
     it('should handle session kill error', async () => {

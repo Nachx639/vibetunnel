@@ -866,6 +866,9 @@ export const en = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Gold',
   'theme.clay': 'Clay',
+  // Kill all
+  'sessions.killAllConfirm': 'Kill all {n} running sessions? Unsaved work in them is lost.',
+  'sessions.killAllConfirm.one': 'Kill the running session? Unsaved work in it is lost.',
 };
 
 export type MessageKey = keyof typeof en;

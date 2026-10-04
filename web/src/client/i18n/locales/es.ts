@@ -871,4 +871,8 @@ export const es: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Oro',
   'theme.clay': 'Arcilla',
+  // Kill all
+  'sessions.killAllConfirm':
+    '¿Cerrar las {n} sesiones activas? Se perderá lo que no esté guardado.',
+  'sessions.killAllConfirm.one': '¿Cerrar la sesión activa? Se perderá lo que no esté guardado.',
 };

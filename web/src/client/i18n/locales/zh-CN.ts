@@ -837,4 +837,7 @@ export const zhCN: Messages = {
   'theme.cyber': '赛博',
   'theme.gold': '金色',
   'theme.clay': '陶土',
+  // Kill all
+  'sessions.killAllConfirm': '结束全部 {n} 个运行中的会话？未保存的工作将丢失。',
+  'sessions.killAllConfirm.one': '结束运行中的会话？未保存的工作将丢失。',
 };

@@ -41,6 +41,8 @@ import { terminalSocketClient } from './services/terminal-socket-client.js';
 import { VisibilityPoller } from './utils/visibility-poller.js';
 
 const logger = createLogger('app');
+/** How long a session the user ended here can vanish without a "not found" toast. */
+const ENDED_HERE_MS = 15_000;
 
 /**
  * Session list poll cadence: every second while things change, slowing to every 2 s after
@@ -86,6 +88,7 @@ export class VibeTunnelApp extends LitElement {
   @state() private currentView: 'list' | 'session' | 'auth' | 'file-browser' = 'auth';
   @state() private selectedSessionId: string | null = null;
   private loadFailures = 0;
+  private everLoaded = false;
   @state() private reconnecting = false;
   @state() private hideExited = this.loadHideExitedState();
   @state() private showCreateModal = false;
@@ -551,19 +554,19 @@ export class VibeTunnelApp extends LitElement {
   private async handleAuthSuccess() {
     logger.log('✅ Authentication successful');
 
-    // If already authenticated (e.g., in no-auth mode), don't re-initialize
-    if (this.isAuthenticated && this.initialLoadComplete) {
-      logger.debug('Already authenticated and initialized, skipping re-initialization');
+    // If already authenticated and past the login screen (e.g. no-auth mode), nothing to do
+    if (this.isAuthenticated && this.currentView !== 'auth') {
+      logger.debug('Already authenticated, skipping re-initialization');
       return;
     }
 
-    // If services are already being initialized, skip
-    if (this.servicesInitialized || this.isAuthenticated) {
-      logger.debug('Services already initialized or being initialized, skipping');
-      return;
-    }
-
+    // After a 401 (an expired token, or a server that started requiring auth while the page
+    // was open) handleLogout shows the login screen but the services stay initialized.
+    // Bailing out on servicesInitialized left the user on the login screen until a reload.
     this.isAuthenticated = true;
+    // The list shows before the services and the first /api/sessions are done: without this
+    // it said there were no sessions for a moment right after logging in.
+    if (this.sessions.length === 0) this.loading = true;
     this.currentView = 'list';
     await this.initializeServices(false); // Initialize services after auth (auth is enabled)
     await this.loadSessions();
@@ -624,7 +627,12 @@ export class VibeTunnelApp extends LitElement {
 
   private async handleLogout() {
     logger.log('👋 Logging out');
+    this.clearKillRefreshTimers();
+    this.recentlyKilled.clear();
+    this.recentlyCleared.clear();
     await authClient.logout();
+    this.reconnecting = false;
+    this.loadFailures = 0;
     this.isAuthenticated = false;
     this.currentView = 'auth';
     this.sessions = [];
@@ -677,7 +685,9 @@ export class VibeTunnelApp extends LitElement {
    */
   private noteLoadFailure() {
     this.loadFailures++;
-    if (this.loadFailures >= 2) this.reconnecting = true;
+    // Never loaded yet: say so at once, or an empty list looks as if the server simply had
+    // no sessions.
+    if (this.loadFailures >= 2 || !this.everLoaded) this.reconnecting = true;
   }
 
   private renderReconnecting() {
@@ -732,11 +742,12 @@ export class VibeTunnelApp extends LitElement {
         if (response.ok) {
           this.loadFailures = 0;
           this.reconnecting = false;
+          this.everLoaded = true;
           const newSessions = (await response.json()) as Session[];
 
           // Preserve Git information and reuse existing session objects when possible
           // This prevents unnecessary re-renders by maintaining object references
-          const updatedSessions = newSessions.map((newSession) => {
+          const updatedSessions = this.applyRecentKills(newSessions).map((newSession) => {
             const existingSession = this.sessions.find((s) => s.id === newSession.id);
 
             if (existingSession) {
@@ -803,6 +814,10 @@ export class VibeTunnelApp extends LitElement {
                 this.sessionLoadingState = 'loaded';
                 logger.debug(`Session ${this.selectedSessionId} found and loaded`);
               }
+            } else if (this.endedHereRecently(this.selectedSessionId)) {
+              // The user ended it from this page: back to the list, nothing to report.
+              this.sessionLoadingState = 'not-found';
+              this.handleNavigateToList();
             } else {
               // Session not found - determine action based on loading state and load completion
               if (this.sessionLoadingState === 'loaded') {
@@ -968,9 +983,103 @@ export class VibeTunnelApp extends LitElement {
     this.showError(t('toast.sessionCreatedNotFound'));
   }
 
+  /** Sessions the user just killed (id -> when): shown as exited until the server agrees. */
+  private recentlyKilled = new Map<string, number>();
+
+  /**
+   * Sessions the user ended from this page (id -> when). Unlike recentlyKilled, a poll doesn't
+   * drop them when they leave the list, which is exactly when they are needed: a session
+   * removed at once by its kill would otherwise close with a "session not found" error.
+   */
+  private endedHere = new Map<string, number>();
+
+  private endedHereRecently(id: string): boolean {
+    const at = this.endedHere.get(id);
+    return at !== undefined && Date.now() - at < ENDED_HERE_MS;
+  }
+
   private handleSessionKilled(e: CustomEvent) {
-    logger.log(`session ${e.detail} killed`);
-    this.loadSessions(); // Refresh the list
+    const detail = e.detail as string | { sessionId?: string } | undefined;
+    const id = typeof detail === 'string' ? detail : detail?.sessionId;
+    logger.log(`session ${id} killed`);
+    if (id) {
+      const now = Date.now();
+      for (const [ended, at] of this.endedHere) {
+        if (now - at >= ENDED_HERE_MS) this.endedHere.delete(ended);
+      }
+      this.endedHere.set(id, now);
+    }
+    // Show it as finished right away instead of waiting for the next (possibly backed-off)
+    // poll, and look again shortly: the process exits a moment after the kill returns.
+    if (id && this.sessions.some((session) => session.id === id && session.status === 'exited')) {
+      // "Clear" on a finished session: the server removed it. Drop it now; a poll already in
+      // flight would otherwise bring the row back for a moment.
+      this.recentlyCleared.set(id, Date.now());
+      this.sessions = this.sessions.filter((session) => session.id !== id);
+    } else if (id) {
+      this.recentlyKilled.set(id, Date.now());
+      this.sessions = this.sessions.map((session) =>
+        session.id === id && session.status === 'running'
+          ? { ...session, status: 'exited' as const }
+          : session
+      );
+    }
+    this.loadSessions();
+    this.clearKillRefreshTimers();
+    for (const ms of [800, 2500]) {
+      const timer = setTimeout(() => {
+        this.killRefreshTimers.delete(timer);
+        // Same checks as the poller: a logout (or leaving the list) in the meantime must
+        // not fire an unauthenticated /api/sessions and a second logout on its 401.
+        if (!this.isAuthenticated) return;
+        if (this.currentView !== 'list' && this.currentView !== 'session') return;
+        void this.loadSessions();
+      }, ms);
+      this.killRefreshTimers.add(timer);
+    }
+  }
+
+  /** Follow-up refreshes after a kill; cleared on logout. */
+  private killRefreshTimers = new Set<ReturnType<typeof setTimeout>>();
+
+  private clearKillRefreshTimers() {
+    for (const timer of this.killRefreshTimers) clearTimeout(timer);
+    this.killRefreshTimers.clear();
+  }
+
+  /** Finished sessions just cleared (id -> when): hidden from lists fetched before the clear. */
+  private recentlyCleared = new Map<string, number>();
+
+  /** Keep a just-killed session shown as exited while the server catches up; say so if not. */
+  private applyRecentKills(sessions: Session[]): Session[] {
+    if (this.recentlyCleared.size > 0) {
+      const now = Date.now();
+      for (const [id, at] of this.recentlyCleared) {
+        if (now - at > 5000) this.recentlyCleared.delete(id);
+      }
+      sessions = sessions.filter((session) => !this.recentlyCleared.has(session.id));
+    }
+    if (this.recentlyKilled.size === 0) return sessions;
+    // A killed session that is gone from the list (cleaned up) will never be seen again.
+    const listed = new Set(sessions.map((session) => session.id));
+    for (const id of this.recentlyKilled.keys()) {
+      if (!listed.has(id)) this.recentlyKilled.delete(id);
+    }
+    const now = Date.now();
+    return sessions.map((session) => {
+      const at = this.recentlyKilled.get(session.id);
+      if (at === undefined) return session;
+      if (session.status !== 'running') {
+        this.recentlyKilled.delete(session.id);
+        return session;
+      }
+      if (now - at < 8000) return { ...session, status: 'exited' as const };
+      // Still alive 8 s after a kill the server accepted: tell the user instead of
+      // silently showing it as running again.
+      this.recentlyKilled.delete(session.id);
+      this.showError(t('toast.terminateFailed', { error: session.name || session.id }));
+      return session;
+    });
   }
 
   private handleRefresh() {
@@ -1200,6 +1309,10 @@ export class VibeTunnelApp extends LitElement {
     if (runningSessions.length === 0) {
       return;
     }
+    // One stray tap would end every session, and whatever was running in them.
+    if (!window.confirm(t('sessions.killAllConfirm', { n: runningSessions.length }))) {
+      return;
+    }
 
     // Kill all running sessions directly via API
     const killPromises = runningSessions.map(async (session) => {
@@ -1302,6 +1415,10 @@ export class VibeTunnelApp extends LitElement {
   }
 
   private loadSidebarState(): boolean {
+    // On a phone the open sidebar covers the whole session. Restoring it opened the list over
+    // the session a reload or a link pointed at: a phone always starts with it closed; the
+    // saved state is for wider screens.
+    if (window.innerWidth < BREAKPOINTS.MOBILE) return true;
     try {
       const saved = localStorage.getItem('sidebarCollapsed');
       const isMobile = window.innerWidth < BREAKPOINTS.MOBILE;
@@ -1976,6 +2093,7 @@ export class VibeTunnelApp extends LitElement {
                       @session-status-changed=${this.handleSessionStatusChanged}
                       @open-settings=${this.handleOpenSettings}
                       @capture-toggled=${this.handleCaptureToggled}
+                      @session-killed=${this.handleSessionKilled}
                     ></session-view>
                   `
                 )}

@@ -846,4 +846,7 @@ export const hi: Messages = {
   'theme.cyber': 'साइबर',
   'theme.gold': 'सुनहरा',
   'theme.clay': 'मिट्टी',
+  // Kill all
+  'sessions.killAllConfirm': 'सभी {n} चालू सत्र बंद करें? बिना सहेजा काम खो जाएगा।',
+  'sessions.killAllConfirm.one': 'चालू सत्र बंद करें? बिना सहेजा काम खो जाएगा।',
 };

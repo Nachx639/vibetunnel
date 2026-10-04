@@ -848,4 +848,7 @@ export const bn: Messages = {
   'theme.cyber': 'সাইবার',
   'theme.gold': 'সোনালি',
   'theme.clay': 'মাটি',
+  // Kill all
+  'sessions.killAllConfirm': 'চলমান {n}টি সেশন সব বন্ধ করবেন? সংরক্ষিত না থাকা কাজ হারিয়ে যাবে।',
+  'sessions.killAllConfirm.one': 'চলমান সেশনটি বন্ধ করবেন? সংরক্ষিত না থাকা কাজ হারিয়ে যাবে।',
 };

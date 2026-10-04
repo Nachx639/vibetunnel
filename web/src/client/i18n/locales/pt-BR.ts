@@ -870,4 +870,7 @@ export const ptBR: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Ouro',
   'theme.clay': 'Argila',
+  // Kill all
+  'sessions.killAllConfirm': 'Encerrar as {n} sessões ativas? O trabalho não salvo será perdido.',
+  'sessions.killAllConfirm.one': 'Encerrar a sessão ativa? O trabalho não salvo será perdido.',
 };
