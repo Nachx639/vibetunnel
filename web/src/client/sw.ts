@@ -4,6 +4,7 @@
 
 declare const self: ServiceWorkerGlobalScope;
 
+import { syncAppBadge } from './sw-badge.js';
 import { handleNotificationClick } from './sw-notification-click.js';
 import {
   isGuardedNavigation,
@@ -11,6 +12,12 @@ import {
   OFFLINE_PAGE_URL,
   respondToNavigation,
 } from './sw-offline.js';
+
+type BadgeTarget = Parameters<typeof syncAppBadge>[1];
+
+function syncBadge(): Promise<void> {
+  return syncAppBadge(self.registration, self.navigator as WorkerNavigator & BadgeTarget);
+}
 
 // Notification tag prefix for VibeTunnel notifications
 const NOTIFICATION_TAG_PREFIX = 'vibetunnel-';
@@ -168,19 +175,19 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
 
   const data = event.notification.data as NotificationData;
 
-  event.waitUntil(handleNotificationClick(event.action, data, self.clients, self.location.origin));
+  event.waitUntil(
+    Promise.all([
+      handleNotificationClick(event.action, data, self.clients, self.location.origin),
+      syncBadge(),
+    ])
+  );
 });
 
 // Notification close event - track dismissals
 self.addEventListener('notificationclose', (event: NotificationEvent) => {
   console.log('[SW] Notification closed:', event.notification.tag);
 
-  const data = event.notification.data as NotificationData;
-
-  // Optional: Send analytics or cleanup
-  if (data.type === 'session-exit' || data.type === 'session-error') {
-    // Could track notification dismissal metrics
-  }
+  event.waitUntil(syncBadge());
 });
 
 // No background sync needed
@@ -212,6 +219,7 @@ async function handlePushNotification(payload: PushNotificationPayload): Promise
 
     // Show the notification
     await self.registration.showNotification(title, notificationOptions);
+    await syncBadge();
 
     console.log('[SW] Notification shown:', title);
   } catch (error) {
@@ -307,6 +315,7 @@ async function clearAllNotifications(): Promise<void> {
       }
     }
 
+    await syncBadge();
     console.log('[SW] Cleared all VibeTunnel notifications');
   } catch (error) {
     console.error('[SW] Failed to clear notifications:', error);
