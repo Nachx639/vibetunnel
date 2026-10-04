@@ -1190,4 +1190,55 @@ describe('sessions routes', () => {
       expect(mockPtyManager.createSession).not.toHaveBeenCalled();
     });
   });
+
+  describe('POST /cleanup-exited in HQ mode', () => {
+    type Handler = (req: Request, res: Response) => Promise<void>;
+    const handlerOf = (router: unknown, path: string): Handler => {
+      const layer = (
+        router as { stack: Array<{ route?: { path: string; stack: Array<{ handle: Handler }> } }> }
+      ).stack.find((r) => r.route?.path === path);
+      if (!layer?.route) throw new Error(`no route ${path}`);
+      return layer.route.stack[0].handle;
+    };
+
+    it('forgets the sessions each remote removed', async () => {
+      // The remote is another VibeTunnel server running this same route.
+      const remoteRouter = createSessionRoutes({
+        ptyManager: { cleanupExitedSessions: vi.fn(() => ['r-1', 'r-2']) } as never,
+        terminalManager: mockTerminalManager as never,
+        remoteRegistry: null,
+        isHQMode: false,
+      });
+      const remoteRes = { json: vi.fn(), status: vi.fn().mockReturnThis() };
+      await handlerOf(remoteRouter, '/cleanup-exited')({} as Request, remoteRes as never);
+      const remoteBody = remoteRes.json.mock.calls[0][0];
+
+      const fetchMock = vi.fn(async () => ({ ok: true, json: async () => remoteBody }));
+      vi.stubGlobal('fetch', fetchMock);
+      try {
+        const remoteRegistry = {
+          getRemotes: vi.fn(() => [
+            { id: 'remote-1', name: 'mini', url: 'http://mini', token: 't' },
+          ]),
+          removeSessionFromRemote: vi.fn(),
+        };
+        const hqRouter = createSessionRoutes({
+          ptyManager: { cleanupExitedSessions: vi.fn(() => []) } as never,
+          terminalManager: mockTerminalManager as never,
+          remoteRegistry: remoteRegistry as never,
+          isHQMode: true,
+        });
+        const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
+        await handlerOf(hqRouter, '/cleanup-exited')({} as Request, res as never);
+
+        expect(remoteRegistry.removeSessionFromRemote).toHaveBeenCalledWith('r-1');
+        expect(remoteRegistry.removeSessionFromRemote).toHaveBeenCalledWith('r-2');
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({ remoteResults: [{ remoteName: 'mini', cleaned: 2 }] })
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
 });

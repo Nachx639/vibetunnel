@@ -792,6 +792,8 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
         success: true,
         message: `${totalCleaned} exited sessions cleaned up across all servers`,
         localCleaned: localCleanedSessions.length,
+        // An HQ server reads this list to forget the ids it removed here (see above).
+        cleanedSessions: localCleanedSessions,
         remoteResults,
       });
     } catch (error) {
