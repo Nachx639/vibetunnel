@@ -44,12 +44,14 @@ import './components/auth-login.js';
 import './components/ssh-key-manager.js';
 
 import { openAnswerSheet } from './components/answer-sheet.js';
+import { openClaudeHistory } from './components/claude-history-view.js';
 import { closeMacSessionView, openMacSessionView } from './components/mac-session-view.js';
 import { isPhoneListLayout } from './components/session-list.js';
 import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
+import { listPath } from './utils/agent-mission.js';
 import {
   fetchMacSessions,
   MacSessionsApiError,
@@ -1019,6 +1021,7 @@ export class VibeTunnelApp extends LitElement {
                 JSON.stringify(existingSession.claudeStatus?.activity) !==
                   JSON.stringify(newSession.claudeStatus?.activity) ||
                 existingSession.claudeTitle !== newSession.claudeTitle ||
+                existingSession.claudeResumable !== newSession.claudeResumable ||
                 existingSession.codexTitle !== newSession.codexTitle ||
                 existingSession.codexActive !== newSession.codexActive ||
                 existingSession.geminiTitle !== newSession.geminiTitle ||
@@ -1228,6 +1231,19 @@ export class VibeTunnelApp extends LitElement {
     // Wait for session to appear in the list and then switch to it
     await this.waitForSessionAndSwitch(sessionId);
   }
+
+  /** Claude conversation history: open the session running one, or resume it in a new one. */
+  private handleOpenHistory = () => {
+    openClaudeHistory({
+      authHeader: () => authClient.getAuthHeader(),
+      getSessions: () => this.sessions,
+      onOpenSession: (sessionId) =>
+        void this.handleNavigateToSession(
+          new CustomEvent('navigate-to-session', { detail: { sessionId } })
+        ),
+      onSessionCreated: (sessionId) => void this.waitForSessionAndSwitch(sessionId),
+    });
+  };
 
   private async waitForSessionAndSwitch(sessionId: string) {
     console.log('[App] waitForSessionAndSwitch called with:', sessionId);
@@ -1963,8 +1979,8 @@ export class VibeTunnelApp extends LitElement {
       // Use path-based URL for session view
       url.pathname = `/session/${sessionId}`;
     } else {
-      // Reset to root for list view
-      url.pathname = '/';
+      // The list: back to the phone tab last shown ("/" or the Agents tab's "/agents")
+      url.pathname = listPath();
     }
 
     // Update browser URL without triggering page reload
@@ -2318,6 +2334,7 @@ export class VibeTunnelApp extends LitElement {
             @open-file-browser=${this.handleOpenFileBrowser}
             @open-tmux-sessions=${this.handleOpenTmuxSessions}
             @open-settings=${this.handleOpenSettings}
+            @open-history=${this.handleOpenHistory}
             @logout=${this.handleLogout}
             @navigate-to-list=${this.handleNavigateToList}
             @toggle-sidebar=${this.handleToggleSidebar}

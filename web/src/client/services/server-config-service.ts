@@ -21,6 +21,8 @@ export interface ServerConfig {
   notificationPreferences?: NotificationPreferences;
   /** Phone chat view of agent conversations (config.json `agentChat`). */
   agentChat?: boolean;
+  /** Claude history: every Claude Code conversation, with resume (config.json `claudeHistory`). */
+  claudeHistory?: boolean;
   /** "On this computer" in the phone list: the switch, forced or from config.json (default off). */
   macSessions?: boolean;
   /** What a tap on a tmux session there opens. */

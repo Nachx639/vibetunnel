@@ -25,6 +25,7 @@ import { getLocale, LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import { sessionActionService } from '../services/session-action-service.js';
 import { formatActivity, isBackgroundWait, sessionActivity } from '../utils/claude-activity.js';
+import { resumeClaudeConversation } from '../utils/claude-resume.js';
 import { claudeWaitingLabel } from '../utils/claude-waiting-label.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { announceMacSessionsChanged } from '../utils/mac-sessions.js';
@@ -185,6 +186,7 @@ export class PhoneSessionRow extends LitElement {
    */
   @property({ type: String }) stamp = '';
   @state() private killing = false;
+  @state() private resuming = false;
   /** The quick answer on its way (its option number), until the next poll replaces the prompt. */
   @state() private answering: number | null = null;
   /**
@@ -442,6 +444,13 @@ export class PhoneSessionRow extends LitElement {
             >
               ${t(this.pinned ? 'organize.unpin' : 'organize.pin')}
             </button>
+            ${
+              exited && this.session.claudeSessionId && this.session.claudeResumable && !disconnects
+                ? html`<button data-testid="psr-sheet-resume" @click=${action(() => void this.resumeClaude())}>
+                    ${t('sessions.row.resume')}
+                  </button>`
+                : nothing
+            }
             <button
               class="destructive"
               @click=${
@@ -575,6 +584,67 @@ export class PhoneSessionRow extends LitElement {
   }
 
   /** What the row says under its title: Claude's state and last message, or the folder. */
+  /**
+   * Continue an exited Claude session's conversation (`claude --resume <id>`) in a new session.
+   * Never with the permission-prompt bypass: that is only offered, ticked by the user, in
+   * History.
+   */
+  private async resumeClaude() {
+    const { claudeSessionId, workingDir, name } = this.session;
+    if (!claudeSessionId || this.resuming) return;
+    this.resuming = true;
+    try {
+      const result = await resumeClaudeConversation({
+        claudeSessionId,
+        workingDir,
+        name,
+        skipPermissions: false,
+        authHeader: this.authClient?.getAuthHeader(),
+      });
+      this.dispatchEvent(
+        new CustomEvent('session-created', { detail: result, bubbles: true, composed: true })
+      );
+    } catch (error) {
+      this.dispatchEvent(
+        new CustomEvent('error', {
+          detail: `${t('newChat.failed')}: ${error instanceof Error ? error.message : error}`,
+          bubbles: true,
+        })
+      );
+    } finally {
+      this.resuming = false;
+    }
+  }
+
+  /**
+   * A finished Claude conversation that can be continued (the server says so only with agent
+   * chat on) gets a one-tap Resume right on its row, besides the one in the long-press sheet.
+   */
+  private renderResume() {
+    const { status, claudeSessionId, claudeResumable } = this.session;
+    if (status !== 'exited' || !claudeSessionId || !claudeResumable) return nothing;
+    // Its conversation still runs in that tmux session: resuming it would write it twice.
+    if (isTmuxAttachment(this.session)) return nothing;
+    return html`<button
+      class="psr-resume"
+      data-testid="psr-resume"
+      ?disabled=${this.resuming}
+      style="margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
+        border-radius: 999px; border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+        color: var(--color-primary-text); font-size: 13px; font-weight: 600;${this.resuming ? ' opacity: 0.55;' : ''}"
+      @pointerdown=${(e: Event) => e.stopPropagation()}
+      @click=${(e: Event) => {
+        e.stopPropagation();
+        void this.resumeClaude();
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true">
+        <path d="M7 4.5v15l12.5-7.5z" />
+      </svg>
+      ${t('phoneList.resume')}
+    </button>`;
+  }
+
   private renderPreview(state: RowState) {
     const claude = this.session.claudeStatus;
     if (state === 'waiting') {
@@ -840,6 +910,7 @@ export class PhoneSessionRow extends LitElement {
             }
           </div>
           ${this.renderChoices()}
+          ${this.renderResume()}
         </div>
         <button
           class="psr-menu"

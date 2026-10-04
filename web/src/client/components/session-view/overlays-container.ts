@@ -18,6 +18,8 @@ import '../file-picker.js';
 import './width-selector.js';
 
 export interface OverlaysCallbacks {
+  /** "Resume conversation" on an exited Claude session that can be continued. */
+  onResumeClaude?: () => void;
   // Ctrl+Alpha callbacks
   onCtrlKey: (letter: string) => void;
   onSendCtrlSequence: () => void;
@@ -83,6 +85,20 @@ export class OverlaysContainer extends LitElement {
                   SESSION EXITED
                 </span>
               </div>
+              ${
+                this.session.claudeSessionId &&
+                this.session.claudeResumable &&
+                this.callbacks.onResumeClaude
+                  ? html`<button
+                      class="mt-3 w-full px-4 py-2.5 rounded-lg bg-primary text-text-bright text-sm font-medium shadow-elevated"
+                      style="pointer-events: auto;"
+                      data-testid="resume-claude"
+                      @click=${() => this.callbacks?.onResumeClaude?.()}
+                    >
+                      ${t('sessions.row.resume')}
+                    </button>`
+                  : ''
+              }
             </div>
           `
           : ''

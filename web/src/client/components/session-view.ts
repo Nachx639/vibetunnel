@@ -26,6 +26,7 @@ import './terminal-chat-view.js';
 import { authClient } from '../services/auth-client.js';
 import { GitService } from '../services/git-service.js';
 import { agentChatEnabled } from '../utils/agent-chat.js';
+import { resumeClaudeConversation } from '../utils/claude-resume.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
 import { attachedTmux, changeAttachMode } from '../utils/mac-attach-mode.js';
@@ -55,6 +56,7 @@ import { UIStateManager } from './session-view/ui-state-manager.js';
 // Components
 import './session-view/terminal-renderer.js';
 import './session-view/overlays-container.js';
+import './away-summary-card.js';
 import './mobile-action-bar.js';
 import './claude-chat-view.js';
 import type { ClaudeChatView, SentChatMessage, SentChatMessageRef } from './claude-chat-view.js';
@@ -982,6 +984,29 @@ export class SessionView extends LitElement {
     }
   }
 
+  /**
+   * Start a new session that resumes the Claude Code conversation of this exited one. Never with
+   * the permission-prompt bypass: that is only offered, ticked by the user, in History.
+   */
+  private async handleResumeClaude() {
+    const session = this.session;
+    if (!session?.claudeSessionId) return;
+    try {
+      const { sessionId } = await resumeClaudeConversation({
+        claudeSessionId: session.claudeSessionId,
+        workingDir: session.workingDir,
+        name: session.name,
+        skipPermissions: false,
+        authHeader: authClient.getAuthHeader(),
+      });
+      this.dispatchEvent(
+        new CustomEvent('session-created', { detail: { sessionId }, bubbles: true, composed: true })
+      );
+    } catch (error) {
+      logger.error('Failed to resume Claude conversation', error);
+    }
+  }
+
   private async handleTerminalInput(e: CustomEvent) {
     const { text } = e.detail;
     if (this.inputManager && text) {
@@ -1708,6 +1733,18 @@ export class SessionView extends LitElement {
                   .onTerminalResize=${this.boundHandleTerminalResize}
                   .onTerminalReady=${this.boundHandleTerminalReady}
                 ></terminal-renderer>
+
+                <!-- "While you were away" (agent chat only): what the agent did since this session
+                     was last on screen. Hidden while the chat asks a question, whose card it would
+                     cover on a small phone. -->
+                ${
+                  this.agentChat
+                    ? html`<away-summary-card
+                        style="position: absolute; top: 8px; left: 8px; right: 8px; z-index: 6; ${uiState.chatMode && this.chatAsking ? 'display: none;' : ''}"
+                        .session=${this.session}
+                      ></away-summary-card>`
+                    : nothing
+                }
                 
                 <!-- Phone agent chat: the agent's conversation as message bubbles over the live
                      terminal (it hides itself when the session runs no agent it can read). -->
@@ -1859,6 +1896,7 @@ export class SessionView extends LitElement {
             .session=${this.session}
             .uiState=${uiState}
             .callbacks=${{
+              onResumeClaude: () => void this.handleResumeClaude(),
               // Ctrl+Alpha callbacks
               onCtrlKey: (letter: string) => this.handleCtrlKey(letter),
               onSendCtrlSequence: () => this.handleSendCtrlSequence(),

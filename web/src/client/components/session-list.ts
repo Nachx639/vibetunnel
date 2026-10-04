@@ -25,6 +25,10 @@ import { HttpMethod } from '../../shared/types.js';
 import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import type { Worktree } from '../services/git-service.js';
+import { renderAgentsTabs } from './agent-mission.js';
+import { type AskAgent, type AskClaudeBox, readAskAgent } from './ask-claude-box.js';
+import './ask-claude-box.js';
+import './file-browser.js';
 import './phone-session-row.js';
 import './mac-session-row.js';
 import './session-card.js';
@@ -36,11 +40,21 @@ import './git-status-badge.js';
 import { getBaseRepoName } from '../../shared/utils/git.js';
 import type { QuickStartCommand } from '../../types/config.js';
 import { serverConfigService } from '../services/server-config-service.js';
+import { agentChatEnabled } from '../utils/agent-chat.js';
+import {
+  AGENTS_ROUTE_EVENT,
+  isAgentsRoute,
+  missionCards,
+  missionStamp,
+  syncListPathFromUrl,
+} from '../utils/agent-mission.js';
+import { preferChatMode } from '../utils/claude-resume.js';
 import { parseCommand } from '../utils/command-utils.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import {
+  macItemHasAgents,
   macSessionsHeading,
   macSessionsPlatform,
   macWarningTexts,
@@ -69,6 +83,8 @@ const MAX_RECENT_FOLDERS = 6;
 interface PhoneStarts {
   tool?: string;
   folders?: string[];
+  /** Folder of the last "Ask Claude…" (or Claude session started from the phone). */
+  claudeFolder?: string;
 }
 
 function readPhoneStarts(): PhoneStarts {
@@ -140,6 +156,27 @@ export class SessionList extends LitElement {
     this.addEventListener('keydown', this.handleKeyDown);
     // Add click outside listener for dropdowns
     document.addEventListener('click', this.handleClickOutside);
+    // Phone "Sessions | Agents" switch follows the URL (/agents).
+    window.addEventListener('popstate', this.handleListRoute);
+    window.addEventListener(AGENTS_ROUTE_EVENT, this.handleListRoute);
+    syncListPathFromUrl();
+  }
+
+  private handleListRoute = () => {
+    syncListPathFromUrl();
+    this.requestUpdate();
+  };
+
+  /**
+   * The server has agent chat on (config.json `agentChat`): only then does the compact phone
+   * list offer the Agents tab and the "Ask Claude…" box (both rely on the agent's status).
+   */
+  @state() private agentChat = false;
+
+  private checkAgentChat() {
+    void agentChatEnabled().then((enabled) => {
+      if (enabled !== this.agentChat) this.agentChat = enabled;
+    });
   }
 
   private handlePhoneUiChanged = () => this.requestUpdate();
@@ -198,8 +235,11 @@ export class SessionList extends LitElement {
     window.removeEventListener('resize', this.placeFab);
     window.removeEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
     this.closeSheet();
+    this.closeAskFolderPicker();
     this.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('click', this.handleClickOutside);
+    window.removeEventListener('popstate', this.handleListRoute);
+    window.removeEventListener(AGENTS_ROUTE_EVENT, this.handleListRoute);
   }
 
   private handleClickOutside = (e: MouseEvent) => {
@@ -1269,6 +1309,40 @@ export class SessionList extends LitElement {
   }
 
   private renderPhoneRows(allRunning: Session[], allExited: Session[]) {
+    this.checkAgentChat();
+    if (!this.compactMode && this.agentChat) {
+      const agents = isAgentsRoute();
+      const tabs = renderAgentsTabs(agents, this.sessions);
+      if (agents) return html`${tabs}${this.renderMission()}`;
+      return html`${tabs}${this.renderPhoneSessionRows(allRunning, allExited)}`;
+    }
+    return this.renderPhoneSessionRows(allRunning, allExited);
+  }
+
+  /**
+   * Mission control (/agents): every agent session as a card, with broadcast. Below it, "On this
+   * computer" with only what runs an agent: tmux sessions and agents outside VibeTunnel. Rows, as
+   * in the Sessions tab, not cards: broadcast never types into them.
+   */
+  private renderMission() {
+    const sessions = this.sessions;
+    const onMac = this.renderMacSection(this.listedMacItems().filter(macItemHasAgents), {
+      warnings: false,
+    });
+    // Its "No agents running" would be wrong above the computer's agents. It stays in the page:
+    // the tabs' styles live in it.
+    const hidden = onMac !== nothing && !missionCards(sessions).length;
+    return html`<agent-mission
+        ?hidden=${hidden}
+        .sessions=${sessions}
+        .authClient=${this.authClient}
+        .stamp=${missionStamp(sessions)}
+        @session-select=${this.handleSessionSelect}
+      ></agent-mission
+      >${onMac}`;
+  }
+
+  private renderPhoneSessionRows(allRunning: Session[], allExited: Session[]) {
     const macItems = this.listedMacItems();
     // Count every session, hidden finished ones included (2 running + 30 finished needs search),
     // and what "On this computer" lists.
@@ -1288,6 +1362,7 @@ export class SessionList extends LitElement {
     const row = (session: Session) => this.renderPhoneRow(session);
     return html`
       ${this.compactMode ? '' : this.renderNewChatButton()}
+      ${this.compactMode ? '' : this.renderAskBox()}
       ${
         searchable
           ? html`<div class="phone-search">
@@ -1400,8 +1475,10 @@ export class SessionList extends LitElement {
   /** Phone home with nothing running: pick a tool (your quick starts), then a folder. */
   private renderPhoneEmpty(exitedCount: number) {
     this.loadQuickStarts();
+    this.checkAgentChat();
     const tools = this.quickStartList();
     return html`
+      ${this.renderAskBox()}
       <div class="phone-empty" data-testid="phone-empty">
         <h2>${t('empty.title')}</h2>
         <p>${t('empty.subtitle')}</p>
@@ -1587,8 +1664,163 @@ export class SessionList extends LitElement {
     ]);
   }
 
+  /** The quick start that runs Claude Code (your configured command and flags), or plain claude. */
+  private claudeQuickStart(): QuickStartCommand {
+    return (
+      this.quickStartList().find((entry) => this.isClaudeCommand(entry.command)) ?? {
+        command: 'claude',
+      }
+    );
+  }
+
+  /** The quick start that runs Codex (your configured command and flags), or plain codex. */
+  private codexQuickStart(): QuickStartCommand {
+    return (
+      this.quickStartList().find((entry) =>
+        /(^|\/)codex$/.test(parseCommand(entry.command.trim())[0] ?? '')
+      ) ?? { command: 'codex' }
+    );
+  }
+
+  private isClaudeCommand(command: string): boolean {
+    return /(^|\/)claude$/.test(parseCommand(command.trim())[0] ?? '');
+  }
+
+  @state() private repositoryBasePath = '';
+  @state() private askFolderOverride = '';
+  @state() private asking = false;
+  private repositoryBasePathLoaded = false;
+
+  /** "Ask Claude…" folder: the one you picked, the last one used for Claude, else the repo base. */
+  private askFolder(): string {
+    if (this.askFolderOverride) return this.askFolderOverride;
+    const remembered = readPhoneStarts().claudeFolder;
+    if (typeof remembered === 'string' && remembered) return remembered;
+    const recency = (session: Session) =>
+      new Date(session.lastModified || session.startedAt || 0).getTime();
+    const lastClaude = this.sessions
+      .filter(
+        (session) =>
+          session.source !== 'remote' &&
+          !session.remoteId &&
+          session.workingDir &&
+          this.isClaudeCommand(session.command?.join(' ') ?? '')
+      )
+      .sort((a, b) => recency(b) - recency(a))[0];
+    return lastClaude?.workingDir || this.repositoryBasePath || '~';
+  }
+
+  /** "Ask Claude…" / "Ask Codex…": only with agent chat on (the server types the question). */
+  private renderAskBox() {
+    if (!this.agentChat) return nothing;
+    this.loadQuickStarts();
+    if (!this.repositoryBasePathLoaded) {
+      this.repositoryBasePathLoaded = true;
+      serverConfigService
+        .getRepositoryBasePath()
+        .then((basePath) => {
+          this.repositoryBasePath = basePath;
+        })
+        .catch(() => {});
+    }
+    return html`<ask-claude-box
+      .folder=${this.askFolder()}
+      .busy=${this.asking}
+      @ask-claude=${this.handleAskClaude}
+      @ask-pick-folder=${this.openAskFolderSheet}
+    ></ask-claude-box>`;
+  }
+
+  private openAskFolderSheet = () => {
+    const current = this.askFolder();
+    // "~/Projects" and "/home/me/Projects" can be the same folder: compare as displayed.
+    const seen = new Set<string>();
+    const folders = [current, ...this.recentFolders(), this.repositoryBasePath || '~'].filter(
+      (folder) => {
+        const key = folder && formatPathForDisplay(folder);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }
+    );
+    this.showSheet(t(readAskAgent() === 'codex' ? 'ask.whereCodex' : 'ask.where'), [
+      ...folders.map((folder) => ({
+        label: formatPathForDisplay(folder),
+        mono: true,
+        run: () => this.setAskFolder(folder),
+      })),
+      // An action, not a path: no `mono`, like "Other folder…" in the new-session sheet.
+      { label: t('ask.otherFolder'), run: () => this.openAskFolderPicker(current) },
+    ]);
+  };
+
+  private setAskFolder(folder: string) {
+    this.askFolderOverride = folder;
+    writePhoneStarts({ claudeFolder: folder });
+  }
+
+  private askFolderPickerHost: HTMLElement | null = null;
+
+  /**
+   * "Other folder…": the folder picker of the new-session form (file-browser in select mode),
+   * opened in the current ask folder. In <body> like the sheets, above the whole app.
+   */
+  private openAskFolderPicker(start: string) {
+    this.closeAskFolderPicker();
+    // A question being typed keeps its keyboard up: it would cover the picker's buttons.
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.matches('input, textarea')) focused.blur();
+    const host = document.createElement('div');
+    this.askFolderPickerHost = host;
+    document.body.appendChild(host);
+    render(
+      html`<file-browser
+        .visible=${true}
+        .mode=${'select'}
+        .session=${{ workingDir: start } as Session}
+        @directory-selected=${(e: CustomEvent<string>) => {
+          this.closeAskFolderPicker();
+          this.setAskFolder(e.detail);
+        }}
+        @browser-cancel=${this.closeAskFolderPicker}
+      ></file-browser>`,
+      host
+    );
+  }
+
+  private closeAskFolderPicker = () => {
+    if (!this.askFolderPickerHost) return;
+    render(nothing, this.askFolderPickerHost);
+    this.askFolderPickerHost.remove();
+    this.askFolderPickerHost = null;
+  };
+
+  /** Start Claude or Codex in the chosen folder; the server types the question once it is ready. */
+  private handleAskClaude = async (e: CustomEvent<{ text: string; agent?: AskAgent }>) => {
+    if (this.asking) return;
+    this.asking = true;
+    const folder = this.askFolder();
+    writePhoneStarts({ claudeFolder: folder });
+    // A question is a conversation: open it in chat mode.
+    preferChatMode();
+    try {
+      const agent = e.detail.agent === 'codex' ? 'codex' : 'claude';
+      const entry = agent === 'codex' ? this.codexQuickStart() : this.claudeQuickStart();
+      const started = await this.startSession(entry, folder, e.detail.text, agent);
+      // Not started: give the question back instead of losing it.
+      if (!started) (e.target as AskClaudeBox).restore(e.detail.text);
+    } finally {
+      this.asking = false;
+    }
+  };
+
   /** The same request as the create dialog, with the quick start's exact command. */
-  private async startSession(entry: QuickStartCommand, workingDir: string): Promise<boolean> {
+  private async startSession(
+    entry: QuickStartCommand,
+    workingDir: string,
+    initialInput?: string,
+    initialInputAgent?: AskAgent
+  ): Promise<boolean> {
     const command = parseCommand(entry.command.trim());
     writePhoneStarts({
       tool: entry.command.trim(),
@@ -1596,6 +1828,7 @@ export class SessionList extends LitElement {
         workingDir,
         ...(readPhoneStarts().folders ?? []).filter((folder) => folder !== workingDir),
       ].slice(0, MAX_RECENT_FOLDERS),
+      ...(this.isClaudeCommand(entry.command) ? { claudeFolder: workingDir } : {}),
     });
     try {
       const response = await fetch('/api/sessions', {
@@ -1608,6 +1841,7 @@ export class SessionList extends LitElement {
           spawn_terminal: false,
           cols: 120,
           rows: 30,
+          ...(initialInput ? { initialInput, initialInputAgent } : {}),
         }),
       });
       const result = await response.json();

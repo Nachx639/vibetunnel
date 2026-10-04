@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { agentChatEnabled, resetAgentChatCache } from './agent-chat.js';
+import { agentChatEnabled, claudeHistoryEnabled, resetAgentChatCache } from './agent-chat.js';
 
 describe('agentChatEnabled (client)', () => {
   beforeEach(() => resetAgentChatCache());
@@ -38,5 +38,16 @@ describe('agentChatEnabled (client)', () => {
     await Promise.all([agentChatEnabled(), agentChatEnabled()]);
     await agentChatEnabled();
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads Claude history from the same answer, off unless the server says true', async () => {
+    const fetch = answer({ agentChat: false, claudeHistory: true });
+    vi.stubGlobal('fetch', fetch);
+    expect(await claudeHistoryEnabled()).toBe(true);
+    expect(await agentChatEnabled()).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    resetAgentChatCache();
+    vi.stubGlobal('fetch', answer({ agentChat: true }));
+    expect(await claudeHistoryEnabled()).toBe(false);
   });
 });

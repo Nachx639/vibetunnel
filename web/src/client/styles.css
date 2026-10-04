@@ -3627,3 +3627,120 @@ claude-activity-elapsed {
   font-weight: 400;
   color: var(--color-text-muted);
 }
+
+/* "Ask Claude…" on the phone home screen (ask-claude-box). */
+.ask-claude {
+  margin: 0 0 12px;
+  padding: 10px 12px 8px;
+  border-radius: 14px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+}
+.ask-claude:focus-within {
+  border-color: var(--color-primary);
+}
+.ask-claude textarea {
+  display: block;
+  width: 100%;
+  min-height: 24px;
+  max-height: 140px;
+  resize: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text);
+  font-size: 16px;
+  line-height: 1.4;
+}
+.ask-claude textarea::placeholder {
+  color: var(--color-text-dim);
+}
+.ask-claude-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+.ask-claude-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+/* Claude / Codex picker: a two-option segmented control. */
+.ask-claude-agent {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--color-bg-secondary);
+}
+.ask-claude-agent button {
+  min-height: 28px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.ask-claude-agent button.selected {
+  background: var(--color-primary);
+  color: #fff;
+}
+/* It names the folder (not its path): the system font fits a longer name in the room a small
+   phone leaves it than a monospace one would. */
+.ask-claude-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-muted);
+  font: 500 13px -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+.ask-claude-folder bdi {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A small phone leaves the folder chip little room in this row: tighter spacing gives its
+   folder name some 18px (about three letters) back. */
+@media (max-width: 380px) {
+  .ask-claude-bar,
+  .ask-claude-actions {
+    gap: 6px;
+  }
+  .ask-claude-start {
+    gap: 4px;
+  }
+  .ask-claude-agent button {
+    padding: 2px 7px;
+  }
+}
+.ask-claude-send {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary);
+  color: #fff;
+}
+.ask-claude-send:disabled {
+  opacity: 0.4;
+}
+.ask-claude-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}

@@ -6,6 +6,7 @@
 import { html } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { t } from '../i18n/index.js';
+import { claudeHistoryEnabled } from '../utils/agent-chat.js';
 import { PHONE_UI_CHANGED_EVENT, usesCompactPhoneUi } from '../utils/phone-ui.js';
 import { HeaderBase } from './header-base.js';
 import './terminal-icon.js';
@@ -16,6 +17,7 @@ const MENU_ICONS = {
   settings: html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>`,
   files: html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>`,
   tmux: html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16M3 12h9" /></svg>`,
+  history: html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 103-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></svg>`,
   logout: html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 17l5-5-5-5M15 12H3" /></svg>`,
 };
 
@@ -23,6 +25,8 @@ const MENU_ICONS = {
 export class FullHeader extends HeaderBase {
   @state() private showMoreMenu = false;
   @state() private moreMenuStyle = '';
+  /** The server offers Claude history (config.json `claudeHistory`, never under --no-auth). */
+  @state() private historyAvailable = false;
 
   connectedCallback() {
     super.connectedCallback();
@@ -55,6 +59,11 @@ export class FullHeader extends HeaderBase {
       this.moreMenuStyle = `top: ${rect.bottom + 6}px; right: ${window.innerWidth - rect.right}px;`;
     }
     this.showMoreMenu = open;
+    if (open) {
+      void claudeHistoryEnabled().then((available) => {
+        this.historyAvailable = available;
+      });
+    }
     document.removeEventListener('click', this.closeMoreMenu, true);
     if (open) document.addEventListener('click', this.closeMoreMenu, true);
   }
@@ -120,6 +129,13 @@ export class FullHeader extends HeaderBase {
                 ${this.menuItem(t('header.tmuxSessionsButton'), MENU_ICONS.tmux, () =>
                   this.handleOpenTmuxSessions()
                 )}
+                ${
+                  this.historyAvailable
+                    ? this.menuItem(t('history.menuItem'), MENU_ICONS.history, () =>
+                        this.dispatchEvent(new CustomEvent('open-history'))
+                      )
+                    : ''
+                }
                 ${
                   this.currentUser
                     ? html`

@@ -10,6 +10,7 @@
  * @fires clean-exited-sessions - When clean exited button is clicked
  * @fires open-file-browser - When browse button is clicked
  * @fires open-tmux-sessions - When tmux sessions button is clicked
+ * @fires open-history - When the Claude conversation history is asked for (phone More menu)
  * @fires logout - When logout is clicked
  * @fires toggle-sidebar - When sidebar toggle button is clicked
  */
@@ -83,6 +84,7 @@ export class AppHeader extends LitElement {
         @open-file-browser=${this.forwardEvent}
         @open-tmux-sessions=${this.forwardEvent}
         @open-settings=${this.forwardEvent}
+        @open-history=${this.forwardEvent}
         @logout=${this.forwardEvent}
         @navigate-to-list=${this.forwardEvent}
       ></full-header>
