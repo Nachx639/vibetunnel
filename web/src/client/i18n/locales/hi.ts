@@ -1062,4 +1062,7 @@ export const hi: Messages = {
   'claudeWaiting.goal': 'लक्ष्य का प्रस्ताव',
   'claudeWaiting.sandbox': 'नेटवर्क एक्सेस का अनुरोध',
   'claudeWaiting.worker': 'सब-एजेंट का अनुरोध',
+  'toast.claudeNeedsYou': '{name} को आपकी ज़रूरत है',
+  'toast.claudeFinished': 'Claude ने पूरा किया · {name}',
+  'toast.claudeReplied': 'Claude ने जवाब दिया · {name}',
 };

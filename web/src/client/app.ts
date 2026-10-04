@@ -40,6 +40,7 @@ import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
+import { isBackgroundWait } from './utils/claude-activity.js';
 import { usesCompactPhoneUi } from './utils/phone-ui.js';
 import { prunePinned } from './utils/pinned-sessions.js';
 import { VisibilityPoller } from './utils/visibility-poller.js';
@@ -87,6 +88,11 @@ export class VibeTunnelApp extends LitElement {
   @state() private errorMessage = '';
   protected readonly i18n = new LocaleController(this);
   @state() private successMessage = '';
+  /** "Claude finished / needs you" in a session that isn't on screen; tapping it opens it. */
+  @state() private attentionToast: { sessionId: string; text: string; waiting: boolean } | null =
+    null;
+  private previousClaudeStatus = new Map<string, string>();
+  private attentionToastTimer: ReturnType<typeof setTimeout> | null = null;
   @state() private sessions: Session[] = [];
   @state() private loading = false;
   @state() private currentView: 'list' | 'session' | 'auth' | 'file-browser' = 'auth';
@@ -260,6 +266,7 @@ export class VibeTunnelApp extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    if (this.attentionToastTimer) clearTimeout(this.attentionToastTimer);
     if (this.hotReloadWs) {
       this.hotReloadWs.close();
     }
@@ -766,6 +773,71 @@ export class VibeTunnelApp extends LitElement {
     if (this.loadFailures >= 2 || !this.everLoaded) this.reconnecting = true;
   }
 
+  /**
+   * Say when Claude Code finishes or starts waiting in a session that isn't on screen, so a
+   * phone user hears about it where system push isn't available (Chrome on iOS). Sessions
+   * only carry `claudeStatus` while the server has agent chat on, so this stays silent
+   * otherwise. Tapping the toast opens the session.
+   */
+  private announceClaudeTransitions(sessions: Session[]) {
+    const firstSnapshot = this.previousClaudeStatus.size === 0 && !this.initialLoadComplete;
+    for (const session of sessions) {
+      const claude = session.status === 'running' ? session.claudeStatus : undefined;
+      // Busy only for background agents is its own state: the reply is over.
+      const now = isBackgroundWait(claude) ? 'busy:background' : claude?.status;
+      const before = this.previousClaudeStatus.get(session.id);
+      if (now) this.previousClaudeStatus.set(session.id, now);
+      else this.previousClaudeStatus.delete(session.id);
+      // Only real transitions of a session already known to be running Claude.
+      if (firstSnapshot || !now || !before || now === before) continue;
+
+      const viewing =
+        (this.currentView === 'session' && this.selectedSessionId === session.id) ||
+        window.location.pathname === `/session/${session.id}`;
+      if (viewing) continue;
+      const name = session.claudeStatus?.title || session.claudeTitle || session.name || 'Session';
+      if (now === 'waiting') {
+        this.showAttentionToast(session.id, `⏳ ${t('toast.claudeNeedsYou', { name })}`, true);
+      } else if (now === 'idle' && (before === 'busy' || before === 'busy:background')) {
+        this.showAttentionToast(session.id, `✅ ${t('toast.claudeFinished', { name })}`, false);
+      } else if (now === 'busy:background' && before === 'busy') {
+        this.showAttentionToast(session.id, `💬 ${t('toast.claudeReplied', { name })}`, false);
+      }
+    }
+  }
+
+  private showAttentionToast(sessionId: string, text: string, waiting: boolean) {
+    this.attentionToast = { sessionId, text, waiting };
+    announce(text);
+    if (this.attentionToastTimer) clearTimeout(this.attentionToastTimer);
+    this.attentionToastTimer = setTimeout(() => {
+      this.attentionToast = null;
+    }, 7000);
+  }
+
+  private renderAttentionToast() {
+    const toast = this.attentionToast;
+    if (!toast) return '';
+    return html`
+      <button
+        class="fixed left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-full shadow-2xl text-sm font-medium border ${
+          toast.waiting
+            ? 'bg-status-warning text-bg border-status-warning'
+            : 'bg-bg-elevated text-text border-border'
+        }"
+        style="top: calc(env(safe-area-inset-top, 0px) + 68px); z-index: ${Z_INDEX.NOTIFICATION}; max-width: calc(100vw - 32px);"
+        @click=${() => {
+          this.attentionToast = null;
+          this.handleNavigateToSession(
+            new CustomEvent('navigate-to-session', { detail: { sessionId: toast.sessionId } })
+          );
+        }}
+      >
+        ${toast.text}
+      </button>
+    `;
+  }
+
   private renderReconnecting() {
     if (!this.reconnecting) return '';
     return html`<div class="reconnecting-pill" role="status" aria-live="polite">
@@ -882,6 +954,8 @@ export class VibeTunnelApp extends LitElement {
             // If newSession has Git data, ensure we create a complete session object
             return newSession;
           });
+
+          this.announceClaudeTransitions(updatedSessions);
 
           // Pins of sessions that no longer exist are forgotten.
           prunePinned(updatedSessions.map((session) => session.id));
@@ -2263,6 +2337,7 @@ export class VibeTunnelApp extends LitElement {
       ></multiplexer-modal>
 
       ${this.renderReconnecting()}
+      ${this.renderAttentionToast()}
 
       <!-- Session quick switcher (Cmd+K, opt-in) -->
       <session-quick-switcher

@@ -1060,4 +1060,7 @@ export const ar: Messages = {
   'claudeWaiting.goal': 'اقتراح هدف',
   'claudeWaiting.sandbox': 'طلب وصول إلى الشبكة',
   'claudeWaiting.worker': 'طلب من وكيل فرعي',
+  'toast.claudeNeedsYou': '{name} يحتاج إليك',
+  'toast.claudeFinished': 'أنهى Claude · {name}',
+  'toast.claudeReplied': 'ردّ Claude · {name}',
 };

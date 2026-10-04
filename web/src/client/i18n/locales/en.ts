@@ -1083,6 +1083,9 @@ export const en = {
   'claudeWaiting.goal': 'Goal proposal',
   'claudeWaiting.sandbox': 'Network access request',
   'claudeWaiting.worker': 'Subagent request',
+  'toast.claudeNeedsYou': '{name} needs you',
+  'toast.claudeFinished': 'Claude finished · {name}',
+  'toast.claudeReplied': 'Claude replied · {name}',
 };
 
 export type MessageKey = keyof typeof en;

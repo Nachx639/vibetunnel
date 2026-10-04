@@ -1064,4 +1064,7 @@ export const bn: Messages = {
   'claudeWaiting.goal': 'লক্ষ্যের প্রস্তাব',
   'claudeWaiting.sandbox': 'নেটওয়ার্ক অ্যাক্সেসের অনুরোধ',
   'claudeWaiting.worker': 'সাব-এজেন্টের অনুরোধ',
+  'toast.claudeNeedsYou': '{name}-এ আপনাকে দরকার',
+  'toast.claudeFinished': 'Claude শেষ করেছে · {name}',
+  'toast.claudeReplied': 'Claude উত্তর দিয়েছে · {name}',
 };

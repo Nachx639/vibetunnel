@@ -1051,4 +1051,7 @@ export const zhCN: Messages = {
   'claudeWaiting.goal': '目标提议',
   'claudeWaiting.sandbox': '网络访问请求',
   'claudeWaiting.worker': '子代理请求',
+  'toast.claudeNeedsYou': '{name} 需要你',
+  'toast.claudeFinished': 'Claude 已完成 · {name}',
+  'toast.claudeReplied': 'Claude 已回复 · {name}',
 };

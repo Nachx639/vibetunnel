@@ -217,6 +217,59 @@ describe('session list polling', () => {
     await app.loadSessions();
     expect(app.sessions.map((s) => (s as { id: string }).id)).toEqual(['x', 'o']);
   });
+  it('says nothing about Claude while sessions carry no Claude status (agent chat off)', async () => {
+    const plain = { id: 'p', name: 'claude', status: 'running', workingDir: '/tmp' };
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify([plain])));
+    await app.loadSessions();
+    await app.loadSessions();
+    expect((app as unknown as { attentionToast: unknown }).attentionToast).toBeNull();
+  });
+
+  it('a toast says when Claude finishes or needs you in a session not on screen', async () => {
+    const claude = (id: string, status: string) => ({
+      id,
+      name: id,
+      status: 'running',
+      workingDir: '/tmp',
+      claudeStatus: { status, since: 1 },
+    });
+    const internals = app as unknown as {
+      attentionToast: { sessionId: string; text: string; waiting: boolean } | null;
+      selectedSessionId: string | null;
+    };
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify([claude('a', 'busy'), claude('b', 'busy')]))
+    );
+    await app.loadSessions();
+    expect(internals.attentionToast).toBeNull();
+
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify([claude('a', 'idle'), claude('b', 'busy')]))
+    );
+    await app.loadSessions();
+    expect(internals.attentionToast).toMatchObject({ sessionId: 'a', waiting: false });
+    expect(internals.attentionToast?.text).toContain('Claude finished');
+
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify([claude('a', 'idle'), claude('b', 'waiting')]))
+    );
+    await app.loadSessions();
+    expect(internals.attentionToast).toMatchObject({ sessionId: 'b', waiting: true });
+
+    // Gone by itself after a while.
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect(internals.attentionToast).toBeNull();
+
+    // Never about the session on screen.
+    app.currentView = 'session';
+    internals.selectedSessionId = 'a';
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify([claude('a', 'waiting'), claude('b', 'waiting')]))
+    );
+    await app.loadSessions();
+    expect(internals.attentionToast).toBeNull();
+  });
+
   it('forgets a killed session once it is gone from the server list', async () => {
     const running = { id: 'k', name: 'zsh', status: 'running', workingDir: '/tmp' };
     const other = { id: 'o', name: 'other', status: 'running', workingDir: '/tmp' };

@@ -1088,4 +1088,7 @@ export const ptBR: Messages = {
   'claudeWaiting.goal': 'Proposta de objetivo',
   'claudeWaiting.sandbox': 'Pedido de acesso à rede',
   'claudeWaiting.worker': 'Pedido de um subagente',
+  'toast.claudeNeedsYou': '{name} precisa de você',
+  'toast.claudeFinished': 'Claude terminou · {name}',
+  'toast.claudeReplied': 'Claude respondeu · {name}',
 };

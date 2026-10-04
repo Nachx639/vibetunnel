@@ -1089,4 +1089,7 @@ export const es: Messages = {
   'claudeWaiting.goal': 'Propuesta de objetivo',
   'claudeWaiting.sandbox': 'Petición de acceso a la red',
   'claudeWaiting.worker': 'Petición de un subagente',
+  'toast.claudeNeedsYou': '{name} te necesita',
+  'toast.claudeFinished': 'Claude ha terminado · {name}',
+  'toast.claudeReplied': 'Claude ha respondido · {name}',
 };
