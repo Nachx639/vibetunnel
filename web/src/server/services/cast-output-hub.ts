@@ -291,7 +291,12 @@ export class CastOutputHub {
         });
       } while (watcherInfo.readAgain);
     } catch (error) {
-      logger.error(`failed to read file changes for session ${sessionId}:`, error);
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        // A cleaned-up session: the poll would log this every second until its clients leave.
+        logger.debug(`cast of ${sessionId} is gone`);
+      } else {
+        logger.error(`failed to read file changes for session ${sessionId}:`, error);
+      }
     } finally {
       watcherInfo.reading = false;
     }

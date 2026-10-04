@@ -173,6 +173,31 @@ describe('CastOutputHub live follow', () => {
     }
   });
 
+  it('does not log an error every second once the cast is deleted', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cast-hub-'));
+    const stdoutPath = path.join(tmpDir, 'stdout');
+    fs.writeFileSync(stdoutPath, `${HEADER}\n`);
+    const sessionManager = {
+      getSessionPaths: () => ({ stdoutPath }),
+      loadSessionInfo: () => ({ lastClearOffset: 0 }),
+      saveSessionInfo: vi.fn(),
+    } as unknown as SessionManager;
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const events: CastOutputHubEvent[] = [];
+    const unsubscribe = new CastOutputHub(sessionManager).subscribe('s1', (e) => events.push(e));
+    try {
+      await vi.waitFor(() => expect(events.some((e) => e.kind === 'header')).toBe(true));
+      // A session cleaned up while a phone still follows it.
+      fs.rmSync(stdoutPath);
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+      consoleError.mockRestore();
+    }
+  });
+
   it('follows a session that fell far behind from a whole event near the end', async () => {
     // The live read took all new bytes at once: a 540 MB burst (a sparse hole of NUL bytes
     // here, no disk used) was one buffer and one string past V8's limit, so it threw and
