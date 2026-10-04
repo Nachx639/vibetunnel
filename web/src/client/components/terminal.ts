@@ -22,6 +22,9 @@ import { createGhostty } from './terminal-ghostty.js';
 
 const logger = createLogger('terminal');
 
+/** How long after a touch ends mouse events count as iOS's emulation of that touch. */
+const EMULATED_MOUSE_MS = 1000;
+
 /** Our scrollbar stays this long after the view stops moving. */
 const SCROLLBAR_HIDE_MS = 1000;
 /** Gap above and below its thumb's travel, and the thumb's least height (CSS px). */
@@ -92,6 +95,9 @@ export class Terminal extends LitElement {
   private lastTouchY = 0;
   private touchScrollRemainder = 0;
   private touchScrolling = false;
+  /** The touch scroll in progress goes to the app as wheel events (mouse reporting). */
+  private touchScrollsApp = false;
+  private canvasElement: HTMLCanvasElement | null = null;
   /** What ghostty's canvas shows, as the render hook last painted it. */
   private canvasRows: { viewportY: number; selection: boolean; cursor?: string } | null = null;
   /** A link hover or a selection changed what is drawn without dirtying a row. */
@@ -425,32 +431,175 @@ export class Terminal extends LitElement {
     if (!this.touchScrolling) {
       if (Math.abs(totalY) <= 6 || Math.abs(totalY) <= Math.abs(totalX)) return;
       this.touchScrolling = true;
+      this.touchScrollsApp = this.appHandlesScrolling();
     }
 
     if (event.cancelable) event.preventDefault();
 
-    const lineHeight = Math.max(
-      1,
-      this.terminal?.renderer?.getMetrics().height ?? this.fontSize * 1.2
-    );
-    this.touchScrollRemainder += this.lastTouchY - touch.clientY;
-    const lines = Math.trunc(this.touchScrollRemainder / lineHeight);
-    this.lastTouchY = touch.clientY;
-
-    if (lines !== 0) {
-      this.terminal?.scrollLines(lines);
-      this.touchScrollRemainder -= lines * lineHeight;
-    }
+    this.touchScrollRows(touch.clientX, touch.clientY);
   };
+
+  /**
+   * One whole row each time the finger crosses a row's height. Apps that report the mouse get
+   * those rows as wheel steps.
+   */
+  private touchScrollRows(clientX: number, clientY: number) {
+    const lineHeight = this.rowHeight();
+    this.touchScrollRemainder += this.lastTouchY - clientY;
+    const lines = Math.trunc(this.touchScrollRemainder / lineHeight);
+    this.lastTouchY = clientY;
+    if (lines === 0) return;
+    this.touchScrollRemainder -= lines * lineHeight;
+    if (this.touchScrollsApp) {
+      this.sendWheel(lines > 0 ? 'down' : 'up', Math.abs(lines), clientX, clientY);
+    } else {
+      this.terminal?.scrollLines(lines);
+    }
+  }
+
+  private rowHeight(): number {
+    return Math.max(1, this.terminal?.renderer?.getMetrics().height ?? this.fontSize * 1.2);
+  }
+
+  /** ghostty-web's canvas (the peek row is a canvas too); it keeps the same one while open. */
+  private getCanvas(): HTMLCanvasElement | null {
+    if (this.canvasElement?.parentElement !== this.container || !this.container) {
+      this.canvasElement =
+        this.container?.querySelector<HTMLCanvasElement>('canvas:not(.terminal-peek-row)') ?? null;
+    }
+    return this.canvasElement;
+  }
 
   /** At the live bottom: no rows back. */
   private isAtBottom(): boolean {
     return (this.terminal?.getViewportY() ?? 0) <= 0.5;
   }
 
+  /**
+   * Full-screen apps that turn on mouse reporting (Claude Code, vim with mouse=a, htop)
+   * scroll their own content. For them the local scrollback only holds stale copies of
+   * earlier repaints, which is why scrolling up showed Claude Code's banner repeated.
+   */
+  private appHandlesScrolling(): boolean {
+    try {
+      return this.terminal?.hasMouseTracking() ?? false;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Encode a mouse report for the app at the pointer's cell (SGR or legacy X10). */
+  private mouseReport(button: number, clientX: number, clientY: number, release = false): string {
+    const terminal = this.terminal;
+    if (!terminal) return '';
+    const rect = this.getCanvas()?.getBoundingClientRect();
+    const cell = (offset: number, size: number, count: number) =>
+      rect && size > 0 ? Math.min(count, Math.max(1, Math.floor((offset / size) * count) + 1)) : 1;
+    const col = cell(clientX - (rect?.left ?? 0), rect?.width ?? 0, terminal.cols);
+    const row = cell(clientY - (rect?.top ?? 0), rect?.height ?? 0, terminal.rows);
+    // DEC 9 (X10 compatibility) reports presses only.
+    if (release && ![1000, 1002, 1003].some((mode) => terminal.getMode(mode))) return '';
+    if (terminal.getMode(1006)) return `\x1b[<${button};${col};${row}${release ? 'm' : 'M'}`;
+    // X10 has no per-button release: release is button 3. Reports travel as UTF-8 text, so
+    // coordinates are capped at 95 to keep each byte below 128.
+    const code = release ? 3 : button;
+    return `\x1b[M${String.fromCharCode(32 + code, 32 + Math.min(col, 95), 32 + Math.min(row, 95))}`;
+  }
+
+  private sendToApp(text: string) {
+    if (!text) return;
+    this.dispatchEvent(new CustomEvent('terminal-input', { detail: { text }, bubbles: true }));
+  }
+
+  /** Report wheel steps to the app at the pointer's cell. */
+  private sendWheel(direction: 'up' | 'down', steps: number, clientX: number, clientY: number) {
+    if (steps <= 0) return;
+    this.sendToApp(this.mouseReport(direction === 'up' ? 64 : 65, clientX, clientY).repeat(steps));
+  }
+
+  /**
+   * A tap or plain click is a left click for apps that track the mouse, so on-screen
+   * controls (Claude Code's "Jump to bottom", its input cursor) react where you touched.
+   */
+  private sendClick(clientX: number, clientY: number) {
+    if (!this.appHandlesScrolling()) return;
+    this.sendToApp(
+      this.mouseReport(0, clientX, clientY) + this.mouseReport(0, clientX, clientY, true)
+    );
+  }
+
+  private mouseDownAt: { x: number; y: number } | null = null;
+
+  /** When the last touch ended; iOS follows a tap with emulated mouse events at the same spot. */
+  private lastTouchEndAt = Number.NEGATIVE_INFINITY;
+
+  private noteTouchEnd = () => {
+    this.lastTouchEndAt = performance.now();
+  };
+
+  /**
+   * A tap used to send apps two clicks, one from touchend and one from the mouse events iOS
+   * emulates right after it. Claude Code read them as a double click and selected a word (or,
+   * after two taps, a whole line) and copied it. The touch already sent its click, so mouse
+   * events this soon after a touch are ignored.
+   */
+  private isEmulatedMouse(): boolean {
+    return performance.now() - this.lastTouchEndAt < EMULATED_MOUSE_MS;
+  }
+
+  private handleContainerMouseDown = (event: MouseEvent) => {
+    this.mouseDownAt =
+      event.button === 0 && !this.isEmulatedMouse() ? { x: event.clientX, y: event.clientY } : null;
+  };
+
+  private handleContainerMouseUp = (event: MouseEvent) => {
+    const start = this.mouseDownAt;
+    this.mouseDownAt = null;
+    // Drags select text; only a still, unmodified click goes to the app (Shift/Cmd/Ctrl/Alt
+    // keep it local, as in native terminals).
+    if (!start || Math.abs(event.clientX - start.x) > 3 || Math.abs(event.clientY - start.y) > 3) {
+      return;
+    }
+    if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
+    this.sendClick(event.clientX, event.clientY);
+  };
+
+  private wheelRemainder = 0;
+
+  private handleWheel = (event: WheelEvent): boolean => {
+    // Shift+wheel scrolls the local scrollback even when the app tracks the mouse.
+    if (event.shiftKey || !this.appHandlesScrolling()) return false;
+    const rowHeight = this.terminal?.renderer?.getMetrics().height ?? this.fontSize * 1.2;
+    const delta =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? event.deltaY * rowHeight
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? event.deltaY * rowHeight * (this.terminal?.rows ?? 24)
+          : event.deltaY;
+    this.wheelRemainder += delta;
+    const steps = Math.trunc(this.wheelRemainder / rowHeight);
+    if (steps !== 0) {
+      this.wheelRemainder -= steps * rowHeight;
+      this.sendWheel(steps > 0 ? 'down' : 'up', Math.abs(steps), event.clientX, event.clientY);
+    }
+    return true;
+  };
+
   private resetTouchScroll = () => {
     this.touchScrolling = false;
     this.touchScrollRemainder = 0;
+  };
+
+  private handleTerminalTouchEnd = (event: TouchEvent) => {
+    const touch = event.changedTouches[0];
+    const isTap =
+      !this.touchScrolling &&
+      event.touches.length === 0 &&
+      touch !== undefined &&
+      Math.abs(touch.clientX - this.touchStartX) < 10 &&
+      Math.abs(touch.clientY - this.touchStartY) < 10;
+    this.resetTouchScroll();
+    if (isTap && touch) this.sendClick(touch.clientX, touch.clientY);
   };
 
   private attachTouchScrollHandlers() {
@@ -460,14 +609,20 @@ export class Terminal extends LitElement {
     this.container?.addEventListener('touchmove', this.handleTerminalTouchMove, {
       passive: false,
     });
-    this.container?.addEventListener('touchend', this.resetTouchScroll, { passive: true });
+    this.container?.addEventListener('touchend', this.handleTerminalTouchEnd, { passive: true });
+    this.container?.addEventListener('touchend', this.noteTouchEnd, { passive: true });
+    this.container?.addEventListener('mousedown', this.handleContainerMouseDown);
+    this.container?.addEventListener('mouseup', this.handleContainerMouseUp);
     this.container?.addEventListener('touchcancel', this.resetTouchScroll, { passive: true });
   }
 
   private detachTouchScrollHandlers() {
     this.container?.removeEventListener('touchstart', this.handleTerminalTouchStart);
     this.container?.removeEventListener('touchmove', this.handleTerminalTouchMove);
-    this.container?.removeEventListener('touchend', this.resetTouchScroll);
+    this.container?.removeEventListener('touchend', this.handleTerminalTouchEnd);
+    this.container?.removeEventListener('touchend', this.noteTouchEnd);
+    this.container?.removeEventListener('mousedown', this.handleContainerMouseDown);
+    this.container?.removeEventListener('mouseup', this.handleContainerMouseUp);
     this.container?.removeEventListener('touchcancel', this.resetTouchScroll);
   }
 
@@ -476,6 +631,7 @@ export class Terminal extends LitElement {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.detachTouchScrollHandlers();
+    this.canvasElement = null;
     this.canvasRows = null;
     this.canvasStale = false;
     if (this.scrollbarHideTimer) clearTimeout(this.scrollbarHideTimer);
@@ -677,6 +833,7 @@ export class Terminal extends LitElement {
       this.dropGhosttyScrollbar(term, container);
       this.createScrollbar(container);
       term.registerLinkProvider(new KeyboardShortcutLinkProvider(term, this.handleShortcutClick));
+      term.attachCustomWheelEventHandler(this.handleWheel);
 
       this.terminal = term;
       this.fitAddon = fitAddon;

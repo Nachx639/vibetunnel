@@ -27,6 +27,19 @@ global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 // Import component type separately
 import type { Terminal } from './terminal';
 
+/** A touch event whose touches are plain points (happy-dom has no Touch constructor). */
+function touchEvent(type: string, points: Array<[number, number]>, changed = points) {
+  const list = (pts: Array<[number, number]>) =>
+    Object.assign(
+      pts.map(([clientX, clientY]) => ({ clientX, clientY })),
+      { item: (i: number) => pts[i] }
+    );
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'touches', { value: list(points) });
+  Object.defineProperty(event, 'changedTouches', { value: list(changed) });
+  return event;
+}
+
 describe('Terminal', () => {
   let element: Terminal;
   let mockTerminal: MockTerminal | null;
@@ -685,6 +698,98 @@ describe('Terminal', () => {
       }
     });
 
+    it.each([
+      ['SGR', [1000, 1006], '\x1b[<64;1;1M\x1b[<64;1;1M'],
+      ['legacy X10', [1000], '\x1b[M`!!\x1b[M`!!'],
+    ])('forwards wheel scrolling to apps with mouse reporting (%s)', (_name, modes, expected) => {
+      if (!mockTerminal) return;
+      for (const mode of modes) mockTerminal.enabledModes.add(mode);
+      const input = vi.fn();
+      element.addEventListener('terminal-input', (e) => input((e as CustomEvent).detail.text));
+
+      // Two rows up (default row height is fontSize * 1.2 without a renderer).
+      const handled = mockTerminal.wheelHandler?.(
+        new WheelEvent('wheel', { deltaY: -2 * element.fontSize * 1.2 })
+      );
+
+      expect(handled).toBe(true);
+      expect(input).toHaveBeenCalledWith(expected);
+    });
+
+    it('sends a still click to apps that report the mouse, but not a drag', () => {
+      if (!mockTerminal) return;
+      mockTerminal.enabledModes.add(1000);
+      mockTerminal.enabledModes.add(1006);
+      const input = vi.fn();
+      element.addEventListener('terminal-input', (e) => input((e as CustomEvent).detail.text));
+      const container = element.querySelector('#terminal-container') as HTMLElement;
+
+      container.dispatchEvent(new MouseEvent('mousedown', { clientX: 5, clientY: 5, button: 0 }));
+      container.dispatchEvent(new MouseEvent('mouseup', { clientX: 5, clientY: 5, button: 0 }));
+      container.dispatchEvent(new MouseEvent('mousedown', { clientX: 5, clientY: 5, button: 0 }));
+      container.dispatchEvent(new MouseEvent('mouseup', { clientX: 60, clientY: 5, button: 0 }));
+
+      expect(input.mock.calls).toEqual([['\x1b[<0;1;1M\x1b[<0;1;1m']]);
+    });
+
+    it('sends one click per tap, not another for the mouse events iOS emulates after it', () => {
+      if (!mockTerminal) return;
+      mockTerminal.enabledModes.add(1000);
+      mockTerminal.enabledModes.add(1006);
+      const now = vi.spyOn(performance, 'now').mockReturnValue(10_000);
+      try {
+        const input = vi.fn();
+        element.addEventListener('terminal-input', (e) => input((e as CustomEvent).detail.text));
+        const container = element.querySelector('#terminal-container') as HTMLElement;
+        const click = () => {
+          container.dispatchEvent(
+            new MouseEvent('mousedown', { clientX: 5, clientY: 5, button: 0 })
+          );
+          container.dispatchEvent(new MouseEvent('mouseup', { clientX: 5, clientY: 5, button: 0 }));
+        };
+
+        // The tap sends its click; iOS then emulates a mouse click at the same spot. Two clicks
+        // were a double click for Claude Code, which selected and auto-copied text.
+        container.dispatchEvent(touchEvent('touchstart', [[5, 5]]));
+        container.dispatchEvent(touchEvent('touchend', [], [[5, 5]]));
+        now.mockReturnValue(10_050);
+        click();
+        expect(input.mock.calls).toEqual([['\x1b[<0;1;1M\x1b[<0;1;1m']]);
+
+        // A real mouse click a while later still reaches the app.
+        now.mockReturnValue(12_000);
+        click();
+        expect(input).toHaveBeenCalledTimes(2);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it('sends only the press to apps in X10 compatibility mode', () => {
+      if (!mockTerminal) return;
+      mockTerminal.enabledModes.add(9);
+      mockTerminal.hasMouseTracking.mockReturnValue(true);
+      const input = vi.fn();
+      element.addEventListener('terminal-input', (e) => input((e as CustomEvent).detail.text));
+      const container = element.querySelector('#terminal-container') as HTMLElement;
+
+      container.dispatchEvent(new MouseEvent('mousedown', { clientX: 5, clientY: 5, button: 0 }));
+      container.dispatchEvent(new MouseEvent('mouseup', { clientX: 5, clientY: 5, button: 0 }));
+
+      expect(input.mock.calls).toEqual([['\x1b[M !!']]);
+    });
+
+    it('scrolls the local scrollback when the app does not report the mouse', () => {
+      if (!mockTerminal) return;
+      const input = vi.fn();
+      element.addEventListener('terminal-input', input);
+
+      const handled = mockTerminal.wheelHandler?.(new WheelEvent('wheel', { deltaY: -100 }));
+
+      expect(handled).toBe(false);
+      expect(input).not.toHaveBeenCalled();
+    });
+
     it('should scroll to bottom', () => {
       // Set up some content
       if (mockTerminal) {
@@ -930,6 +1035,88 @@ describe('Terminal', () => {
     it('should preserve pinch zoom while owning one-finger terminal scrolling', () => {
       const container = element.querySelector('.terminal-container') as HTMLElement;
       expect(getComputedStyle(container).touchAction).toBe('pinch-zoom');
+    });
+  });
+
+  describe('one-finger touch scrolling', () => {
+    let terminalElement: Terminal;
+    let term: MockTerminal;
+    let container: HTMLElement;
+    let canvas: HTMLCanvasElement;
+
+    beforeEach(async () => {
+      MockTerminal.withRenderer = true;
+      try {
+        terminalElement = await fixture<Terminal>(html`
+          <vibe-terminal session-id="classic-1"></vibe-terminal>
+        `);
+        await waitForCondition(() => terminalElement.getAttribute('data-ready') === 'true', {
+          message: 'terminal not ready',
+        });
+      } finally {
+        MockTerminal.withRenderer = false;
+      }
+      term = (terminalElement as unknown as { terminal: MockTerminal }).terminal;
+      // 76 rows of history above a 24-row screen; rows are 18 px (the mock renderer's metrics).
+      term.buffer.active.length = 100;
+      container = terminalElement.querySelector('#terminal-container') as HTMLElement;
+      canvas = container.querySelector('canvas') as HTMLCanvasElement;
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      terminalElement.remove();
+    });
+
+    const touch = (type: 'touchstart' | 'touchmove', y: number, x = 60) =>
+      container.dispatchEvent(touchEvent(type, [[x, y]]));
+    const lift = (y: number) => container.dispatchEvent(touchEvent('touchend', [], [[60, y]]));
+
+    it('moves whole rows as the finger crosses them, and nothing after it lifts', () => {
+      touch('touchstart', 100);
+      touch('touchmove', 130); // 30 px: one 18 px row back into the history, 12 px kept
+      expect(term.scrollLines).toHaveBeenLastCalledWith(-1);
+      touch('touchmove', 145); // 45 px in all: two rows
+      expect(term.scrollLines).toHaveBeenLastCalledWith(-1);
+      expect(term.scrollLines).toHaveBeenCalledTimes(2);
+      expect(terminalElement.getScrollPosition()).toBe(74);
+
+      // A fast lift: nothing moves after it, on any later frame.
+      lift(145);
+      vi.advanceTimersByTime(2000);
+      expect(term.scrollLines).toHaveBeenCalledTimes(2);
+      expect(term.scrollToLine).not.toHaveBeenCalled();
+      expect(terminalElement.getScrollPosition()).toBe(74);
+
+      // The canvas is never moved between rows, and no row is drawn above it.
+      expect(canvas.style.transform).toBe('');
+      expect(container.querySelector('canvas.terminal-peek-row')).toBeNull();
+
+      // Past the oldest row the view just stops: no rubber band.
+      touch('touchstart', 100);
+      touch('touchmove', 2000);
+      lift(2000);
+      vi.advanceTimersByTime(2000);
+      expect(terminalElement.getScrollPosition()).toBe(0);
+      expect(canvas.style.transform).toBe('');
+    });
+
+    it('sends apps that report the mouse a wheel step per row at once', () => {
+      term.enabledModes.add(1000);
+      term.enabledModes.add(1006);
+      const inputs: string[] = [];
+      terminalElement.addEventListener('terminal-input', (e) =>
+        inputs.push((e as CustomEvent<{ text: string }>).detail.text)
+      );
+
+      touch('touchstart', 100);
+      touch('touchmove', 140); // two rows down the page: two wheel-ups
+      expect(inputs).toEqual(['\x1b[<64;1;1M\x1b[<64;1;1M']);
+      lift(140);
+      vi.advanceTimersByTime(2000);
+      expect(inputs).toHaveLength(1);
+      expect(term.scrollLines).not.toHaveBeenCalled();
     });
   });
 
