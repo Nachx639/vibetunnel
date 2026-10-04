@@ -59,6 +59,7 @@ describe('Config Routes', () => {
         repositoryBasePath: '/home/user/repos',
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
+        agentChat: false,
       });
 
       expect(mockConfigService.getConfig).toHaveBeenCalledOnce();
@@ -77,6 +78,7 @@ describe('Config Routes', () => {
         repositoryBasePath: '~/Documents',
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
+        agentChat: false,
       });
     });
 
@@ -91,6 +93,32 @@ describe('Config Routes', () => {
       expect(response.body).toEqual({
         error: 'Failed to get app config',
       });
+    });
+  });
+
+  describe('agentChat', () => {
+    const saved = process.env.VIBETUNNEL_AGENT_CHAT;
+    afterEach(() => {
+      if (saved === undefined) delete process.env.VIBETUNNEL_AGENT_CHAT;
+      else process.env.VIBETUNNEL_AGENT_CHAT = saved;
+    });
+
+    it('is off unless config.json or VIBETUNNEL_AGENT_CHAT turns it on', async () => {
+      delete process.env.VIBETUNNEL_AGENT_CHAT;
+      expect((await request(app).get('/api/config')).body.agentChat).toBe(false);
+      mockConfigService.getConfig = vi.fn(() => ({ ...defaultConfig, agentChat: true }));
+      expect((await request(app).get('/api/config')).body.agentChat).toBe(true);
+      process.env.VIBETUNNEL_AGENT_CHAT = '0';
+      expect((await request(app).get('/api/config')).body.agentChat).toBe(false);
+    });
+
+    it('cannot be turned on from the web UI', async () => {
+      const response = await request(app)
+        .put('/api/config')
+        .send({ agentChat: true, repositoryBasePath: '/x' });
+      expect(response.status).toBe(200);
+      const written = vi.mocked(mockConfigService.updateConfig).mock.calls.map((c) => c[0]);
+      for (const config of written) expect(config).not.toHaveProperty('agentChat', true);
     });
   });
 
@@ -318,6 +346,7 @@ describe('Config Routes', () => {
           repositoryBasePath: '/home/user/repos',
           serverConfigured: true,
           quickStartCommands: defaultConfig.quickStartCommands,
+          agentChat: false,
           notificationPreferences,
         });
       });

@@ -77,6 +77,18 @@ describe('ConfigService', () => {
       expect(service.getConfig()).toEqual(customConfig);
     });
 
+    it('keeps agentChat from config.json, and leaves it off when missing', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(
+        JSON.stringify({ version: 1, quickStartCommands: [{ command: 'zsh' }], agentChat: true })
+      );
+      expect(new ConfigService().getConfig().agentChat).toBe(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(
+        JSON.stringify({ version: 1, quickStartCommands: [{ command: 'zsh' }] })
+      );
+      expect(new ConfigService().getConfig().agentChat).toBeUndefined();
+    });
+
     it('should create default config if file does not exist', () => {
       vi.mocked(fs.existsSync).mockImplementation((p) => {
         if (p === mockConfigDir) return true;

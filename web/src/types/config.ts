@@ -25,6 +25,11 @@ export interface VibeTunnelConfig {
   version: number;
   quickStartCommands: QuickStartCommand[];
   repositoryBasePath?: string;
+  /**
+   * The phone chat view of agent conversations (Claude Code transcripts). Off when missing;
+   * VIBETUNNEL_AGENT_CHAT=1|0 overrides it.
+   */
+  agentChat?: boolean;
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

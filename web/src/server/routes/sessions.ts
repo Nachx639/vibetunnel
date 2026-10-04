@@ -8,6 +8,7 @@ import type { ServerStatus, Session, TitleMode } from '../../shared/types.js';
 import { HttpMethod } from '../../shared/types.js';
 import { PtyError, type PtyManager } from '../pty/index.js';
 import type { RemoteRegistry } from '../services/remote-registry.js';
+import { chatAnswer, readSessionChat } from '../services/session-chat.js';
 import { tailscaleServeService } from '../services/tailscale-serve-service.js';
 import type { TerminalManager } from '../services/terminal-manager.js';
 import { detectGitInfo } from '../utils/git-info.js';
@@ -26,6 +27,11 @@ interface SessionRoutesConfig {
   terminalManager: TerminalManager;
   remoteRegistry: RemoteRegistry | null;
   isHQMode: boolean;
+  /**
+   * Agent chat is on (config.json `agentChat` / VIBETUNNEL_AGENT_CHAT): asked on every
+   * request, so the switch applies without a restart. Missing means off.
+   */
+  agentChatEnabled?: () => boolean;
 }
 
 // Helper function to resolve path with default fallback
@@ -864,6 +870,29 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     } catch (error) {
       logger.error('error getting plain text:', error);
       res.status(500).json({ error: 'Failed to get terminal text' });
+    }
+  });
+
+  // The agent conversation running in a local session (phone chat mode). Refused unless agent
+  // chat is on: nothing reads an agent's process tree or transcripts while it is off.
+  router.get('/sessions/:sessionId/claude-chat', async (req, res) => {
+    if (!config.agentChatEnabled?.()) {
+      return res.status(403).json({ error: 'Agent chat is disabled', code: 'disabled' });
+    }
+    const session = ptyManager.getSession(req.params.sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    if (!session.pid || session.status !== 'running') {
+      return res.json({ available: false, messages: [] });
+    }
+    try {
+      const chat = await readSessionChat({ ...session, pid: session.pid });
+      // `?have=<fingerprint>`: the client already shows these messages; leave them out.
+      res.json(chatAnswer(chat, req.query?.have));
+    } catch (error) {
+      logger.error('error reading agent chat:', error);
+      res.status(500).json({ error: 'Failed to read the conversation' });
     }
   });
 

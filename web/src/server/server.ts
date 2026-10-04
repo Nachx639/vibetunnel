@@ -45,6 +45,7 @@ import { SessionMonitor } from './services/session-monitor.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
+import { agentChatEnabled } from './utils/agent-chat.js';
 import { closeLogger, createLogger, initLogger, setDebugMode } from './utils/logger.js';
 import { VapidManager } from './utils/vapid-manager.js';
 import { getVersionInfo, printVersionBanner } from './version.js';
@@ -1160,6 +1161,7 @@ export async function createApp(): Promise<AppInstance> {
       terminalManager,
       remoteRegistry,
       isHQMode: config.isHQMode,
+      agentChatEnabled: () => agentChatEnabled(configService.getConfig()),
     })
   );
   logger.debug('Mounted session routes');

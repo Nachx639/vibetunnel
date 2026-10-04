@@ -8,6 +8,7 @@ import {
   type VibeTunnelConfig,
 } from '../../types/config.js';
 import type { ConfigService } from '../services/config-service.js';
+import { agentChatEnabled } from '../utils/agent-chat.js';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('config');
@@ -35,6 +36,8 @@ export interface AppConfig {
   repositoryBasePath: string;
   serverConfigured?: boolean;
   quickStartCommands?: QuickStartCommand[];
+  /** Phone chat view of agent conversations (config.json `agentChat` or VIBETUNNEL_AGENT_CHAT). */
+  agentChat: boolean;
   notificationPreferences?: NotificationPreferences;
 }
 
@@ -63,6 +66,7 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         repositoryBasePath: repositoryBasePath,
         serverConfigured: true, // Always configured when server is running
         quickStartCommands: vibeTunnelConfig.quickStartCommands,
+        agentChat: agentChatEnabled(vibeTunnelConfig),
         notificationPreferences: configService.getNotificationPreferences(),
       };
 
