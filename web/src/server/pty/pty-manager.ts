@@ -44,6 +44,7 @@ import { computeActivityStatus } from './activity-status.js';
 import { AsciinemaWriter } from './asciinema-writer.js';
 import { FishHandler } from './fish-handler.js';
 import { readForegroundPgids } from './foreground-pgids.js';
+import { confirmExternalKill } from './forwarder-kill.js';
 import { ProcessUtils } from './process-utils.js';
 import { SessionManager } from './session-manager.js';
 import {
@@ -1597,7 +1598,6 @@ export class PtyManager extends EventEmitter {
         }
 
         if (diskSession.pid && ProcessUtils.isProcessRunning(diskSession.pid)) {
-          let terminated = false;
           logger.log(
             chalk.yellow(`Killing external session ${sessionId} (PID: ${diskSession.pid})`)
           );
@@ -1609,8 +1609,8 @@ export class PtyManager extends EventEmitter {
             // that might share the same process group (e.g., multiple forwarder instances)
 
             await new Promise((resolve) => setTimeout(resolve, 100));
-            terminated = !ProcessUtils.isProcessRunning(diskSession.pid);
           } else {
+            let terminated = false;
             // Send SIGTERM first
             process.kill(diskSession.pid, 'SIGTERM');
 
@@ -1641,19 +1641,28 @@ export class PtyManager extends EventEmitter {
               // that might share the same process group (e.g., multiple forwarder instances)
 
               await new Promise((resolve) => setTimeout(resolve, 100));
-              terminated = !ProcessUtils.isProcessRunning(diskSession.pid);
             }
           }
+        }
 
-          if (terminated && diskSession.pid && !ProcessUtils.isProcessRunning(diskSession.pid)) {
-            this.sessionManager.updateSessionStatus(sessionId, 'exited', undefined, 0);
-            this.emit(
-              'sessionExited',
-              sessionId,
-              diskSession.name || diskSession.command.join(' '),
-              0
-            );
-          }
+        // kill(pid, 0) above also succeeds for a zombie or an exiting program, and the forwarder
+        // of a session opened with vt can still hold it in its window: the session has ended only
+        // once `ps` shows nothing of it runs, its forwarder signalled if needed (see
+        // forwarder-kill.ts). A kill that didn't happen is never reported as done.
+        const outcome = await confirmExternalKill(sessionId, diskSession.pid);
+        if (!outcome.ended) {
+          logger.warn(`session ${sessionId} still runs after kill: ${outcome.left}`);
+          throw new Error(`still running: ${outcome.left}`);
+        }
+        // Not when it had already ended (its forwarder records that): no second exit.
+        if (diskSession.status !== 'exited') {
+          this.sessionManager.updateSessionStatus(sessionId, 'exited', undefined, 0);
+          this.emit(
+            'sessionExited',
+            sessionId,
+            diskSession.name || diskSession.command.join(' '),
+            0
+          );
         }
       }
     } catch (error) {
