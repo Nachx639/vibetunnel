@@ -400,28 +400,43 @@ describe('Auth Middleware', () => {
       expect(response2.status).toBe(200);
     });
 
-    it('should skip auth for logs endpoint', async () => {
+    it('lets only client logging and the push key and status through without a login', async () => {
       const middleware = createAuthMiddleware({
         authService: mockAuthService,
       });
 
       app.use(middleware);
-      app.post('/logs', (_req, res) => res.json({ success: true }));
+      app.post('/logs/client', (_req, res) => res.json({ success: true }));
+      app.get('/push/vapid-public-key', (_req, res) => res.json({ success: true }));
+      app.get('/push/status', (_req, res) => res.json({ success: true }));
 
-      const response = await request(app).post('/logs');
-      expect(response.status).toBe(200);
+      expect((await request(app).post('/logs/client')).status).toBe(200);
+      expect((await request(app).get('/push/vapid-public-key')).status).toBe(200);
+      expect((await request(app).get('/push/status')).status).toBe(200);
     });
 
-    it('should skip auth for push endpoint', async () => {
+    // All of /logs and /push used to be open. Anyone who could reach the server could read
+    // the server log (what was typed into terminals) or subscribe a push endpoint of their own
+    // and receive every Claude reply and permission request.
+    it.each([
+      ['get', '/logs/raw'],
+      ['get', '/logs/info'],
+      ['delete', '/logs/clear'],
+      ['post', '/logs/flush'],
+      ['post', '/push/subscribe'],
+      ['post', '/push/unsubscribe'],
+      ['post', '/push/test'],
+      ['get', '/logs/client'],
+    ] as const)('requires a login for %s %s', async (method, path) => {
       const middleware = createAuthMiddleware({
         authService: mockAuthService,
       });
 
       app.use(middleware);
-      app.post('/push/subscribe', (_req, res) => res.json({ success: true }));
+      app[method](path, (_req, res) => res.json({ success: true }));
 
-      const response = await request(app).post('/push/subscribe');
-      expect(response.status).toBe(200);
+      const response = await request(app)[method](path);
+      expect(response.status).toBe(401);
     });
 
     it('should require auth for other endpoints when no auth method succeeds', async () => {
