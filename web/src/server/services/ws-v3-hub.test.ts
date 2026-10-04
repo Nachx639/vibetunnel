@@ -1,4 +1,7 @@
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import type { ServerEvent } from '../../shared/types.js';
@@ -12,7 +15,8 @@ import {
   WsV3SubscribeFlags,
 } from '../../shared/ws-v3.js';
 import type { PtyManager } from '../pty/index.js';
-import type { CastOutputHub, CastOutputHubListener } from './cast-output-hub.js';
+import type { SessionManager } from '../pty/session-manager.js';
+import { CastOutputHub, type CastOutputHubListener } from './cast-output-hub.js';
 import type { GitStatusHub, GitStatusHubListener } from './git-status-hub.js';
 import type { SessionMonitor } from './session-monitor.js';
 import type { TerminalManager } from './terminal-manager.js';
@@ -266,6 +270,70 @@ describe('WsV3Hub', () => {
     expect(castUnsubscribe).toHaveBeenCalled();
   });
 
+  it('sends a history replay larger than the buffer limit without dropping the viewer', async () => {
+    // The replay goes out in one synchronous loop, so nothing drains meanwhile.
+    // A session with more than 16 MB since the last clear tripped the limit on every
+    // (re)connect: the client was terminated, reconnected, got the same replay, forever.
+    const ws = new FakeWebSocket();
+    ws.send = vi.fn((data: Uint8Array) => {
+      ws.sent.push(data);
+      ws.bufferedAmount += data.length;
+    });
+    hub.handleClientConnection(ws as unknown as WebSocket, {} as unknown as WebSocketRequestV3);
+    sendBinaryFrame(
+      ws,
+      encodeWsV3Frame({
+        type: WsV3MessageType.SUBSCRIBE,
+        sessionId: 's1',
+        payload: encodeWsV3SubscribePayload({ flags: WsV3SubscribeFlags.Stdout }),
+      })
+    );
+    await flush();
+    if (!castListener) throw new Error('expected cast listener');
+
+    const chunk = 'x'.repeat(1024 * 1024);
+    for (let i = 0; i < 24; i++) castListener({ kind: 'output', data: chunk, historical: true });
+    // Live output right after the replay, while the history is still queued.
+    castListener({ kind: 'output', data: 'live', historical: false });
+
+    expect(ws.terminate).not.toHaveBeenCalled();
+    expect(ws.sent.length).toBe(26); // WELCOME + 24 history frames + the live one
+
+    // The history drains; a client that then stops reading live output is still dropped.
+    ws.bufferedAmount = 0;
+    castListener({ kind: 'output', data: 'y', historical: false });
+    ws.bufferedAmount = MAX_CLIENT_BUFFERED_BYTES + 1;
+    castListener({ kind: 'output', data: 'y', historical: false });
+    expect(ws.terminate).toHaveBeenCalled();
+  });
+
+  it('drops a client that stalls on live output queued behind a large replay', async () => {
+    const ws = new FakeWebSocket();
+    ws.send = vi.fn((data: Uint8Array) => {
+      ws.sent.push(data);
+      ws.bufferedAmount += data.length;
+    });
+    hub.handleClientConnection(ws as unknown as WebSocket, {} as unknown as WebSocketRequestV3);
+    sendBinaryFrame(
+      ws,
+      encodeWsV3Frame({
+        type: WsV3MessageType.SUBSCRIBE,
+        sessionId: 's1',
+        payload: encodeWsV3SubscribePayload({ flags: WsV3SubscribeFlags.Stdout }),
+      })
+    );
+    await flush();
+    if (!castListener) throw new Error('expected cast listener');
+
+    const chunk = 'x'.repeat(1024 * 1024);
+    for (let i = 0; i < 24; i++) castListener({ kind: 'output', data: chunk, historical: true });
+    // Nothing drains: the replay allowance does not cover more than the limit of live bytes.
+    for (let i = 0; i < 17 && !ws.terminate.mock.calls.length; i++) {
+      castListener({ kind: 'output', data: chunk, historical: false });
+    }
+    expect(ws.terminate).toHaveBeenCalled();
+  });
+
   it('unsubscribes a client that vanished without closing, but keeps one that answers', async () => {
     vi.useFakeTimers();
     try {
@@ -464,5 +532,67 @@ describe('WsV3Hub', () => {
       kind: 'git-status-update',
       gitBranch: 'main',
     });
+  });
+});
+
+describe('WsV3Hub history replay through a real CastOutputHub', () => {
+  let tmpDir: string | null = null;
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    tmpDir = null;
+  });
+
+  it('opens a session whose cast holds more than the buffer limit since the last clear', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-v3-replay-'));
+    const stdoutPath = path.join(tmpDir, 'stdout');
+    const line = JSON.stringify([0.1, 'o', `${'y'.repeat(64 * 1024 - 1)}\n`]);
+    const lines = [JSON.stringify({ version: 2, width: 80, height: 24 })];
+    const count = Math.ceil((MAX_CLIENT_BUFFERED_BYTES * 1.25) / line.length);
+    for (let i = 0; i < count; i++) lines.push(line);
+    fs.writeFileSync(stdoutPath, `${lines.join('\n')}\n`);
+
+    const sessionManager = {
+      getSessionPaths: () => ({ stdoutPath }),
+      loadSessionInfo: () => ({}),
+      saveSessionInfo: vi.fn(),
+    } as unknown as SessionManager;
+    const realHub = new WsV3Hub({
+      ptyManager: { getSession: () => null } as unknown as PtyManager,
+      terminalManager: {} as unknown as TerminalManager,
+      castOutputHub: new CastOutputHub(sessionManager),
+      gitStatusHub: {} as unknown as GitStatusHub,
+      sessionMonitor: null,
+      remoteRegistry: null,
+      isHQMode: false,
+    });
+
+    // A link slower than the replay loop: nothing drains while the history is sent.
+    const ws = new FakeWebSocket();
+    let stdoutBytes = 0;
+    ws.send = vi.fn((data: Uint8Array) => {
+      ws.bufferedAmount += data.length;
+      const frame = decodeWsV3Frame(data);
+      if (frame?.type === WsV3MessageType.STDOUT) stdoutBytes += frame.payload.length;
+    });
+    realHub.handleClientConnection(ws as unknown as WebSocket, {} as unknown as WebSocketRequestV3);
+    sendBinaryFrame(
+      ws,
+      encodeWsV3Frame({
+        type: WsV3MessageType.SUBSCRIBE,
+        sessionId: 's1',
+        payload: encodeWsV3SubscribePayload({ flags: WsV3SubscribeFlags.Stdout }),
+      })
+    );
+
+    await vi.waitFor(
+      () => {
+        if (!ws.terminate.mock.calls.length) expect(stdoutBytes).toBe(count * 64 * 1024);
+      },
+      { timeout: 10_000 }
+    );
+    expect(ws.terminate).not.toHaveBeenCalled();
+    expect(stdoutBytes).toBeGreaterThan(MAX_CLIENT_BUFFERED_BYTES);
+    realHub.dispose();
   });
 });

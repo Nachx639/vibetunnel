@@ -23,6 +23,8 @@ const logger = createLogger('ws-v3-hub');
 
 /** Unsent bytes a client may fall behind by before it is disconnected. */
 export const MAX_CLIENT_BUFFERED_BYTES = 16 * 1024 * 1024;
+/** STDOUT a remote forwards this long after a client subscribes counts as its replay. */
+export const REMOTE_REPLAY_WINDOW_MS = 10_000;
 /**
  * How often the server checks that each client is still there. A client that sent nothing
  * (no frame, not even its own 20 s PING) and answered no protocol ping for two intervals
@@ -45,12 +47,19 @@ type ClientSessionSub = {
   unsubscribeSnapshots?: () => void;
   unsubscribeGit?: () => void;
   remoteId?: string;
+  /** Frames forwarded from a remote before this time are its history replay. */
+  remoteReplayUntil?: number;
 };
 
 type ClientState = {
   subs: Map<string, ClientSessionSub>;
   /** Heard from since the last heartbeat tick (any frame or a pong). */
   alive: boolean;
+  /**
+   * Upper bound of the history replay bytes still queued in the socket. They do not count
+   * towards MAX_CLIENT_BUFFERED_BYTES; the bound only shrinks as the socket drains.
+   */
+  replayAllowance: number;
 };
 
 type RemoteConn = {
@@ -123,7 +132,7 @@ export class WsV3Hub {
   }
 
   handleClientConnection(ws: WebSocket, req: WebSocketRequestV3) {
-    const clientState: ClientState = { subs: new Map(), alive: true };
+    const clientState: ClientState = { subs: new Map(), alive: true, replayAllowance: 0 };
     this.clients.set(ws, clientState);
     this.clientSockets.add(ws);
     this.startHeartbeat();
@@ -282,7 +291,11 @@ export class WsV3Hub {
         : undefined;
 
     if (isRemote) {
-      state.subs.set(sessionId, { flags, remoteId: isRemote.id });
+      state.subs.set(sessionId, {
+        flags,
+        remoteId: isRemote.id,
+        remoteReplayUntil: Date.now() + REMOTE_REPLAY_WINDOW_MS,
+      });
       this.addRemoteSubscriber(ws, sessionId, flags, isRemote.id);
       return;
     }
@@ -300,7 +313,8 @@ export class WsV3Hub {
               type: WsV3MessageType.STDOUT,
               sessionId,
               payload: utf8Encoder.encode(event.data),
-            })
+            }),
+            event.historical
           );
         } else if (event.kind === 'exit') {
           this.safeSend(
@@ -704,20 +718,49 @@ export class WsV3Hub {
         if (type !== WsV3MessageType.ERROR) continue;
       }
 
-      this.safeSend(clientWs, encodeWsV3Frame({ type, sessionId, payload }));
+      // The remote does not mark its replay; what arrives right after subscribing is it.
+      const historical = type === WsV3MessageType.STDOUT && Date.now() < (s.remoteReplayUntil ?? 0);
+      this.safeSend(clientWs, encodeWsV3Frame({ type, sessionId, payload }), historical);
     }
   }
 
-  private safeSend(ws: WebSocket, data: Uint8Array) {
+  /**
+   * Send a frame, dropping a client that fell more than MAX_CLIENT_BUFFERED_BYTES behind.
+   * `historical` frames (a history replay) are exempt: the replay goes out in one
+   * synchronous loop, so a session with more history than the limit would otherwise drop
+   * every viewer on every (re)connect and its terminal would never open.
+   */
+  private safeSend(ws: WebSocket, data: Uint8Array, historical = false) {
     if (ws.readyState !== WebSocket.OPEN) return;
-    if (ws.bufferedAmount > MAX_CLIENT_BUFFERED_BYTES) {
+    const state = this.getClientState(ws);
+    if (historical) {
+      this.rawSend(ws, data);
+      if (state) state.replayAllowance = Math.max(state.replayAllowance, ws.bufferedAmount);
+      return;
+    }
+    // Replay bytes stay queued after the replay ends, ahead of live frames. Socket buffers
+    // are FIFO and the allowance only ever shrinks to what is still queued, so it never
+    // exceeds the history left; live bytes beyond it still face the limit. (bufferedAmount
+    // mixes compressed and pending uncompressed bytes under permessage-deflate, so the
+    // allowance is tracked in the same units rather than counted per frame.)
+    const buffered = ws.bufferedAmount;
+    let allowance = 0;
+    if (state) {
+      allowance = Math.min(state.replayAllowance, buffered);
+      state.replayAllowance = allowance;
+    }
+    if (buffered - allowance > MAX_CLIENT_BUFFERED_BYTES) {
       // A phone on a stalled link (or a frozen tab) kept every frame of a fast
       // session queued here, growing server memory ~10 MB/s. Drop it: when it reconnects it
       // re-subscribes and gets a fresh replay, which is all it could still use anyway.
-      logger.warn(`dropping v3 client: ${ws.bufferedAmount} bytes unsent`);
+      logger.warn(`dropping v3 client: ${buffered} bytes unsent (${allowance} of them history)`);
       ws.terminate();
       return;
     }
+    this.rawSend(ws, data);
+  }
+
+  private rawSend(ws: WebSocket, data: Uint8Array) {
     try {
       ws.send(data);
     } catch (error) {
