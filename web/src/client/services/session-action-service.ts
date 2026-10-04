@@ -32,6 +32,7 @@
 
 import type { Session } from '../../shared/types.js';
 import { HttpMethod } from '../../shared/types.js';
+import { t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import type { SessionActionResult } from '../utils/session-actions.js';
 import { terminateSession as terminateSessionUtil } from '../utils/session-actions.js';
@@ -149,7 +150,7 @@ class SessionActionService {
   ): Promise<SessionActionResult> {
     if (!session || session.status !== 'running') {
       logger.warn('Cannot terminate session: invalid state', { session });
-      options.callbacks?.onError?.('Cannot terminate session: invalid state');
+      options.callbacks?.onError?.(t('toast.terminateInvalid'));
       return { success: false, error: 'Invalid session state' };
     }
 
@@ -158,7 +159,7 @@ class SessionActionService {
     const result = await terminateSessionUtil(session.id, options.authClient, 'running');
 
     if (!result.success) {
-      const errorMessage = `Failed to terminate session: ${result.error}`;
+      const errorMessage = t('toast.terminateFailed', { error: String(result.error) });
       logger.error(errorMessage, { sessionId: session.id, error: result.error });
       options.callbacks?.onError?.(errorMessage);
     } else {
@@ -211,7 +212,7 @@ class SessionActionService {
   ): Promise<SessionActionResult> {
     if (!session || session.status !== 'exited') {
       logger.warn('Cannot clear session: invalid state', { session });
-      options.callbacks?.onError?.('Cannot clear session: invalid state');
+      options.callbacks?.onError?.(t('toast.clearInvalid'));
       return { success: false, error: 'Invalid session state' };
     }
 
@@ -220,7 +221,7 @@ class SessionActionService {
     const result = await terminateSessionUtil(session.id, options.authClient, 'exited');
 
     if (!result.success) {
-      const errorMessage = `Failed to clear session: ${result.error}`;
+      const errorMessage = t('toast.clearFailed', { error: String(result.error) });
       logger.error(errorMessage, { sessionId: session.id, error: result.error });
       options.callbacks?.onError?.(errorMessage);
     } else {
@@ -281,7 +282,7 @@ class SessionActionService {
     } else if (session.status === 'exited') {
       return this.clearSession(session, options);
     } else {
-      const errorMessage = `Cannot delete session with status: ${session.status}`;
+      const errorMessage = t('toast.deleteInvalidStatus', { status: session.status });
       logger.warn(errorMessage, { session });
       options.callbacks?.onError?.(errorMessage);
       return { success: false, error: errorMessage };
@@ -357,7 +358,7 @@ class SessionActionService {
 
       return { success: true };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : t('common.unknownError');
       logger.error('Error deleting session', { error, sessionId });
       options.callbacks?.onError?.(errorMessage);
       return { success: false, error: errorMessage };

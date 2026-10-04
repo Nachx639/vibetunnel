@@ -6,6 +6,7 @@
  */
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import { sendAIPrompt } from '../utils/ai-sessions.js';
 import { createLogger } from '../utils/logger.js';
@@ -18,6 +19,8 @@ export class MagicWandButton extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: String }) sessionId!: string;
   @property({ type: Object }) authClient!: AuthClient;
@@ -53,7 +56,7 @@ export class MagicWandButton extends LitElement {
         new CustomEvent('prompt-error', {
           detail: {
             sessionId: this.sessionId,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            error: error instanceof Error ? error.message : t('common.unknownError'),
           },
           bubbles: true,
           composed: true,
@@ -77,7 +80,7 @@ export class MagicWandButton extends LitElement {
         class="btn-ghost text-primary ${buttonClasses} rounded-md transition-all hover:bg-elevated hover:shadow-sm hover:scale-110 disabled:opacity-50"
         @click=${this.handleClick}
         ?disabled=${this.sending}
-        title="Send prompt to update terminal title"
+        title=${t('header.updateTitle')}
       >
         ${
           this.sending
@@ -125,7 +128,7 @@ export class MagicWandButton extends LitElement {
             </svg>
           `
         }
-        ${this.showText ? html`<span class="ml-2">Update Title</span>` : ''}
+        ${this.showText ? html`<span class="ml-2">${t('magicWand.updateTitle')}</span>` : ''}
       </button>
     `;
   }

@@ -13,6 +13,7 @@ import { html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { Session } from '../../../shared/types.js';
 import { formatSessionDuration } from '../../../shared/utils/time.js';
+import { LocaleController, t } from '../../i18n/index.js';
 import type { AuthClient } from '../../services/auth-client.js';
 import { sessionActionService } from '../../services/session-action-service.js';
 import { formatPathForDisplay } from '../../utils/path-utils.js';
@@ -24,6 +25,8 @@ export class CompactSessionCard extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) session!: Session;
   @property({ type: Object }) authClient!: AuthClient;
@@ -149,7 +152,7 @@ export class CompactSessionCard extends LitElement {
       ? 'btn-ghost text-text-muted p-1.5 rounded-md transition-all hover:text-status-warning hover:bg-bg-elevated hover:shadow-sm'
       : 'btn-ghost text-text-muted p-1.5 rounded-md transition-all hover:text-status-error hover:bg-bg-elevated hover:shadow-sm hover:scale-110';
 
-    const buttonTitle = isExited ? 'Clean up session' : 'Kill Session';
+    const buttonTitle = isExited ? t('status.cleanUp') : t('compactCard.killSession');
 
     return html`
       <button

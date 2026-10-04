@@ -7,6 +7,7 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { QuickStartCommand } from '../../../types/config.js';
+import { LocaleController, t } from '../../i18n/index.js';
 import '../quick-start-editor.js';
 
 export interface QuickStartItem {
@@ -20,6 +21,8 @@ export class QuickStartSection extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Array }) commands: QuickStartItem[] = [];
   @property({ type: String }) selectedCommand = '';
@@ -75,7 +78,7 @@ export class QuickStartSection extends LitElement {
             <!-- Normal mode with Edit button -->
             <div class="flex items-center justify-between mb-1 sm:mb-2 mt-3 sm:mt-4">
               <label class="form-label text-text-muted uppercase text-[9px] sm:text-[10px] lg:text-xs tracking-wider">
-                Quick Start
+                ${t('create.quickStart')}
               </label>
               <quick-start-editor
                 .commands=${this.commands.map((cmd) => ({

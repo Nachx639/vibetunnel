@@ -9,6 +9,7 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { TitleMode } from '../../../shared/types.js';
+import { LocaleController, t } from '../../i18n/index.js';
 import type { GitRepoInfo } from '../../services/git-service.js';
 import { getTitleModeDescription } from '../../utils/title-mode-utils.js';
 
@@ -18,6 +19,8 @@ export class FormOptionsSection extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Boolean }) macAppConnected = false;
   @property({ type: Boolean }) spawnWindow = false;
@@ -89,7 +92,7 @@ export class FormOptionsSection extends LitElement {
               d="M5.22 1.22a.75.75 0 011.06 0l6.25 6.25a.75.75 0 010 1.06l-6.25 6.25a.75.75 0 01-1.06-1.06L10.94 8 5.22 2.28a.75.75 0 010-1.06z"
             />
           </svg>
-          <span class="form-label mb-0 text-text-muted uppercase text-[9px] sm:text-[10px] lg:text-xs tracking-wider">Options</span>
+          <span class="form-label mb-0 text-text-muted uppercase text-[9px] sm:text-[10px] lg:text-xs tracking-wider">${t('create.options')}</span>
         </button>
 
         ${
@@ -102,8 +105,8 @@ export class FormOptionsSection extends LitElement {
                   ? html`
                   <div class="flex items-center justify-between bg-bg-elevated border border-border/50 rounded-lg p-2 sm:p-3 lg:p-4 mb-2 sm:mb-3">
                     <div class="flex-1 pr-2 sm:pr-3 lg:pr-4">
-                      <span class="text-primary text-[10px] sm:text-xs lg:text-sm font-medium">Spawn window</span>
-                      <p class="text-[9px] sm:text-[10px] lg:text-xs text-text-muted mt-0.5 hidden sm:block">Opens native terminal window</p>
+                      <span class="text-primary text-[10px] sm:text-xs lg:text-sm font-medium">${t('create.spawnWindow')}</span>
+                      <p class="text-[9px] sm:text-[10px] lg:text-xs text-text-muted mt-0.5 hidden sm:block">${t('create.spawnWindow.description')}</p>
                     </div>
                     <button
                       role="switch"
@@ -129,7 +132,7 @@ export class FormOptionsSection extends LitElement {
               <!-- Terminal Title Mode -->
               <div class="flex items-center justify-between bg-bg-elevated border border-border/50 rounded-lg p-2 sm:p-3 lg:p-4 mb-2 sm:mb-3">
                 <div class="flex-1 pr-2 sm:pr-3 lg:pr-4">
-                  <span class="text-primary text-[10px] sm:text-xs lg:text-sm font-medium">Terminal Title Mode</span>
+                  <span class="text-primary text-[10px] sm:text-xs lg:text-sm font-medium">${t('create.titleMode')}</span>
                   <p class="text-[9px] sm:text-[10px] lg:text-xs text-text-muted mt-0.5 hidden sm:block">
                     ${getTitleModeDescription(this.titleMode)}
                   </p>
@@ -142,9 +145,9 @@ export class FormOptionsSection extends LitElement {
                     style="min-width: 80px"
                     ?disabled=${this.disabled || this.isCreating}
                   >
-                    <option value="${TitleMode.NONE}" class="bg-bg-tertiary text-text" ?selected=${this.titleMode === TitleMode.NONE}>None</option>
-                    <option value="${TitleMode.FILTER}" class="bg-bg-tertiary text-text" ?selected=${this.titleMode === TitleMode.FILTER}>Filter</option>
-                    <option value="${TitleMode.STATIC}" class="bg-bg-tertiary text-text" ?selected=${this.titleMode === TitleMode.STATIC}>Static</option>
+                    <option value="${TitleMode.NONE}" class="bg-bg-tertiary text-text" ?selected=${this.titleMode === TitleMode.NONE}>${t('create.titleMode.none')}</option>
+                    <option value="${TitleMode.FILTER}" class="bg-bg-tertiary text-text" ?selected=${this.titleMode === TitleMode.FILTER}>${t('create.titleMode.filter')}</option>
+                    <option value="${TitleMode.STATIC}" class="bg-bg-tertiary text-text" ?selected=${this.titleMode === TitleMode.STATIC}>${t('create.titleMode.static')}</option>
                   </select>
                   <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1 sm:px-1.5 lg:px-2 text-text-muted">
                     <svg class="h-2.5 w-2.5 sm:h-3 sm:w-3 lg:h-4 lg:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -162,12 +165,14 @@ export class FormOptionsSection extends LitElement {
                   ? html`
                   <div class="flex items-center justify-between bg-bg-elevated border border-border/50 rounded-lg p-2 sm:p-3 lg:p-4">
                     <div class="flex-1 pr-2 sm:pr-3 lg:pr-4">
-                      <span class="text-primary text-[10px] sm:text-xs lg:text-sm font-medium">Follow Mode</span>
+                      <span class="text-primary text-[10px] sm:text-xs lg:text-sm font-medium">${t('create.followMode')}</span>
                       <p class="text-[9px] sm:text-[10px] lg:text-xs text-text-muted mt-0.5 hidden sm:block">
                         ${
                           this.followMode
-                            ? `Currently following: ${this.followBranch || 'unknown'}`
-                            : 'Keep main repository in sync with this worktree'
+                            ? t('create.followMode.following', {
+                                branch: this.followBranch || t('create.followMode.unknown'),
+                              })
+                            : t('create.followMode.description')
                         }
                       </p>
                     </div>

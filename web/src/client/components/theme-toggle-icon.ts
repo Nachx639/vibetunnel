@@ -1,5 +1,6 @@
 import { html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 
 export type Theme = 'light' | 'dark' | 'system';
 
@@ -19,6 +20,8 @@ export class ThemeToggleIcon extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   connectedCallback() {
     super.connectedCallback();
@@ -112,10 +115,17 @@ export class ThemeToggleIcon extends LitElement {
   private getTooltip() {
     const current =
       this.theme === 'system'
-        ? 'Auto (System)'
-        : this.theme.charAt(0).toUpperCase() + this.theme.slice(1);
-    const next = this.theme === 'light' ? 'Dark' : this.theme === 'dark' ? 'Auto' : 'Light';
-    return `Theme: ${current} (click for ${next})`;
+        ? t('theme.autoSystem')
+        : this.theme === 'light'
+          ? t('theme.light')
+          : t('theme.dark');
+    const next =
+      this.theme === 'light'
+        ? t('theme.dark')
+        : this.theme === 'dark'
+          ? t('theme.auto')
+          : t('theme.light');
+    return t('theme.tooltip', { current, next });
   }
 
   render() {
@@ -124,7 +134,7 @@ export class ThemeToggleIcon extends LitElement {
         @click=${this.cycleTheme}
         class="bg-bg-tertiary border border-border rounded-lg p-2 font-mono text-muted transition-all duration-200 hover:text-primary hover:bg-surface-hover hover:border-primary hover:shadow-sm flex-shrink-0"
         title="${this.getTooltip()}"
-        aria-label="Toggle theme"
+        aria-label=${t('theme.toggleAria')}
       >
         ${this.getIcon()}
       </button>

@@ -6,6 +6,7 @@
  */
 
 import { HttpMethod } from '../../shared/types.js';
+import { t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import { createLogger } from './logger.js';
 
@@ -50,7 +51,7 @@ export async function terminateSession(
     logger.error(`Failed to ${action} session:`, error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : t('common.unknownError'),
     };
   }
 }
@@ -89,7 +90,7 @@ export async function renameSession(
     logger.error('Failed to rename session:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : t('common.unknownError'),
     };
   }
 }
@@ -122,7 +123,7 @@ export async function cleanupAllExitedSessions(
     logger.error('Failed to cleanup exited sessions:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : t('common.unknownError'),
     };
   }
 }

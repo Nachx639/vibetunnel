@@ -1,5 +1,6 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { Z_INDEX } from '../utils/constants';
 
 export type Theme = 'light' | 'dark' | 'system';
@@ -103,6 +104,8 @@ export class ThemeToggle extends LitElement {
     return this;
   }
 
+  protected readonly i18n = new LocaleController(this);
+
   render() {
     const currentIcon = this.theme === 'light' ? 'sun' : this.theme === 'dark' ? 'moon' : 'laptop';
 
@@ -111,7 +114,7 @@ export class ThemeToggle extends LitElement {
         <button
           @click=${this.toggleExpanded}
           class="p-2 text-text border border-border hover:border-primary hover:text-primary rounded-lg transition-all duration-200"
-          aria-label="Theme toggle"
+          aria-label=${t('theme.toggle')}
           aria-expanded=${this.expanded}
         >
           <iconify-icon 
@@ -132,21 +135,21 @@ export class ThemeToggle extends LitElement {
               class="w-full px-4 py-2 text-left hover:bg-tertiary transition-colors flex items-center gap-3 ${this.theme === 'light' ? 'text-primary' : 'text-text'}"
             >
               <iconify-icon icon="ph:sun" class="text-lg"></iconify-icon>
-              <span class="text-sm">Light</span>
+              <span class="text-sm">${t('theme.light')}</span>
             </button>
             <button
               @click=${() => this.selectTheme('dark')}
               class="w-full px-4 py-2 text-left hover:bg-tertiary transition-colors flex items-center gap-3 ${this.theme === 'dark' ? 'text-primary' : 'text-text'}"
             >
               <iconify-icon icon="ph:moon" class="text-lg"></iconify-icon>
-              <span class="text-sm">Dark</span>
+              <span class="text-sm">${t('theme.dark')}</span>
             </button>
             <button
               @click=${() => this.selectTheme('system')}
               class="w-full px-4 py-2 text-left hover:bg-tertiary transition-colors flex items-center gap-3 ${this.theme === 'system' ? 'text-primary' : 'text-text'}"
             >
               <iconify-icon icon="ph:laptop" class="text-lg"></iconify-icon>
-              <span class="text-sm">System</span>
+              <span class="text-sm">${t('theme.system')}</span>
             </button>
           </div>
         `

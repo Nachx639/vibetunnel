@@ -6,6 +6,7 @@
  */
 import { html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../../i18n/index.js';
 import type { GitRepoInfo } from '../../services/git-service.js';
 import { createLogger } from '../../utils/logger.js';
 
@@ -24,6 +25,8 @@ export class GitBranchSelector extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) gitRepoInfo: GitRepoInfo | null = null;
   @property({ type: Boolean }) disabled = false;
@@ -107,30 +110,30 @@ export class GitBranchSelector extends LitElement {
   private validateBranchName(name: string): string | null {
     // Check if branch already exists
     if (this.availableBranches.includes(name)) {
-      return `Branch '${name}' already exists`;
+      return t('worktrees.branch.exists', { branch: name });
     }
 
     // Git branch name validation rules
     if (name.startsWith('-') || name.endsWith('-')) {
-      return 'Branch name cannot start or end with a hyphen';
+      return t('worktrees.branch.hyphen');
     }
 
     if (name.includes('..') || name.includes('~') || name.includes('^') || name.includes(':')) {
-      return 'Branch name contains invalid characters (.. ~ ^ :)';
+      return t('worktrees.branch.invalidChars');
     }
 
     if (name.endsWith('.lock')) {
-      return 'Branch name cannot end with .lock';
+      return t('worktrees.branch.lock');
     }
 
     if (name.includes('//') || name.includes('\\')) {
-      return 'Branch name cannot contain consecutive slashes';
+      return t('worktrees.branch.slashes');
     }
 
     // Reserved names
     const reserved = ['HEAD', 'FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD'];
     if (reserved.includes(name.toUpperCase())) {
-      return `'${name}' is a reserved Git name`;
+      return t('worktrees.branch.reserved', { branch: name });
     }
 
     return null;
@@ -166,17 +169,17 @@ export class GitBranchSelector extends LitElement {
             <label class="form-label text-text-muted text-[10px] sm:text-xs lg:text-sm flex items-center gap-2">
               ${
                 this.availableWorktrees.some((wt) => wt.isCurrentWorktree && !wt.isMainWorktree)
-                  ? 'Base Branch for Current Worktree:'
+                  ? t('branchSelector.baseForCurrentWorktree')
                   : this.selectedWorktree
-                    ? 'Base Branch for Worktree:'
-                    : 'Switch to Branch:'
+                    ? t('branchSelector.baseForWorktree')
+                    : t('branchSelector.switchTo')
               }
               ${
                 this.gitRepoInfo?.hasChanges && !this.selectedWorktree
                   ? html`
                   <span class="text-yellow-500 text-[9px] sm:text-[10px] flex items-center gap-1">
                     <span>●</span>
-                    <span>Uncommitted changes</span>
+                    <span>${t('worktrees.uncommitted')}</span>
                   </span>
                 `
                   : ''
@@ -197,7 +200,7 @@ export class GitBranchSelector extends LitElement {
                 ${this.availableBranches.map(
                   (branch) => html`
                     <option value="${branch}" ?selected=${branch === (this.selectedBaseBranch || this.currentBranch)}>
-                      ${branch}${branch === this.currentBranch ? ' (current)' : ''}
+                      ${branch}${branch === this.currentBranch ? ` (${t('branchSelector.tag.currentBranch')})` : ''}
                     </option>
                   `
                 )}
@@ -214,11 +217,11 @@ export class GitBranchSelector extends LitElement {
                 <p class="text-[9px] sm:text-[10px] text-text-muted mt-1">
                   ${
                     this.gitRepoInfo?.hasChanges && !this.selectedWorktree
-                      ? html`<span class="text-yellow-500">Branch switching is disabled due to uncommitted changes. Commit or stash changes first.</span>`
+                      ? html`<span class="text-yellow-500">${t('branchSelector.switchDisabled')}</span>`
                       : this.selectedWorktree
-                        ? `Session will use worktree: ${this.selectedWorktree}`
+                        ? t('branchSelector.willUseWorktree', { worktree: this.selectedWorktree })
                         : this.selectedBaseBranch && this.selectedBaseBranch !== this.currentBranch
-                          ? `Session will start on ${this.selectedBaseBranch}`
+                          ? t('branchSelector.willStartOn', { branch: this.selectedBaseBranch })
                           : ''
                   }
                   ${
@@ -238,9 +241,9 @@ export class GitBranchSelector extends LitElement {
                           )
                             ? html`<br>`
                             : ''
-                        }<span class="text-primary">Follow mode active: following ${this.followBranch}</span>`
+                        }<span class="text-primary">${t('branchSelector.followActive', { branch: this.followBranch })}</span>`
                       : this.followMode && this.followBranch
-                        ? html`<span class="text-primary">Follow mode active: following ${this.followBranch}</span>`
+                        ? html`<span class="text-primary">${t('branchSelector.followActive', { branch: this.followBranch })}</span>`
                         : ''
                   }
                 </p>
@@ -252,7 +255,7 @@ export class GitBranchSelector extends LitElement {
           <!-- Worktree Selection -->
           <div>
             <label class="form-label text-text-muted text-[10px] sm:text-xs lg:text-sm">
-              Worktree:
+              ${t('branchSelector.worktree')}
             </label>
             ${
               !this.showCreateWorktree
@@ -270,8 +273,8 @@ export class GitBranchSelector extends LitElement {
                         this.availableWorktrees.some(
                           (wt) => wt.isCurrentWorktree && !wt.isMainWorktree
                         )
-                          ? 'Use main repository'
-                          : 'Use selected worktree'
+                          ? t('branchSelector.useMainRepo')
+                          : t('branchSelector.useSelectedWorktree')
                       }
                     </option>
                     ${this.availableWorktrees.map((worktree) => {
@@ -282,7 +285,7 @@ export class GitBranchSelector extends LitElement {
 
                       return html`
                         <option value="${worktree.branch}" ?selected=${worktree.branch === this.selectedWorktree}>
-                          ${folderName}${showBranch ? ` [${worktree.branch}]` : ''}${worktree.isMainWorktree ? ' (main)' : ''}${worktree.isCurrentWorktree ? ' (current)' : ''}${this.followMode && this.followBranch === worktree.branch ? ' ⚡️ following' : ''}
+                          ${folderName}${showBranch ? ` [${worktree.branch}]` : ''}${worktree.isMainWorktree ? ` (${t('branchSelector.tag.mainWorktree')})` : ''}${worktree.isCurrentWorktree ? ` (${t('branchSelector.tag.currentWorktree')})` : ''}${this.followMode && this.followBranch === worktree.branch ? ` ⚡️ ${t('branchSelector.tag.following')}` : ''}
                         </option>
                       `;
                     })}
@@ -306,7 +309,7 @@ export class GitBranchSelector extends LitElement {
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                     </svg>
-                    Create new worktree
+                    ${t('branchSelector.createWorktree')}
                   </button>
                 </div>
               `
@@ -317,7 +320,7 @@ export class GitBranchSelector extends LitElement {
                     type="text"
                     .value=${this.newBranchName}
                     @input=${this.handleNewBranchInput}
-                    placeholder="New branch name"
+                    placeholder=${t('branchSelector.newBranchPlaceholder')}
                     class="input-field py-1.5 sm:py-2 lg:py-3 text-xs sm:text-sm"
                     ?disabled=${this.disabled || this.isCreating || this.isCreatingWorktree}
                     @keydown=${(e: KeyboardEvent) => {
@@ -341,7 +344,7 @@ export class GitBranchSelector extends LitElement {
                       ?disabled=${this.disabled || this.isCreating || this.isCreatingWorktree}
                       class="rounded"
                     />
-                    <span>Customize worktree path</span>
+                    <span>${t('worktrees.customizePath')}</span>
                   </label>
                   
                   <!-- Custom path input -->
@@ -362,15 +365,17 @@ export class GitBranchSelector extends LitElement {
                         <div class="text-[10px] text-text-dim">
                           ${
                             this.customPath.trim()
-                              ? `Will create at: ${this.customPath.trim()}`
-                              : 'Enter absolute path for the worktree'
+                              ? t('worktrees.willCreateAt', { path: this.customPath.trim() })
+                              : t('worktrees.enterPath')
                           }
                         </div>
                       </div>
                     `
                       : html`
                       <div class="text-[10px] text-text-dim">
-                        Will use default path: ${this.gitRepoInfo?.repoPath || ''}-${this.newBranchName.trim().replace(/[^a-zA-Z0-9-_]/g, '-') || 'branch'}
+                        ${t('branchSelector.defaultPath', {
+                          path: `${this.gitRepoInfo?.repoPath || ''}-${this.newBranchName.trim().replace(/[^a-zA-Z0-9-_]/g, '-') || 'branch'}`,
+                        })}
                       </div>
                     `
                   }
@@ -382,7 +387,7 @@ export class GitBranchSelector extends LitElement {
                       class="text-[10px] sm:text-xs text-text-muted hover:text-text transition-colors"
                       ?disabled=${this.disabled || this.isCreating || this.isCreatingWorktree}
                     >
-                      Cancel
+                      ${t('common.cancel')}
                     </button>
                     <button
                       type="button"
@@ -390,7 +395,7 @@ export class GitBranchSelector extends LitElement {
                       class="text-[10px] sm:text-xs px-2 py-1 bg-primary text-bg-elevated rounded hover:bg-primary-dark transition-colors disabled:opacity-50"
                       ?disabled=${!this.newBranchName.trim() || (this.useCustomPath && !this.customPath.trim()) || this.disabled || this.isCreating || this.isCreatingWorktree}
                     >
-                      ${this.isCreatingWorktree ? 'Creating...' : 'Create'}
+                      ${this.isCreatingWorktree ? t('create.creating') : t('create.create')}
                     </button>
                   </div>
                 </div>

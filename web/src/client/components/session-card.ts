@@ -12,6 +12,7 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
+import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import { sessionActionService } from '../services/session-action-service.js';
 import { isAIAssistantSession, sendAIPrompt } from '../utils/ai-sessions.js';
@@ -56,6 +57,8 @@ export class SessionCard extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) session!: Session;
   @property({ type: Object }) authClient!: AuthClient;
@@ -159,7 +162,7 @@ export class SessionCard extends LitElement {
         new CustomEvent('session-kill-error', {
           detail: {
             sessionId: this.session.id,
-            error: 'Kill operation timed out',
+            error: t('sessionCard.killTimedOut'),
           },
           bubbles: true,
           composed: true,
@@ -269,7 +272,7 @@ export class SessionCard extends LitElement {
         new CustomEvent('session-rename-error', {
           detail: {
             sessionId: this.session.id,
-            error: result.error || 'Unknown error',
+            error: result.error || t('common.unknownError'),
           },
           bubbles: true,
           composed: true,
@@ -291,7 +294,7 @@ export class SessionCard extends LitElement {
       this.dispatchEvent(
         new CustomEvent('show-toast', {
           detail: {
-            message: 'Failed to send prompt to AI assistant',
+            message: t('toast.aiPromptFailed'),
             type: 'error',
           },
           bubbles: true,
@@ -372,8 +375,8 @@ export class SessionCard extends LitElement {
                       this.handleMagicButton();
                     }}
                     id="session-magic-button"
-                    title="Send prompt to update terminal title"
-                    aria-label="Send magic prompt to AI assistant"
+                    title=${t('header.updateTitle')}
+                    aria-label=${t('magicWand.ariaLabel')}
                     ?disabled=${this.isSendingPrompt}
                   >
                     ${
@@ -397,7 +400,7 @@ export class SessionCard extends LitElement {
                     @click=${this.handleKillClick}
                     ?disabled=${this.killing}
                     id="session-kill-button"
-                    title="${this.session.status === 'running' ? 'Kill session' : 'Clean up session'}"
+                    title="${this.session.status === 'running' ? t('sessions.row.kill') : t('status.cleanUp')}"
                     data-testid="kill-session-button"
                   >
                     ${
@@ -443,7 +446,7 @@ export class SessionCard extends LitElement {
                 <div class="w-full h-full flex items-center justify-center text-status-error">
                   <div class="text-center font-mono">
                     <div class="text-4xl mb-2">${this.getKillingText()}</div>
-                    <div class="text-sm">Killing session...</div>
+                    <div class="text-sm">${t('sessionCard.killingSession')}</div>
                   </div>
                 </div>
               `
@@ -533,7 +536,7 @@ export class SessionCard extends LitElement {
         ${
           this.session.gitIsWorktree
             ? html`
-          <span class="text-purple-400" title="Git worktree">
+          <span class="text-purple-400" title=${t('create.gitWorktree')}>
             <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
               <path d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v.878A2.25 2.25 0 005.75 8.5h1.5v2.128a2.251 2.251 0 101.5 0V8.5h1.5a2.25 2.25 0 002.25-2.25v-.878a2.25 2.25 0 10-1.5 0v.878a.75.75 0 01-.75.75h-4.5A.75.75 0 015 6.25v-.878zm3.75 7.378a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm3-8.75a.75.75 0 100-1.5.75.75 0 000 1.5z"/>
             </svg>
@@ -547,12 +550,21 @@ export class SessionCard extends LitElement {
 
   private getActivityStatusText(): string {
     if (this.killing) {
-      return 'killing...';
+      return t('sessionCard.status.killing');
     }
     if (this.session.active === false) {
-      return 'waiting';
+      return t('sessionCard.status.waiting');
     }
-    return this.session.status;
+    switch (this.session.status) {
+      case 'running':
+        return t('sessionCard.status.running');
+      case 'exited':
+        return t('sessionCard.status.exited');
+      case 'starting':
+        return t('sessionCard.status.starting');
+      default:
+        return this.session.status;
+    }
   }
 
   private getActivityStatusColor(): string {

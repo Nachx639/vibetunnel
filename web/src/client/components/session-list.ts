@@ -21,6 +21,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type { Session } from '../../shared/types.js';
 import { HttpMethod } from '../../shared/types.js';
+import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import type { Worktree } from '../services/git-service.js';
 import './session-card.js';
@@ -42,6 +43,8 @@ export class SessionList extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Array }) sessions: Session[] = [];
   @property({ type: Boolean }) loading = false;
@@ -259,7 +262,7 @@ export class SessionList extends LitElement {
     // Dispatch error event to parent for user notification
     this.dispatchEvent(
       new CustomEvent('error', {
-        detail: `Failed to kill session: ${error}`,
+        detail: t('toast.killSessionFailed', { error }),
       })
     );
   }
@@ -281,7 +284,7 @@ export class SessionList extends LitElement {
     // Dispatch error event to parent for user notification
     this.dispatchEvent(
       new CustomEvent('error', {
-        detail: `Failed to rename session: ${error}`,
+        detail: t('toast.renameFailed', { error }),
       })
     );
   };
@@ -332,13 +335,11 @@ export class SessionList extends LitElement {
 
         this.dispatchEvent(new CustomEvent('refresh'));
       } else {
-        this.dispatchEvent(
-          new CustomEvent('error', { detail: 'Failed to cleanup exited sessions' })
-        );
+        this.dispatchEvent(new CustomEvent('error', { detail: t('sessions.cleanupFailed') }));
       }
     } catch (error) {
       logger.error('error cleaning up exited sessions:', error);
-      this.dispatchEvent(new CustomEvent('error', { detail: 'Failed to cleanup exited sessions' }));
+      this.dispatchEvent(new CustomEvent('error', { detail: t('sessions.cleanupFailed') }));
     } finally {
       this.cleaningExited = false;
       this.requestUpdate();
@@ -436,8 +437,8 @@ export class SessionList extends LitElement {
       const event = new CustomEvent('show-toast', {
         detail: {
           message: followBranch
-            ? `Following worktree branch: ${followBranch.replace(/^refs\/heads\//, '')}`
-            : 'Follow mode disabled',
+            ? t('follow.following', { branch: followBranch.replace(/^refs\/heads\//, '') })
+            : t('follow.disabled'),
           type: 'success',
         },
         bubbles: true,
@@ -447,7 +448,7 @@ export class SessionList extends LitElement {
     } catch (error) {
       logger.error('Error updating follow mode:', error);
       const event = new CustomEvent('show-toast', {
-        detail: { message: 'Failed to update follow mode', type: 'error' },
+        detail: { message: t('follow.updateFailed'), type: 'error' },
         bubbles: true,
         composed: true,
       });
@@ -521,7 +522,9 @@ export class SessionList extends LitElement {
       return html``;
     }
 
-    const displayText = followMode ? followMode.replace(/^refs\/heads\//, '') : 'Standalone';
+    const displayText = followMode
+      ? followMode.replace(/^refs\/heads\//, '')
+      : t('follow.standalone');
 
     return html`
       <div class="relative">
@@ -556,7 +559,7 @@ export class SessionList extends LitElement {
                 class="w-full text-left px-3 py-2 text-xs hover:bg-bg-elevated transition-colors flex items-center justify-between"
                 @click=${() => this.handleFollowModeChange(repoPath, undefined)}
               >
-                <span class="font-mono ${!followMode ? 'text-accent-primary font-semibold' : ''}">Standalone</span>
+                <span class="font-mono ${!followMode ? 'text-accent-primary font-semibold' : ''}">${t('follow.standalone')}</span>
                 ${!followMode ? html`<span class="text-accent-primary">✓</span>` : ''}
               </button>
               
@@ -568,7 +571,7 @@ export class SessionList extends LitElement {
                 >
                   <div class="flex flex-col gap-1">
                     <span class="font-mono ${followMode === worktree.branch ? 'text-accent-primary font-semibold' : ''}">
-                      Follow: ${worktree.branch.replace(/^refs\/heads\//, '')}
+                      ${t('follow.followBranch', { branch: worktree.branch.replace(/^refs\/heads\//, '') })}
                     </span>
                     <span class="text-[10px] text-text-muted">${formatPathForDisplay(worktree.path)}</span>
                   </div>
@@ -663,7 +666,7 @@ export class SessionList extends LitElement {
           class="flex items-center gap-1 px-2 py-1 text-xs bg-bg-secondary hover:bg-bg-tertiary rounded-md border border-border transition-colors"
           @click=${() => this.toggleWorktreeDropdown(dropdownKey)}
           id="worktree-selector-${dropdownKey.replace(/[^a-zA-Z0-9]/g, '-')}"
-          title="Worktrees"
+          title=${t('worktrees.button')}
         >
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
@@ -688,7 +691,7 @@ export class SessionList extends LitElement {
           <div class="worktree-dropdown absolute right-0 mt-1 w-96 bg-bg-elevated border border-border rounded-md shadow-lg max-h-96 overflow-y-auto" style="z-index: ${Z_INDEX.BRANCH_SELECTOR_DROPDOWN}">
             ${
               worktrees.length === 0 && !isLoading
-                ? html`<div class="px-3 py-2 text-xs text-text-muted">No worktrees found</div>`
+                ? html`<div class="px-3 py-2 text-xs text-text-muted">${t('worktrees.noneFound')}</div>`
                 : html`
                 <div class="py-1">
                   ${worktrees.map(
@@ -708,7 +711,7 @@ export class SessionList extends LitElement {
                               worktree.detached
                                 ? html`
                               <span class="text-[10px] px-1.5 py-0.5 bg-status-warning/20 text-status-warning rounded flex-shrink-0">
-                                detached
+                                ${t('worktrees.detached')}
                               </span>
                             `
                                 : ''
@@ -717,7 +720,7 @@ export class SessionList extends LitElement {
                           <button
                             class="p-1 hover:bg-bg-elevated rounded transition-colors flex-shrink-0"
                             @click=${() => this.createSessionInWorktree(worktree.path)}
-                            title="Create new session in this worktree"
+                            title=${t('worktrees.newSessionHere')}
                           >
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -764,68 +767,69 @@ export class SessionList extends LitElement {
               <div class="text-text-muted text-center py-8">
                 ${
                   this.loading
-                    ? 'Loading sessions...'
+                    ? t('sessions.loadingList')
                     : this.hideExited && this.sessions.length > 0
                       ? html`
                         <div class="space-y-4 max-w-2xl mx-auto text-left">
                           <div class="text-lg font-semibold text-text">
-                            No running sessions
+                            ${t('sessions.empty.noRunning')}
                           </div>
                           <div class="text-sm text-text-muted">
-                            There are exited sessions. Show them by toggling "Hide exited" above.
+                            ${t('sessions.empty.exitedHidden')}
                           </div>
                         </div>
                       `
                       : html`
                         <div class="space-y-6 max-w-2xl mx-auto text-left">
                           <div class="text-lg font-semibold text-text">
-                            No terminal sessions yet!
+                            ${t('sessions.empty.title')}
                           </div>
 
                           <div class="space-y-3">
                             <div class="text-sm text-text-muted">
-                              Get started by using the
-                              <code class="bg-bg-secondary px-2 py-1 rounded">vt</code> command
-                              in your terminal:
+                              ${t('sessions.empty.getStartedBefore')}
+                              <code class="bg-bg-secondary px-2 py-1 rounded">vt</code>
+                              ${t('sessions.empty.getStartedAfter')}
                             </div>
 
                             <div
                               class="bg-bg-secondary p-4 rounded-lg font-mono text-xs space-y-2"
+                              dir="ltr"
                             >
                               <div class="text-status-success">vt pnpm run dev</div>
-                              <div class="text-text-muted pl-4"># Monitor your dev server</div>
+                              <div class="text-text-muted pl-4"># ${t('sessions.empty.exampleDevServer')}</div>
 
                               <div class="text-status-success">vt claude --dangerously...</div>
                               <div class="text-text-muted pl-4">
-                                # Keep an eye on AI agents
+                                # ${t('sessions.empty.exampleAgents')}
                               </div>
 
                               <div class="text-status-success">vt --shell</div>
                               <div class="text-text-muted pl-4">
-                                # Open an interactive shell
+                                # ${t('sessions.empty.exampleShell')}
                               </div>
 
                               <div class="text-status-success">vt python train.py</div>
                               <div class="text-text-muted pl-4">
-                                # Watch long-running scripts
+                                # ${t('sessions.empty.exampleScripts')}
                               </div>
                             </div>
                           </div>
 
                           <div class="space-y-3 border-t border-border pt-4">
                             <div class="text-sm font-semibold text-text">
-                              Haven't installed the CLI yet?
+                              ${t('sessions.empty.cliMissing')}
                             </div>
                             <div class="text-sm text-text-muted space-y-1">
-                              <div>→ Click the VibeTunnel menu bar icon</div>
-                              <div>→ Go to Settings → General → Command Line Tool, click on Install 'vt' Command</div>
+                              <div>→ ${t('sessions.empty.cliStep1')}</div>
+                              <div>→ ${t('sessions.empty.cliStep2')}</div>
                             </div>
                           </div>
 
                           <div class="text-xs text-text-muted mt-4">
-                            Once installed, any command prefixed with
-                            <code class="bg-bg-secondary px-1 rounded">vt</code> will appear
-                            here, accessible from any browser at localhost:4020.
+                            ${t('sessions.empty.onceInstalledBefore')}
+                            <code class="bg-bg-secondary px-1 rounded">vt</code>
+                            ${t('sessions.empty.onceInstalledAfter')}
                           </div>
                         </div>
                       `
@@ -839,7 +843,7 @@ export class SessionList extends LitElement {
                   ? html`
                     <div class="mb-6 mt-2">
                       <h3 class="text-xs font-semibold text-text-muted uppercase tracking-wider mb-4">
-                        Running <span class="text-text-dim">(${runningSessions.length})</span>
+                        ${t('sessions.running')} <span class="text-text-dim">(${runningSessions.length})</span>
                       </h3>
                       ${Array.from(this.groupSessionsByRepo(runningSessions)).map(
                         ([repoPath, repoSessions]) => html`
@@ -910,7 +914,7 @@ export class SessionList extends LitElement {
                   ? html`
                     <div class="${!hasRunningSessions ? 'mt-2' : ''}">
                       <h3 class="text-xs font-semibold text-text-muted uppercase tracking-wider mb-4">
-                        Exited <span class="text-text-dim">(${exitedSessions.length})</span>
+                        ${t('sessions.exited')} <span class="text-text-dim">(${exitedSessions.length})</span>
                       </h3>
                       ${Array.from(this.groupSessionsByRepo(exitedSessions)).map(
                         ([repoPath, repoSessions]) => html`
@@ -999,14 +1003,14 @@ export class SessionList extends LitElement {
               ${
                 runningSessions.length > 0
                   ? html`
-                <span class="text-status-success whitespace-nowrap">${runningSessions.length} Running</span>
+                <span class="text-status-success whitespace-nowrap">${t('sessions.runningCount', { n: runningSessions.length })}</span>
               `
                   : ''
               }
               ${
                 exitedSessions.length > 0
                   ? html`
-                <span class="text-text-dim whitespace-nowrap">${exitedSessions.length} Exited</span>
+                <span class="text-text-dim whitespace-nowrap">${t('sessions.exitedCount', { n: exitedSessions.length })}</span>
               `
                   : ''
               }
@@ -1029,7 +1033,7 @@ export class SessionList extends LitElement {
                   data-testid="show-exited-toggle"
                 />
                 <span class="text-xs text-text-muted group-hover:text-text font-mono select-none">
-                  Show
+                  ${t('sessions.show')}
                 </span>
               </label>
             `
@@ -1055,10 +1059,10 @@ export class SessionList extends LitElement {
                     ? html`
                   <span class="flex items-center gap-1">
                     <span class="animate-spin">⟳</span>
-                    Cleaning...
+                    ${t('sessions.cleaning')}
                   </span>
                 `
-                    : 'Clean'
+                    : t('sessions.clean')
                 }
               </button>
             `
@@ -1075,7 +1079,7 @@ export class SessionList extends LitElement {
                 @click=${() => this.dispatchEvent(new CustomEvent('kill-all-sessions'))}
                 data-testid="kill-all-button"
               >
-                Kill All
+                ${t('sessions.killAll')}
               </button>
             `
                 : ''
@@ -1100,7 +1104,7 @@ export class SessionList extends LitElement {
     return html`
       <div class="mb-4 mx-4 p-3 bg-primary/10 border border-primary/30 rounded-lg">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-semibold text-primary uppercase tracking-wider">Active Session</span>
+          <span class="text-xs font-semibold text-primary uppercase tracking-wider">${t('sessions.activeSession')}</span>
           <div class="flex items-center gap-2">
             <div class="relative">
               <div class="w-2 h-2 rounded-full bg-status-success"></div>

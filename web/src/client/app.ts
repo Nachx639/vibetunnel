@@ -8,7 +8,7 @@ import { keyed } from 'lit/directives/keyed.js';
 // Import shared types
 import type { Session } from '../shared/types.js';
 import { HttpMethod } from '../shared/types.js';
-import { whenLocaleReady } from './i18n/index.js';
+import { LocaleController, t, whenLocaleReady } from './i18n/index.js';
 import { isBrowserShortcut } from './utils/browser-shortcuts.js';
 // Import utilities
 import { BREAKPOINTS, SIDEBAR, TIMING, TRANSITIONS, Z_INDEX } from './utils/constants.js';
@@ -66,6 +66,7 @@ export class VibeTunnelApp extends LitElement {
   }
 
   @state() private errorMessage = '';
+  protected readonly i18n = new LocaleController(this);
   @state() private successMessage = '';
   @state() private sessions: Session[] = [];
   @state() private loading = false;
@@ -252,58 +253,58 @@ export class VibeTunnelApp extends LitElement {
         { browser: string; terminal: string; check: () => boolean }
       > = {
         'mod+a': {
-          browser: 'Select all',
-          terminal: 'Line start',
+          browser: t('shortcut.selectAll'),
+          terminal: t('shortcut.lineStart'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'a',
         },
         'mod+e': {
-          browser: 'Search/Extension',
-          terminal: 'Line end',
+          browser: t('shortcut.searchExtension'),
+          terminal: t('shortcut.lineEnd'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'e',
         },
         'mod+w': {
-          browser: 'Close tab',
-          terminal: 'Delete word',
+          browser: t('shortcut.closeTab'),
+          terminal: t('shortcut.deleteWord'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'w',
         },
         'mod+r': {
-          browser: 'Reload',
-          terminal: 'History search',
+          browser: t('shortcut.reload'),
+          terminal: t('shortcut.historySearch'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'r',
         },
         'mod+l': {
-          browser: 'Address bar',
-          terminal: 'Clear screen',
+          browser: t('shortcut.addressBar'),
+          terminal: t('shortcut.clearScreen'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'l',
         },
         'mod+d': {
-          browser: 'Bookmark',
-          terminal: 'EOF/Exit',
+          browser: t('shortcut.bookmark'),
+          terminal: t('shortcut.eofExit'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'd',
         },
         'mod+f': {
-          browser: 'Find',
-          terminal: 'Forward char',
+          browser: t('shortcut.find'),
+          terminal: t('shortcut.forwardChar'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'f',
         },
         'mod+p': {
-          browser: 'Print',
-          terminal: 'Previous cmd',
+          browser: t('shortcut.print'),
+          terminal: t('shortcut.previousCmd'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'p',
         },
         'mod+u': {
-          browser: 'View source',
-          terminal: 'Delete to start',
+          browser: t('shortcut.viewSource'),
+          terminal: t('shortcut.deleteToStart'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'u',
         },
         'mod+k': {
-          browser: 'Search bar',
-          terminal: 'Delete to end',
+          browser: t('shortcut.searchBar'),
+          terminal: t('shortcut.deleteToEnd'),
           check: () => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === 'k',
         },
         'alt+d': {
-          browser: 'Address bar',
-          terminal: 'Delete word fwd',
+          browser: t('shortcut.addressBar'),
+          terminal: t('shortcut.deleteWordFwd'),
           check: () => e.altKey && !e.ctrlKey && !e.metaKey && key === 'd',
         },
       };
@@ -744,13 +745,13 @@ export class VibeTunnelApp extends LitElement {
                 logger.warn(
                   `Session ${this.selectedSessionId} was loaded but is now missing (possibly cleaned up)`
                 );
-                this.showError(`Session ${this.selectedSessionId} not found`);
+                this.showError(t('toast.sessionNotFound', { id: this.selectedSessionId }));
                 this.handleNavigateToList();
               } else if (this.sessionLoadingState === 'loading' && this.initialLoadComplete) {
                 // We were loading and finished, but session still doesn't exist
                 this.sessionLoadingState = 'not-found';
                 logger.warn(`Session ${this.selectedSessionId} not found after loading completed`);
-                this.showError(`Session ${this.selectedSessionId} not found`);
+                this.showError(t('toast.sessionNotFound', { id: this.selectedSessionId }));
                 this.handleNavigateToList();
               } else if (this.sessionLoadingState === 'idle') {
                 // First time checking - start loading
@@ -766,11 +767,11 @@ export class VibeTunnelApp extends LitElement {
           this.handleLogout();
           return;
         } else {
-          this.showError('Failed to load sessions');
+          this.showError(t('toast.loadSessionsFailed'));
         }
       } catch (error) {
         logger.error('error loading sessions:', error);
-        this.showError('Failed to load sessions');
+        this.showError(t('toast.loadSessionsFailed'));
       } finally {
         this.loading = false;
         this.initialLoadComplete = true;
@@ -843,7 +844,7 @@ export class VibeTunnelApp extends LitElement {
     const message = e.detail.message;
 
     if (!sessionId) {
-      this.showError('Session created but ID not found in response');
+      this.showError(t('toast.sessionIdMissing'));
       return;
     }
 
@@ -853,7 +854,7 @@ export class VibeTunnelApp extends LitElement {
     // Check if this was a terminal spawn (not a web session)
     if (message?.includes('Terminal spawned successfully')) {
       // Don't try to switch to the session - it's running in a terminal window
-      this.showSuccess('Terminal window opened successfully');
+      this.showSuccess(t('toast.terminalWindowOpened'));
       return;
     }
 
@@ -888,7 +889,7 @@ export class VibeTunnelApp extends LitElement {
 
     // If we get here, session creation might have failed
     logger.log('session not found after all attempts');
-    this.showError('Session created but could not be found. Please refresh.');
+    this.showError(t('toast.sessionCreatedNotFound'));
   }
 
   private handleSessionKilled(e: CustomEvent) {
@@ -1152,11 +1153,11 @@ export class VibeTunnelApp extends LitElement {
     const successCount = results.filter((r) => r).length;
 
     if (successCount === killPromises.length) {
-      this.showSuccess(`All ${successCount} sessions killed successfully`);
+      this.showSuccess(t('toast.killAllSuccess', { count: successCount }));
     } else if (successCount > 0) {
-      this.showError(`Killed ${successCount} of ${killPromises.length} sessions`);
+      this.showError(t('toast.killPartial', { count: successCount, total: killPromises.length }));
     } else {
-      this.showError('Failed to kill sessions');
+      this.showError(t('toast.killFailed'));
     }
 
     // Refresh the session list immediately
@@ -1442,7 +1443,7 @@ export class VibeTunnelApp extends LitElement {
       if (!sessionExists) {
         logger.warn(`❌ Session ${sessionId} not found in loaded sessions`);
         // Show error and navigate to list
-        this.showError(`Session ${sessionId} not found`);
+        this.showError(t('toast.sessionNotFound', { id: sessionId }));
         this.selectedSessionId = null;
         this.currentView = 'list';
         return;
@@ -1872,7 +1873,7 @@ export class VibeTunnelApp extends LitElement {
                 }"
                 style="transition-duration: ${TRANSITIONS.RESIZE_HANDLE}ms;"
                 @mousedown=${this.handleResizeStart}
-                title="Drag to resize sidebar"
+                title=${t('app.resizeSidebar')}
               ></div>
             `
             : ''
@@ -1917,10 +1918,10 @@ export class VibeTunnelApp extends LitElement {
         .authClient=${authClient}
         @close=${this.handleCloseSettings}
         @notifications-enabled=${() => {
-          this.showSuccess('Notifications enabled');
+          this.showSuccess(t('toast.notificationsEnabled'));
         }}
         @notifications-disabled=${() => {
-          this.showSuccess('Notifications disabled');
+          this.showSuccess(t('toast.notificationsDisabled'));
         }}
         @success=${(e: CustomEvent) => this.showSuccess(e.detail)}
         @error=${(e: CustomEvent) => this.showError(e.detail)}

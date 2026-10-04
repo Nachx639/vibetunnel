@@ -9,6 +9,7 @@
  */
 import { html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import { copyToClipboard, formatPathForDisplay } from '../utils/path-utils.js';
 import './copy-icon.js';
@@ -21,6 +22,8 @@ export class ClickablePath extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: String }) path = '';
   @property({ type: String }) class = '';
@@ -52,7 +55,7 @@ export class ClickablePath extends LitElement {
         new CustomEvent('path-copy-failed', {
           detail: {
             path: this.path,
-            error: error instanceof Error ? error.message : 'Unknown error',
+            error: error instanceof Error ? error.message : t('common.unknownError'),
           },
           bubbles: true,
           composed: true,
@@ -71,7 +74,7 @@ export class ClickablePath extends LitElement {
         class="truncate cursor-pointer hover:text-accent-green transition-colors inline-flex items-center gap-1 max-w-full ${
           this.class
         }"
-        title="Click to copy path"
+        title=${t('path.clickToCopy')}
         @click=${this.handleClick}
       >
         <span class="truncate">${displayPath}</span>

@@ -8,6 +8,7 @@
  */
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import type { GitService, Worktree, WorktreeListResponse } from '../services/git-service.js';
 import { createLogger } from '../utils/logger.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
@@ -20,6 +21,8 @@ export class WorktreeManager extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) gitService?: GitService;
   @property({ type: String }) repoPath = '';
@@ -70,7 +73,7 @@ export class WorktreeManager extends LitElement {
       this.followBranch = response.followBranch;
     } catch (err) {
       logger.error('Failed to load worktrees:', err);
-      this.error = err instanceof Error ? err.message : 'Failed to load worktrees';
+      this.error = err instanceof Error ? err.message : t('worktrees.error.load');
     } finally {
       this.loading = false;
     }
@@ -88,7 +91,7 @@ export class WorktreeManager extends LitElement {
     this.dispatchEvent(
       new CustomEvent('error', {
         detail: {
-          message: `Direct branch switching is no longer supported. Create a worktree for branch '${branch}' instead.`,
+          message: t('worktrees.error.switchUnsupported', { branch }),
         },
       })
     );
@@ -120,7 +123,9 @@ export class WorktreeManager extends LitElement {
       this.dispatchEvent(
         new CustomEvent('error', {
           detail: {
-            message: `Failed to delete worktree: ${err instanceof Error ? err.message : 'Unknown error'}`,
+            message: t('worktrees.error.delete', {
+              error: err instanceof Error ? err.message : t('worktrees.error.unknown'),
+            }),
           },
         })
       );
@@ -145,11 +150,12 @@ export class WorktreeManager extends LitElement {
       // Trigger a refresh of Git events after follow mode change
       // The Git event service will pick up the change on its next poll
 
-      const action = enable ? 'enabled' : 'disabled';
       this.dispatchEvent(
         new CustomEvent('success', {
           detail: {
-            message: `Follow mode ${action} for ${branch}`,
+            message: enable
+              ? t('worktrees.followEnabled', { branch })
+              : t('worktrees.followDisabled', { branch }),
           },
           bubbles: true,
           composed: true,
@@ -168,7 +174,9 @@ export class WorktreeManager extends LitElement {
       this.dispatchEvent(
         new CustomEvent('error', {
           detail: {
-            message: `Failed to toggle follow mode: ${err instanceof Error ? err.message : 'Unknown error'}`,
+            message: t('worktrees.error.toggleFollow', {
+              error: err instanceof Error ? err.message : t('worktrees.error.unknown'),
+            }),
           },
         })
       );
@@ -225,7 +233,7 @@ export class WorktreeManager extends LitElement {
 
       this.dispatchEvent(
         new CustomEvent('success', {
-          detail: { message: `Created worktree for branch '${branchName}'` },
+          detail: { message: t('create.worktreeCreated', { branch: branchName }) },
           bubbles: true,
           composed: true,
         })
@@ -233,12 +241,12 @@ export class WorktreeManager extends LitElement {
     } catch (err) {
       logger.error('Failed to create worktree:', err);
 
-      let errorMessage = 'Failed to create worktree';
+      let errorMessage = t('create.error.worktreeFailed');
       if (err instanceof Error) {
         if (err.message.includes('already exists')) {
-          errorMessage = `Worktree path already exists. Try a different branch name or path.`;
+          errorMessage = t('worktrees.error.pathExists');
         } else if (err.message.includes('already checked out')) {
-          errorMessage = `Branch '${branchName}' is already checked out in another worktree`;
+          errorMessage = t('create.error.branchCheckedOut', { branch: branchName });
         } else {
           errorMessage = err.message;
         }
@@ -260,30 +268,30 @@ export class WorktreeManager extends LitElement {
     // Check if branch already exists
     const existingBranches = this.worktrees.map((wt) => wt.branch.replace(/^refs\/heads\//, ''));
     if (existingBranches.includes(name)) {
-      return `Branch '${name}' already exists`;
+      return t('worktrees.branch.exists', { branch: name });
     }
 
     // Git branch name validation rules
     if (name.startsWith('-') || name.endsWith('-')) {
-      return 'Branch name cannot start or end with a hyphen';
+      return t('worktrees.branch.hyphen');
     }
 
     if (name.includes('..') || name.includes('~') || name.includes('^') || name.includes(':')) {
-      return 'Branch name contains invalid characters (.. ~ ^ :)';
+      return t('worktrees.branch.invalidChars');
     }
 
     if (name.endsWith('.lock')) {
-      return 'Branch name cannot end with .lock';
+      return t('worktrees.branch.lock');
     }
 
     if (name.includes('//') || name.includes('\\')) {
-      return 'Branch name cannot contain consecutive slashes';
+      return t('worktrees.branch.slashes');
     }
 
     // Reserved names
     const reserved = ['HEAD', 'FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD'];
     if (reserved.includes(name.toUpperCase())) {
-      return `'${name}' is a reserved Git name`;
+      return t('worktrees.branch.reserved', { branch: name });
     }
 
     return null;
@@ -301,12 +309,21 @@ export class WorktreeManager extends LitElement {
     this.useCustomPath = false;
   }
 
+  /** The delete question with the branch name in its own element, wherever the language puts it. */
+  private renderDeleteQuestion() {
+    const marker = '\u0000';
+    const [before, after = ''] = t('worktrees.confirmDelete.body', { branch: marker }).split(
+      marker
+    );
+    return html`${before}<span class="font-mono font-semibold text-text">${this.deleteTargetBranch}</span>${after}`;
+  }
+
   render() {
     return html`
       <div class="p-4 h-full overflow-y-auto bg-bg">
         <div class="max-w-4xl mx-auto">
           <div class="mb-6">
-            <h1 class="text-xl font-bold text-text">Git Worktrees</h1>
+            <h1 class="text-xl font-bold text-text">${t('worktrees.title')}</h1>
           </div>
 
         ${
@@ -323,13 +340,13 @@ export class WorktreeManager extends LitElement {
           this.loading
             ? html`
           <div class="flex justify-center items-center py-8">
-            <div class="text-secondary">Loading worktrees...</div>
+            <div class="text-secondary">${t('worktrees.loading')}</div>
           </div>
         `
             : html`
           <div class="space-y-4">
             <div class="text-sm text-text-muted mb-4">
-              Repository: <span class="font-mono text-text break-all">${this.formatPath(this.repoPath)}</span>
+              ${t('worktrees.repository')} <span class="font-mono text-text break-all">${this.formatPath(this.repoPath)}</span>
             </div>
             
             ${
@@ -338,10 +355,10 @@ export class WorktreeManager extends LitElement {
                 ? html`
               <div class="text-center py-12 space-y-4">
                 <div class="text-text-muted text-lg">
-                  No additional worktrees found
+                  ${t('worktrees.empty.title')}
                 </div>
                 <div class="text-text-dim text-sm max-w-md mx-auto">
-                  This repository only has the main worktree. You can create additional worktrees using the git worktree command in your terminal.
+                  ${t('worktrees.empty.body')}
                 </div>
                 <div class="mt-6">
                   <code class="text-xs bg-surface px-2 py-1 rounded font-mono text-text-muted">
@@ -359,19 +376,19 @@ export class WorktreeManager extends LitElement {
                       <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 mb-2 flex-wrap">
                           <h3 class="font-semibold text-lg text-text">
-                            ${worktree.branch || 'detached'}
+                            ${worktree.branch || t('worktrees.detached')}
                           </h3>
                           ${
                             worktree.isMainWorktree
                               ? html`
-                            <span class="px-2 py-1 text-xs bg-primary text-bg-elevated rounded">Main</span>
+                            <span class="px-2 py-1 text-xs bg-primary text-bg-elevated rounded">${t('worktrees.main')}</span>
                           `
                               : ''
                           }
                           ${
                             worktree.isCurrentWorktree
                               ? html`
-                            <span class="px-2 py-1 text-xs bg-status-success text-bg-elevated rounded">Current</span>
+                            <span class="px-2 py-1 text-xs bg-status-success text-bg-elevated rounded">${t('worktrees.current')}</span>
                           `
                               : ''
                           }
@@ -393,14 +410,14 @@ export class WorktreeManager extends LitElement {
                               ${
                                 worktree.commitsAhead > 0
                                   ? html`
-                                <span class="text-status-success">↑ ${worktree.commitsAhead} ahead</span>
+                                <span class="text-status-success">↑ ${t('worktrees.ahead', { n: worktree.commitsAhead })}</span>
                               `
                                   : ''
                               }
                               ${
                                 worktree.hasUncommittedChanges
                                   ? html`
-                                <span class="text-status-warning">● Uncommitted changes</span>
+                                <span class="text-status-warning">● ${t('worktrees.uncommitted')}</span>
                               `
                                   : ''
                               }
@@ -422,9 +439,9 @@ export class WorktreeManager extends LitElement {
                                 ? 'text-bg-elevated bg-status-success hover:bg-status-success/90'
                                 : 'text-text bg-surface hover:bg-surface-hover border border-border'
                             } rounded transition-colors"
-                            title="${this.followBranch === worktree.branch ? 'Disable follow mode' : 'Enable follow mode'}"
+                            title=${this.followBranch === worktree.branch ? t('worktrees.disableFollow') : t('worktrees.enableFollow')}
                           >
-                            ${this.followBranch === worktree.branch ? 'Following' : 'Follow'}
+                            ${this.followBranch === worktree.branch ? t('worktrees.following') : t('worktrees.follow')}
                           </button>
                         `
                             : ''
@@ -436,7 +453,7 @@ export class WorktreeManager extends LitElement {
                             @click=${() => this.handleSwitchBranch(worktree.branch)}
                             class="px-3 py-1 text-sm font-medium text-bg-elevated bg-primary rounded hover:bg-primary-hover transition-colors"
                           >
-                            Switch
+                            ${t('worktrees.switch')}
                           </button>
                         `
                             : ''
@@ -448,7 +465,7 @@ export class WorktreeManager extends LitElement {
                             @click=${() => this.handleDeleteWorktree(worktree.branch, worktree.hasUncommittedChanges || false)}
                             class="px-3 py-1 text-sm font-medium text-bg-elevated bg-status-error rounded hover:bg-status-error/90 transition-colors"
                           >
-                            Delete
+                            ${t('worktrees.delete')}
                           </button>
                         `
                             : ''
@@ -475,7 +492,7 @@ export class WorktreeManager extends LitElement {
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
               </svg>
-              Create New Worktree
+              ${t('worktrees.create')}
             </button>
           </div>
         `
@@ -487,13 +504,13 @@ export class WorktreeManager extends LitElement {
             ? html`
             <div class="fixed inset-0 bg-bg/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
               <div class="bg-surface rounded-lg p-6 max-w-md w-full border border-border shadow-elevated">
-                <h3 class="text-lg font-semibold mb-4 text-text">Create New Worktree</h3>
+                <h3 class="text-lg font-semibold mb-4 text-text">${t('worktrees.create')}</h3>
                 
                 <div class="space-y-4">
                   <!-- Branch Name Input -->
                   <div>
                     <label class="block text-sm font-medium text-text-muted mb-1">
-                      Branch Name
+                      ${t('worktrees.branchName')}
                     </label>
                     <input
                       type="text"
@@ -516,7 +533,7 @@ export class WorktreeManager extends LitElement {
                       this.newBranchName.trim()
                         ? html`
                         <div class="text-xs mt-1 ${this.validateBranchName(this.newBranchName) ? 'text-status-error' : 'text-text-dim'}">
-                          ${this.validateBranchName(this.newBranchName) || 'Valid branch name'}
+                          ${this.validateBranchName(this.newBranchName) || t('worktrees.branch.valid')}
                         </div>
                       `
                         : ''
@@ -526,7 +543,7 @@ export class WorktreeManager extends LitElement {
                   <!-- Base Branch Selection -->
                   <div>
                     <label class="block text-sm font-medium text-text-muted mb-1">
-                      Base Branch
+                      ${t('worktrees.baseBranch')}
                     </label>
                     <div class="text-sm text-text bg-bg px-3 py-2 border border-border rounded">
                       ${this.baseBranch}
@@ -548,7 +565,7 @@ export class WorktreeManager extends LitElement {
                         ?disabled=${this.isCreatingWorktree}
                         class="rounded"
                       />
-                      <span>Customize worktree path</span>
+                      <span>${t('worktrees.customizePath')}</span>
                     </label>
                   </div>
 
@@ -557,7 +574,7 @@ export class WorktreeManager extends LitElement {
                       ? html`
                       <div>
                         <label class="block text-sm font-medium text-text-muted mb-1">
-                          Custom Path
+                          ${t('worktrees.customPath')}
                         </label>
                         <input
                           type="text"
@@ -572,15 +589,17 @@ export class WorktreeManager extends LitElement {
                         <div class="text-xs text-text-dim mt-1">
                           ${
                             this.newWorktreePath.trim()
-                              ? `Will create at: ${this.newWorktreePath.trim()}`
-                              : 'Enter absolute path for the worktree'
+                              ? t('worktrees.willCreateAt', { path: this.newWorktreePath.trim() })
+                              : t('worktrees.enterPath')
                           }
                         </div>
                       </div>
                     `
                       : html`
                       <div class="text-xs text-text-dim">
-                        Default path: ${this.generateWorktreePath(this.newBranchName.trim() || 'branch')}
+                        ${t('worktrees.defaultPath', {
+                          path: this.generateWorktreePath(this.newBranchName.trim() || 'branch'),
+                        })}
                       </div>
                     `
                   }
@@ -593,14 +612,14 @@ export class WorktreeManager extends LitElement {
                     class="px-4 py-2 text-sm font-medium text-text bg-surface rounded hover:bg-surface-hover transition-colors border border-border"
                     ?disabled=${this.isCreatingWorktree}
                   >
-                    Cancel
+                    ${t('common.cancel')}
                   </button>
                   <button
                     @click=${this.handleCreateWorktree}
                     class="px-4 py-2 text-sm font-medium text-bg-elevated bg-primary rounded hover:bg-primary-hover transition-colors disabled:opacity-50"
                     ?disabled=${!this.newBranchName.trim() || !!this.validateBranchName(this.newBranchName.trim()) || (this.useCustomPath && !this.newWorktreePath.trim()) || this.isCreatingWorktree}
                   >
-                    ${this.isCreatingWorktree ? 'Creating...' : 'Create Worktree'}
+                    ${this.isCreatingWorktree ? t('create.creating') : t('worktrees.createSubmit')}
                   </button>
                 </div>
               </div>
@@ -614,16 +633,15 @@ export class WorktreeManager extends LitElement {
             ? html`
           <div class="fixed inset-0 bg-bg/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div class="bg-surface rounded-lg p-6 max-w-md w-full border border-border shadow-elevated">
-              <h3 class="text-lg font-semibold mb-4 text-text">Confirm Delete</h3>
+              <h3 class="text-lg font-semibold mb-4 text-text">${t('worktrees.confirmDelete.title')}</h3>
               <p class="text-text-muted mb-4">
-                Are you sure you want to delete the worktree for branch 
-                <span class="font-mono font-semibold text-text">${this.deleteTargetBranch}</span>?
+                ${this.renderDeleteQuestion()}
               </p>
               ${
                 this.deleteHasChanges
                   ? html`
                 <p class="text-status-warning mb-4">
-                  ⚠️ This worktree has uncommitted changes that will be lost.
+                  ⚠️ ${t('worktrees.confirmDelete.uncommitted')}
                 </p>
               `
                   : ''
@@ -633,13 +651,13 @@ export class WorktreeManager extends LitElement {
                   @click=${this.cancelDelete}
                   class="px-4 py-2 text-sm font-medium text-text bg-surface rounded hover:bg-surface-hover transition-colors border border-border"
                 >
-                  Cancel
+                  ${t('common.cancel')}
                 </button>
                 <button
                   @click=${this.confirmDelete}
                   class="px-4 py-2 text-sm font-medium text-bg-elevated bg-status-error rounded hover:bg-status-error/90 transition-colors"
                 >
-                  Delete
+                  ${t('worktrees.delete')}
                 </button>
               </div>
             </div>

@@ -23,6 +23,7 @@ import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
 import type { Session } from '../../shared/types.js';
 import { TitleMode } from '../../shared/types.js';
 import type { QuickStartCommand } from '../../types/config.js';
+import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import { type GitRepoInfo, GitService } from '../services/git-service.js';
 import { RemoteService, type RemoteSummary } from '../services/remote-service.js';
@@ -72,6 +73,8 @@ export class SessionCreateForm extends LitElement {
   @property({ type: Object }) authClient!: AuthClient;
   @property({ type: Boolean }) spawnWindow = false;
   @property({ type: String }) titleMode = TitleMode.STATIC;
+
+  protected readonly i18n = new LocaleController(this);
 
   @state() private isCreating = false;
   @state() private showFileBrowser = false;
@@ -521,7 +524,7 @@ export class SessionCreateForm extends LitElement {
     if (!this.workingDir?.trim() || !this.command?.trim()) {
       this.dispatchEvent(
         new CustomEvent('error', {
-          detail: 'Please fill in both working directory and command',
+          detail: t('create.error.missingFields'),
         })
       );
       return;
@@ -532,7 +535,7 @@ export class SessionCreateForm extends LitElement {
     if (this.isLoadingRemoteTargets) {
       this.dispatchEvent(
         new CustomEvent('error', {
-          detail: 'Wait for VibeTunnel to finish loading the available machines.',
+          detail: t('create.error.machinesLoading'),
         })
       );
       return;
@@ -550,7 +553,7 @@ export class SessionCreateForm extends LitElement {
     if (this.isHQMode && !this.remotes.some((remote) => remote.id === this.selectedRemoteId)) {
       this.dispatchEvent(
         new CustomEvent('error', {
-          detail: 'No machines are registered with this HQ. Start VibeTunnel on a machine first.',
+          detail: t('create.error.noMachines'),
         })
       );
       return;
@@ -592,7 +595,10 @@ export class SessionCreateForm extends LitElement {
       );
       effectiveBranch = this.currentBranch;
 
-      this.branchSwitchWarning = `Cannot switch to ${this.selectedBaseBranch} without a worktree. Create a worktree or use the current branch ${this.currentBranch}.`;
+      this.branchSwitchWarning = t('create.branchSwitchWarning', {
+        branch: this.selectedBaseBranch,
+        current: this.currentBranch,
+      });
     } else {
       // Using current branch
       effectiveBranch = this.selectedBaseBranch || this.currentBranch;
@@ -660,7 +666,7 @@ export class SessionCreateForm extends LitElement {
           // Show error to user
           this.dispatchEvent(
             new CustomEvent('error', {
-              detail: 'Failed to enable follow mode. Session will be created without follow mode.',
+              detail: t('create.error.followModeFailed'),
               bubbles: true,
               composed: true,
             })
@@ -675,7 +681,7 @@ export class SessionCreateForm extends LitElement {
         logger.error('Error enabling follow mode:', error);
         this.dispatchEvent(
           new CustomEvent('error', {
-            detail: 'Error enabling follow mode. Session will be created without follow mode.',
+            detail: t('create.error.followModeError'),
             bubbles: true,
             composed: true,
           })
@@ -718,7 +724,7 @@ export class SessionCreateForm extends LitElement {
         })
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create session';
+      const errorMessage = error instanceof Error ? error.message : t('create.error.createFailed');
       logger.error('Error creating session:', error);
       this.dispatchEvent(
         new CustomEvent('error', {
@@ -804,7 +810,7 @@ export class SessionCreateForm extends LitElement {
       // Show success message
       this.dispatchEvent(
         new CustomEvent('success', {
-          detail: `Created worktree for branch '${branchName}'`,
+          detail: t('create.worktreeCreated', { branch: branchName }),
           bubbles: true,
           composed: true,
         })
@@ -815,14 +821,14 @@ export class SessionCreateForm extends LitElement {
       // Git branch selector will reset its own state on error
 
       // Determine specific error message
-      let errorMessage = 'Failed to create worktree';
+      let errorMessage = t('create.error.worktreeFailed');
       if (error instanceof Error) {
         if (error.message.includes('already exists')) {
-          errorMessage = `Worktree path already exists. Try a different branch name.`;
+          errorMessage = t('create.error.worktreeExists');
         } else if (error.message.includes('already checked out')) {
-          errorMessage = `Branch '${branchName}' is already checked out in another worktree`;
+          errorMessage = t('create.error.branchCheckedOut', { branch: branchName });
         } else if (error.message.includes('Permission denied')) {
-          errorMessage = 'Permission denied. Check directory permissions.';
+          errorMessage = t('create.error.permissionDenied');
         } else {
           errorMessage = error.message;
         }
@@ -906,8 +912,7 @@ export class SessionCreateForm extends LitElement {
       logger.error('Failed to load session targets:', error);
       this.remotes = [];
       this.selectedRemoteId = '';
-      this.remoteTargetError =
-        'Unable to load the available machines. Check the connection and try again.';
+      this.remoteTargetError = t('create.error.machinesLoadFailed');
       return detectedHQMode;
     } finally {
       if (this.isCurrentVisibleInitialization(initializationId)) {
@@ -1156,11 +1161,11 @@ export class SessionCreateForm extends LitElement {
     return html`
       <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none">
         <span class="text-[10px] sm:text-xs text-primary font-medium flex items-center gap-1">[${this.currentBranch}]
-          ${this.gitRepoInfo.hasChanges ? html`<span class="text-yellow-500" title="Modified">●</span>` : ''}
+          ${this.gitRepoInfo.hasChanges ? html`<span class="text-yellow-500" title=${t('create.modified')}>●</span>` : ''}
           ${
             this.gitRepoInfo.isWorktree
               ? html`
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" class="text-purple-400" title="Git worktree">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" class="text-purple-400" title=${t('create.gitWorktree')}>
               <path d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v.878A2.25 2.25 0 005.75 8.5h1.5v2.128a2.251 2.251 0 101.5 0V8.5h1.5a2.25 2.25 0 002.25-2.25v-.878a2.25 2.25 0 10-1.5 0v.878a.75.75 0 01-.75.75h-4.5A.75.75 0 015 6.25v-.878zm3.75 7.378a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm3-8.75a.75.75 0 100-1.5.75.75 0 000 1.5z"/>
             </svg>
           `
@@ -1205,7 +1210,7 @@ export class SessionCreateForm extends LitElement {
           class="mb-2 sm:mb-3 p-2 sm:p-3 bg-bg-elevated border border-border/50 rounded-lg"
           data-testid="machines-loading"
         >
-          <p class="text-[10px] sm:text-xs text-text-muted">Loading available machines…</p>
+          <p class="text-[10px] sm:text-xs text-text-muted">${t('create.loadingMachines')}</p>
         </div>
       `;
     }
@@ -1222,7 +1227,7 @@ export class SessionCreateForm extends LitElement {
             class="text-[10px] sm:text-xs text-primary hover:text-primary-hover"
             @click=${() => void this.initializeVisibleForm()}
           >
-            Retry
+            ${t('create.retry')}
           </button>
         </div>
       `;
@@ -1234,7 +1239,7 @@ export class SessionCreateForm extends LitElement {
       return html`
         <div class="mb-2 sm:mb-3 p-2 sm:p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg" data-testid="no-machines-warning">
           <p class="text-[10px] sm:text-xs text-yellow-200">
-            No machines registered. Start VibeTunnel on a machine to create a session.
+            ${t('create.noMachinesWarning')}
           </p>
         </div>
       `;
@@ -1247,7 +1252,7 @@ export class SessionCreateForm extends LitElement {
 
     return html`
       <div class="mb-2 sm:mb-3">
-        <label for="session-machine-select" class="form-label text-text-muted text-[10px] sm:text-xs lg:text-sm">Machine:</label>
+        <label for="session-machine-select" class="form-label text-text-muted text-[10px] sm:text-xs lg:text-sm">${t('create.machine')}</label>
         <select
           id="session-machine-select"
           class="input-field py-1.5 sm:py-2 lg:py-3 text-xs sm:text-sm"
@@ -1278,12 +1283,12 @@ export class SessionCreateForm extends LitElement {
           data-testid="session-create-modal"
         >
           <div class="p-3 sm:p-4 mb-1 sm:mb-2 border-b border-border/50 relative bg-gradient-to-r from-bg-secondary to-bg-tertiary flex-shrink-0 rounded-t-xl flex items-center justify-between">
-            <h2 id="modal-title" class="text-primary text-base sm:text-lg lg:text-xl font-bold">New Session</h2>
+            <h2 id="modal-title" class="text-primary text-base sm:text-lg lg:text-xl font-bold">${t('actionBar.newSession')}</h2>
             <button
               class="text-text-muted hover:text-text transition-all duration-200 p-1.5 sm:p-2 hover:bg-bg-elevated/30 rounded-lg"
               @click=${this.handleCancel}
-              title="Close (Esc)"
-              aria-label="Close modal"
+              title=${t('create.closeEsc')}
+              aria-label=${t('create.closeModal')}
             >
               <svg
                 class="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5"
@@ -1323,13 +1328,13 @@ export class SessionCreateForm extends LitElement {
             
             <!-- Session Name -->
             <div class="mb-2 sm:mb-3">
-              <label class="form-label text-text-muted text-[10px] sm:text-xs lg:text-sm">Session Name (Optional):</label>
+              <label class="form-label text-text-muted text-[10px] sm:text-xs lg:text-sm">${t('create.sessionName')}</label>
               <input
                 type="text"
                 class="input-field py-1.5 sm:py-2 lg:py-3 text-xs sm:text-sm"
                 .value=${this.sessionName}
                 @input=${this.handleSessionNameChange}
-                placeholder="My Session"
+                placeholder=${t('create.sessionNamePlaceholder')}
                 ?disabled=${this.disabled || this.isCreating}
                 data-testid="session-name-input"
               />
@@ -1339,7 +1344,7 @@ export class SessionCreateForm extends LitElement {
 
             <!-- Command -->
             <div class="mb-2 sm:mb-3">
-              <label class="form-label text-text-muted text-[10px] sm:text-xs lg:text-sm">Command:</label>
+              <label class="form-label text-text-muted text-[10px] sm:text-xs lg:text-sm">${t('create.command')}</label>
               <input
                 type="text"
                 class="input-field py-1.5 sm:py-2 lg:py-3 text-xs sm:text-sm"
@@ -1358,7 +1363,7 @@ export class SessionCreateForm extends LitElement {
             <!-- Working Directory -->
             <div class="mb-3 sm:mb-4">
               <label class="form-label text-text-muted text-[10px] sm:text-xs lg:text-sm">
-                ${this.isHQMode ? 'Working Directory on Machine:' : 'Working Directory:'}
+                ${this.isHQMode ? t('create.workingDirOnMachine') : t('create.workingDir')}
               </label>
               <div class="relative">
                 <div class="flex gap-1.5 sm:gap-2">
@@ -1388,7 +1393,7 @@ export class SessionCreateForm extends LitElement {
                   class="bg-bg-tertiary border border-border/50 rounded-lg p-1.5 sm:p-2 lg:p-3 font-mono text-text-muted transition-all duration-200 hover:text-primary hover:bg-surface-hover hover:border-primary/50 hover:shadow-sm flex-shrink-0"
                   @click=${this.handleBrowse}
                   ?disabled=${this.disabled || this.isCreating}
-                  title="Browse directories"
+                  title=${t('create.browseDirectories')}
                   type="button"
                 >
                   <svg width="12" height="12" class="sm:w-3.5 sm:h-3.5 lg:w-4 lg:h-4" viewBox="0 0 16 16" fill="currentColor">
@@ -1406,7 +1411,7 @@ export class SessionCreateForm extends LitElement {
                   }"
                   @click=${this.handleToggleAutocomplete}
                   ?disabled=${this.disabled || this.isCreating}
-                  title="Choose from repositories or recent directories"
+                  title=${t('create.chooseDirectory')}
                   type="button"
                 >
                   <svg 
@@ -1505,7 +1510,7 @@ export class SessionCreateForm extends LitElement {
                 @click=${this.handleCancel}
                 ?disabled=${this.isCreating}
               >
-                Cancel
+                ${t('common.cancel')}
               </button>
               <button
                 id="session-create-button"
@@ -1523,7 +1528,7 @@ export class SessionCreateForm extends LitElement {
                 }
                 data-testid="create-session-submit"
               >
-                ${this.isCreating ? 'Creating...' : 'Create'}
+                ${this.isCreating ? t('create.creating') : t('create.create')}
               </button>
             </div>
           </div>

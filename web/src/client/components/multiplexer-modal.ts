@@ -9,6 +9,7 @@ import type {
   TmuxPane,
   TmuxWindow,
 } from '../../shared/multiplexer-types.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { apiClient } from '../services/api-client.js';
 import './modal-wrapper.js';
 
@@ -18,6 +19,8 @@ export class MultiplexerModal extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Boolean, reflect: true })
   open = false;
@@ -93,7 +96,7 @@ export class MultiplexerModal extends LitElement {
       }
     } catch (error) {
       console.error('Failed to load multiplexer status:', error);
-      this.error = 'Failed to load terminal sessions';
+      this.error = t('tmux.error.load');
     } finally {
       this.loading = false;
     }
@@ -142,10 +145,10 @@ export class MultiplexerModal extends LitElement {
     const now = Math.floor(Date.now() / 1000);
     const diff = now - ts;
 
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    if (diff < 60) return t('time.secondsAgo', { n: diff });
+    if (diff < 3600) return t('time.minutesAgo', { n: Math.floor(diff / 60) });
+    if (diff < 86400) return t('time.hoursAgo', { n: Math.floor(diff / 3600) });
+    return t('time.daysAgo', { n: Math.floor(diff / 86400) });
   }
 
   private formatPaneInfo(pane: TmuxPane): string {
@@ -198,7 +201,7 @@ export class MultiplexerModal extends LitElement {
       }
     } catch (error) {
       console.error(`Failed to attach to ${target.type} session:`, error);
-      this.error = `Failed to attach to ${target.type} session`;
+      this.error = t('tmux.error.attach', { multiplexer: target.type });
     }
   }
 
@@ -250,16 +253,12 @@ export class MultiplexerModal extends LitElement {
       }
     } catch (error) {
       console.error(`Failed to create new ${this.activeTab} session:`, error);
-      this.error = `Failed to create new ${this.activeTab} session`;
+      this.error = t('tmux.error.create', { multiplexer: this.activeTab });
     }
   }
 
   private async killSession(type: MultiplexerType, sessionName: string) {
-    if (
-      !confirm(
-        `Are you sure you want to kill session "${sessionName}"? This will terminate all windows and panes.`
-      )
-    ) {
+    if (!confirm(t('tmux.confirmKillSession', { name: sessionName }))) {
       return;
     }
 
@@ -272,16 +271,12 @@ export class MultiplexerModal extends LitElement {
       }
     } catch (error) {
       console.error(`Failed to kill ${type} session:`, error);
-      this.error = `Failed to kill ${type} session`;
+      this.error = t('tmux.error.killSession', { multiplexer: type });
     }
   }
 
   private async killWindow(sessionName: string, windowIndex: number) {
-    if (
-      !confirm(
-        `Are you sure you want to kill window ${windowIndex}? This will terminate all panes in this window.`
-      )
-    ) {
+    if (!confirm(t('tmux.confirmKillWindow', { index: windowIndex }))) {
       return;
     }
 
@@ -294,12 +289,12 @@ export class MultiplexerModal extends LitElement {
       }
     } catch (error) {
       console.error(`Failed to kill window:`, error);
-      this.error = `Failed to kill window`;
+      this.error = t('tmux.error.killWindow');
     }
   }
 
   private async killPane(sessionName: string, paneId: string) {
-    if (!confirm(`Are you sure you want to kill this pane?`)) {
+    if (!confirm(t('tmux.confirmKillPane'))) {
       return;
     }
 
@@ -319,7 +314,7 @@ export class MultiplexerModal extends LitElement {
       }
     } catch (error) {
       console.error(`Failed to kill pane:`, error);
-      this.error = `Failed to kill pane`;
+      this.error = t('tmux.error.killPane');
     }
   }
 
@@ -341,7 +336,7 @@ export class MultiplexerModal extends LitElement {
       <div class="fixed inset-0 z-50 ${this.open ? 'flex' : 'hidden'} items-center justify-center p-4">
         <modal-wrapper .open=${this.open} @close=${this.handleClose}>
           <div class="w-full max-w-2xl max-h-[80vh] flex flex-col bg-bg-secondary border border-border rounded-xl p-6 shadow-xl">
-            <h2 class="m-0 mb-4 text-xl font-semibold text-text">Terminal Sessions</h2>
+            <h2 class="m-0 mb-4 text-xl font-semibold text-text">${t('tmux.title')}</h2>
 
             ${
               status &&
@@ -397,23 +392,23 @@ export class MultiplexerModal extends LitElement {
 
             ${
               this.loading
-                ? html`<div class="mb-4 p-3 bg-bg-tertiary rounded-lg text-text-muted text-center">Loading terminal sessions...</div>`
+                ? html`<div class="mb-4 p-3 bg-bg-tertiary rounded-lg text-text-muted text-center">${t('tmux.loading')}</div>`
                 : !status
-                  ? html`<div class="mb-4 p-3 bg-bg-tertiary rounded-lg text-text-muted text-center">No multiplexer status available</div>`
+                  ? html`<div class="mb-4 p-3 bg-bg-tertiary rounded-lg text-text-muted text-center">${t('tmux.noStatus')}</div>`
                   : !status.tmux.available && !status.zellij.available && !status.screen.available
                     ? html`
                       <div class="text-center py-12 text-text-muted">
-                        <h3 class="m-0 mb-2 text-text">No Terminal Multiplexer Available</h3>
-                        <p>No terminal multiplexer (tmux, Zellij, or Screen) is installed on this system.</p>
-                        <p>Install tmux, Zellij, or GNU Screen to use this feature.</p>
+                        <h3 class="m-0 mb-2 text-text">${t('tmux.noneInstalled.title')}</h3>
+                        <p>${t('tmux.noneInstalled.body')}</p>
+                        <p>${t('tmux.noneInstalled.hint')}</p>
                       </div>
                     `
                     : !activeMultiplexer?.available
                       ? html`
                         <div class="text-center py-12 text-text-muted">
-                          <h3 class="m-0 mb-2 text-text">${this.activeTab} Not Available</h3>
-                          <p>${this.activeTab} is not installed or not available on this system.</p>
-                          <p>Install ${this.activeTab} to use this feature.</p>
+                          <h3 class="m-0 mb-2 text-text">${t('tmux.unavailable.title', { multiplexer: this.activeTab })}</h3>
+                          <p>${t('tmux.unavailable.body', { multiplexer: this.activeTab })}</p>
+                          <p>${t('tmux.unavailable.hint', { multiplexer: this.activeTab })}</p>
                         </div>
                       `
                       : this.error
@@ -421,10 +416,10 @@ export class MultiplexerModal extends LitElement {
                         : activeMultiplexer.sessions.length === 0
                           ? html`
                             <div class="text-center py-12 text-text-muted">
-                              <h3 class="m-0 mb-2 text-text">No ${this.activeTab} Sessions</h3>
-                              <p>There are no active ${this.activeTab} sessions.</p>
+                              <h3 class="m-0 mb-2 text-text">${t('tmux.noSessions.title', { multiplexer: this.activeTab })}</h3>
+                              <p>${t('tmux.noSessions.body', { multiplexer: this.activeTab })}</p>
                               <button class="mt-4 px-6 py-3 bg-primary text-white border-none rounded-md text-sm cursor-pointer transition-colors hover:bg-primary-hover" @click=${this.createNewSession}>
-                                Create New Session
+                                ${t('tmux.createSession')}
                               </button>
                             </div>
                           `
@@ -450,17 +445,17 @@ export class MultiplexerModal extends LitElement {
                                 <div class="text-sm text-text-muted flex gap-4">
                                   ${
                                     session.windows !== undefined
-                                      ? html`<span>${session.windows} window${session.windows !== 1 ? 's' : ''}</span>`
+                                      ? html`<span>${t('tmux.windows', { n: session.windows })}</span>`
                                       : null
                                   }
                                   ${
                                     session.exited
-                                      ? html`<span class="bg-red-500 text-white px-1.5 py-0.5 rounded text-xs font-semibold">EXITED</span>`
+                                      ? html`<span class="bg-red-500 text-white px-1.5 py-0.5 rounded text-xs font-semibold">${t('tmux.exited')}</span>`
                                       : null
                                   }
                                   ${
                                     session.activity
-                                      ? html`<span>Last activity: ${this.formatTimestamp(session.activity)}</span>`
+                                      ? html`<span>${t('tmux.lastActivity', { time: this.formatTimestamp(session.activity) })}</span>`
                                       : null
                                   }
                                 </div>
@@ -468,12 +463,12 @@ export class MultiplexerModal extends LitElement {
                               <div class="flex items-center gap-2">
                                 ${
                                   session.attached
-                                    ? html`<div class="w-2 h-2 rounded-full bg-primary" title="Attached"></div>`
+                                    ? html`<div class="w-2 h-2 rounded-full bg-primary" title=${t('tmux.attached')}></div>`
                                     : null
                                 }
                                 ${
                                   session.current
-                                    ? html`<div class="w-2 h-2 rounded-full bg-primary" title="Current"></div>`
+                                    ? html`<div class="w-2 h-2 rounded-full bg-primary" title=${t('tmux.current')}></div>`
                                     : null
                                 }
                                 <button
@@ -486,7 +481,7 @@ export class MultiplexerModal extends LitElement {
                                     });
                                   }}
                                 >
-                                  Attach
+                                  ${t('tmux.attach')}
                                 </button>
                                 <button
                                   class="px-3 py-1.5 bg-red-500 text-white border-none rounded text-xs font-medium cursor-pointer transition-colors hover:bg-red-600 active:scale-95"
@@ -494,9 +489,9 @@ export class MultiplexerModal extends LitElement {
                                     e.stopPropagation();
                                     this.killSession(session.type, session.name);
                                   }}
-                                  title="Kill session"
+                                  title=${t('sessions.row.kill')}
                                 >
-                                  Kill
+                                  ${t('tmux.kill')}
                                 </button>
                                 ${
                                   session.type === 'tmux'
@@ -547,12 +542,12 @@ export class MultiplexerModal extends LitElement {
                                                     e.stopPropagation();
                                                     this.killWindow(session.name, window.index);
                                                   }}
-                                                  title="Kill window"
+                                                  title=${t('tmux.killWindow')}
                                                 >
-                                                  Kill
+                                                  ${t('tmux.kill')}
                                                 </button>
                                                 <span class="text-xs text-text-dim">
-                                                  ${window.panes} pane${window.panes !== 1 ? 's' : ''}
+                                                  ${t('tmux.panes', { n: window.panes })}
                                                   ${window.panes > 1 ? html`<span class="ml-2 transition-transform ${isWindowExpanded ? 'rotate-90' : ''}">▶</span>` : ''}
                                                 </span>
                                               </div>
@@ -593,9 +588,9 @@ export class MultiplexerModal extends LitElement {
                                                                   `${session.name}:${window.index}.${pane.index}`
                                                                 );
                                                               }}
-                                                              title="Kill pane"
+                                                              title=${t('tmux.killPane')}
                                                             >
-                                                              Kill
+                                                              ${t('tmux.kill')}
                                                             </button>
                                                             <span class="text-xs text-text-dim">${pane.width}×${pane.height}</span>
                                                           </div>
@@ -623,12 +618,12 @@ export class MultiplexerModal extends LitElement {
             }
 
             <div class="mt-4 flex gap-2 justify-end">
-              <button class="px-4 py-2 border border-border rounded-md bg-bg-secondary text-text text-sm cursor-pointer transition-all hover:bg-bg-tertiary hover:border-primary" @click=${this.handleClose}>Cancel</button>
+              <button class="px-4 py-2 border border-border rounded-md bg-bg-secondary text-text text-sm cursor-pointer transition-all hover:bg-bg-tertiary hover:border-primary" @click=${this.handleClose}>${t('common.cancel')}</button>
               ${
                 !this.loading && activeMultiplexer?.available
                   ? html`
                     <button class="px-4 py-2 bg-primary text-white border border-primary rounded-md text-sm cursor-pointer transition-colors hover:bg-primary-hover" @click=${this.createNewSession}>
-                      New Session
+                      ${t('actionBar.newSession')}
                     </button>
                   `
                   : null

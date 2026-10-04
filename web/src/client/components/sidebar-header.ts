@@ -5,6 +5,7 @@
  */
 import { html } from 'lit';
 import { customElement } from 'lit/decorators.js';
+import { t } from '../i18n/index.js';
 import { HeaderBase } from './header-base.js';
 import './terminal-icon.js';
 import './notification-status.js';
@@ -25,8 +26,8 @@ export class SidebarHeader extends HeaderBase {
           <button
             class="p-2 text-primary bg-bg-tertiary border border-border hover:bg-surface-hover hover:border-primary rounded-md transition-all duration-200 flex-shrink-0"
             @click=${() => this.dispatchEvent(new CustomEvent('toggle-sidebar'))}
-            title="Collapse sidebar (⌘B)"
-            aria-label="Collapse sidebar"
+            title="${t('sidebar.collapse')} (⌘B)"
+            aria-label=${t('sidebar.collapse')}
             aria-expanded="true"
             aria-controls="sidebar"
             data-button-id="toggle-sidebar"
@@ -42,7 +43,7 @@ export class SidebarHeader extends HeaderBase {
             @click=${() => {
               window.location.href = '/';
             }}
-            title="Go to root"
+            title=${t('header.goToRoot')}
             data-testid="go-to-root-button-sidebar"
             data-button-id="go-to-root"
           >
@@ -58,7 +59,7 @@ export class SidebarHeader extends HeaderBase {
           <!-- Title and logo with flex-grow for centering -->
           <button
             class="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer group flex-grow"
-            title="Go to home"
+            title=${t('header.goHome')}
             @click=${this.handleHomeClick}
           >
             <terminal-icon size="20"></terminal-icon>
@@ -80,7 +81,7 @@ export class SidebarHeader extends HeaderBase {
             <button
               class="p-2 text-primary bg-bg-tertiary border border-border hover:bg-surface-hover hover:border-primary rounded-md transition-all duration-200 flex-shrink-0"
               @click=${this.handleOpenTmuxSessions}
-              title="tmux Sessions"
+              title=${t('header.tmuxSessionsButton')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M2 2v12h12V2H2zM1 2a1 1 0 011-1h12a1 1 0 011 1v12a1 1 0 01-1 1H2a1 1 0 01-1-1V2zm7 3h5v2H8V5zm0 3h5v2H8V8zm0 3h5v2H8v-2zM3 5h4v2H3V5zm0 3h4v2H3V8zm0 3h4v2H3v-2z"/>
@@ -90,7 +91,7 @@ export class SidebarHeader extends HeaderBase {
             <button
               class="p-2 text-primary bg-bg-tertiary border border-border hover:bg-surface-hover hover:border-primary rounded-md transition-all duration-200 flex-shrink-0"
               @click=${this.handleCreateSession}
-              title="Create New Session (⌘K)"
+              title="${t('header.createSession')} (⌘K)"
               data-testid="create-session-button"
             >
               <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
@@ -117,7 +118,7 @@ export class SidebarHeader extends HeaderBase {
         <button
           class="font-mono text-xs px-2 py-1 text-text-muted hover:text-text rounded border border-border hover:bg-bg-tertiary transition-all duration-200"
           @click=${this.toggleUserMenu}
-          title="User menu"
+          title=${t('header.userMenu')}
         >
           <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
             <path
@@ -140,7 +141,7 @@ export class SidebarHeader extends HeaderBase {
                   class="w-full text-left px-3 py-1.5 text-xs font-mono text-status-warning hover:bg-bg-secondary hover:text-status-error"
                   @click=${this.handleLogout}
                 >
-                  Logout
+                  ${t('header.logoutButton')}
                 </button>
               </div>
             `

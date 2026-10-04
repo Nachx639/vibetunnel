@@ -7,6 +7,7 @@
 import { html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
+import { LocaleController, t } from '../i18n/index.js';
 
 @customElement('git-status-badge')
 export class GitStatusBadge extends LitElement {
@@ -14,6 +15,8 @@ export class GitStatusBadge extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) session: Session | null = null;
   @property({ type: Boolean }) detailed = false; // Show detailed breakdown
@@ -96,7 +99,7 @@ export class GitStatusBadge extends LitElement {
           ${
             addedCount > 0
               ? html`
-            <span class="text-green-600 dark:text-green-400" title="New files">
+            <span class="text-green-600 dark:text-green-400" title=${t('gitBadge.newFiles')}>
               +${addedCount}
             </span>
           `
@@ -105,7 +108,7 @@ export class GitStatusBadge extends LitElement {
           ${
             modifiedCount > 0
               ? html`
-            <span class="text-yellow-600 dark:text-yellow-400" title="Modified files">
+            <span class="text-yellow-600 dark:text-yellow-400" title=${t('gitBadge.modifiedFiles')}>
               ~${modifiedCount}
             </span>
           `
@@ -114,7 +117,7 @@ export class GitStatusBadge extends LitElement {
           ${
             deletedCount > 0
               ? html`
-            <span class="text-red-600 dark:text-red-400" title="Deleted files">
+            <span class="text-red-600 dark:text-red-400" title=${t('gitBadge.deletedFiles')}>
               -${deletedCount}
             </span>
           `
@@ -125,7 +128,7 @@ export class GitStatusBadge extends LitElement {
     } else {
       // Compact view shows total with an indicator
       return html`
-        <span class="text-yellow-600 dark:text-yellow-400" title="${addedCount} new, ${modifiedCount} modified, ${deletedCount} deleted">
+        <span class="text-yellow-600 dark:text-yellow-400" title=${t('gitBadge.summary', { added: addedCount, modified: modifiedCount, deleted: deletedCount })}>
           ●${totalChanges}
         </span>
       `;
@@ -145,7 +148,7 @@ export class GitStatusBadge extends LitElement {
         ${
           aheadCount > 0
             ? html`
-          <span class="text-green-600 dark:text-green-400" title="Commits ahead">
+          <span class="text-green-600 dark:text-green-400" title=${t('gitBadge.ahead')}>
             ↑${aheadCount}
           </span>
         `
@@ -154,7 +157,7 @@ export class GitStatusBadge extends LitElement {
         ${
           behindCount > 0
             ? html`
-          <span class="text-red-600 dark:text-red-400" title="Commits behind">
+          <span class="text-red-600 dark:text-red-400" title=${t('gitBadge.behind')}>
             ↓${behindCount}
           </span>
         `
@@ -177,7 +180,7 @@ export class GitStatusBadge extends LitElement {
         ${
           insertionCount > 0
             ? html`
-          <span class="text-green-600 dark:text-green-400" title="Line insertions">
+          <span class="text-green-600 dark:text-green-400" title=${t('gitBadge.insertions')}>
             +${insertionCount}
           </span>
         `
@@ -186,7 +189,7 @@ export class GitStatusBadge extends LitElement {
         ${
           deletionCount > 0
             ? html`
-          <span class="text-red-600 dark:text-red-400" title="Line deletions">
+          <span class="text-red-600 dark:text-red-400" title=${t('gitBadge.deletions')}>
             -${deletionCount}
           </span>
         `

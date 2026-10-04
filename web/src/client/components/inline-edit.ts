@@ -1,5 +1,6 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 
 /**
  * Inline Edit Component
@@ -12,6 +13,8 @@ import { customElement, property, state } from 'lit/decorators.js';
  */
 @customElement('inline-edit')
 export class InlineEdit extends LitElement {
+  protected readonly i18n = new LocaleController(this);
+
   static override styles = css`
     :host {
       display: block;
@@ -165,7 +168,7 @@ export class InlineEdit extends LitElement {
             <button class="save" @click=${(e: Event) => {
               e.stopPropagation();
               this.handleSave();
-            }} title="Save (Enter)">
+            }} title="${t('common.save')} (Enter)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="20 6 9 17 4 12"></polyline>
               </svg>
@@ -173,7 +176,7 @@ export class InlineEdit extends LitElement {
             <button class="cancel" @click=${(e: Event) => {
               e.stopPropagation();
               this.handleCancel();
-            }} title="Cancel (Esc)">
+            }} title="${t('common.cancel')} (Esc)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>

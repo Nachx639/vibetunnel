@@ -10,6 +10,7 @@
 import { html, LitElement, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { getBaseRepoName } from '../../../shared/utils/git.js';
+import { LocaleController, t } from '../../i18n/index.js';
 
 @customElement('repository-header')
 export class RepositoryHeader extends LitElement {
@@ -17,6 +18,8 @@ export class RepositoryHeader extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: String }) repoPath!: string;
   @property({ type: String }) followMode?: string;
@@ -34,7 +37,7 @@ export class RepositoryHeader extends LitElement {
 
     return html`
       <span class="text-[10px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded flex items-center gap-1" 
-            title="Following worktree: ${cleanBranchName}">
+            title=${t('repoHeader.following', { branch: cleanBranchName })}>
         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
             d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />

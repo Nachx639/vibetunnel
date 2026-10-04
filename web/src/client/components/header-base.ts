@@ -4,12 +4,15 @@
 import { LitElement } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
+import { LocaleController } from '../i18n/index.js';
 import { TIMING } from '../utils/constants.js';
 
 export abstract class HeaderBase extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Array }) sessions: Session[] = [];
   @property({ type: Boolean }) hideExited = true;

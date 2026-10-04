@@ -10,6 +10,7 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { DEFAULT_QUICK_START_COMMANDS, type QuickStartCommand } from '../../types/config.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 
 const _logger = createLogger('quick-start-editor');
@@ -20,6 +21,8 @@ export class QuickStartEditor extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Array }) commands: QuickStartCommand[] = [];
   @property({ type: Boolean }) editing = false;
@@ -176,13 +179,13 @@ export class QuickStartEditor extends LitElement {
           id="quick-start-edit-button"
           @click=${this.handleStartEdit}
           class="text-primary hover:text-primary-hover text-[10px] sm:text-xs transition-colors duration-200 flex items-center gap-1"
-          title="Edit quick start commands"
+          title=${t('quickStartEditor.editTitle')}
         >
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                   d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
-          Edit
+          ${t('quickStartEditor.edit')}
         </button>
       `;
     }
@@ -190,21 +193,21 @@ export class QuickStartEditor extends LitElement {
     return html`
       <div class="w-full px-3 sm:px-4 lg:px-6 bg-bg-elevated py-3 sm:py-4">
         <div class="flex items-center justify-between mb-2">
-          <h3 class="text-xs font-medium text-text-muted">Commands shown in the new session form for quick access.</h3>
+          <h3 class="text-xs font-medium text-text-muted">${t('quickStartEditor.description')}</h3>
           <div class="flex gap-2">
             <button
               id="quick-start-cancel-button"
               @click=${this.handleCancel}
               class="text-text-muted hover:text-text text-[10px] transition-colors duration-200"
             >
-              Cancel
+              ${t('common.cancel')}
             </button>
             <button
               id="quick-start-save-button"
               @click=${this.handleSave}
               class="text-primary hover:text-primary-hover text-[10px] font-medium transition-colors duration-200"
             >
-              Save
+              ${t('common.save')}
             </button>
           </div>
         </div>
@@ -230,7 +233,7 @@ export class QuickStartEditor extends LitElement {
                 type="text"
                 .value=${cmd.name || ''}
                 @input=${(e: Event) => this.handleNameChange(index, (e.target as HTMLInputElement).value)}
-                placeholder="Display name (optional)"
+                placeholder=${t('quickStartEditor.namePlaceholder')}
                 class="flex-1 min-w-0 bg-bg-secondary border border-border/30 rounded px-2 py-1 text-[10px] text-text focus:border-primary focus:outline-none"
               />
               
@@ -239,7 +242,7 @@ export class QuickStartEditor extends LitElement {
                 type="text"
                 .value=${cmd.command}
                 @input=${(e: Event) => this.handleCommandChange(index, (e.target as HTMLInputElement).value)}
-                placeholder="Command"
+                placeholder=${t('quickStartEditor.commandPlaceholder')}
                 data-command-input
                 class="flex-1 min-w-0 bg-bg-secondary border border-border/30 rounded px-2 py-1 text-[10px] text-text font-mono focus:border-primary focus:outline-none"
               />
@@ -248,7 +251,7 @@ export class QuickStartEditor extends LitElement {
                 id=${`quick-start-remove-command-${index}`}
                 @click=${() => this.handleRemoveCommand(index)}
                 class="text-text-muted hover:text-error transition-colors duration-200 p-1"
-                title="Remove command"
+                title=${t('quickStartEditor.remove')}
               >
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -265,9 +268,9 @@ export class QuickStartEditor extends LitElement {
             id="quick-start-reset-button"
             @click=${this.handleResetToDefaults}
             class="text-primary hover:text-primary-hover text-[10px] transition-colors duration-200"
-            title="Reset to default commands"
+            title=${t('quickStartEditor.resetTitle')}
           >
-            Reset to Defaults
+            ${t('quickStartEditor.reset')}
           </button>
           
           <div class="flex gap-4 items-center">
@@ -279,7 +282,7 @@ export class QuickStartEditor extends LitElement {
               }}
               class="text-error hover:text-error-hover text-xs transition-colors duration-200"
             >
-              Delete All
+              ${t('quickStartEditor.deleteAll')}
             </button>
             
             <button
@@ -290,7 +293,7 @@ export class QuickStartEditor extends LitElement {
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6" />
               </svg>
-              Add
+              ${t('quickStartEditor.add')}
             </button>
           </div>
         </div>

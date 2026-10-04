@@ -5,6 +5,7 @@
  */
 import { html } from 'lit';
 import { customElement } from 'lit/decorators.js';
+import { t } from '../i18n/index.js';
 import { HeaderBase } from './header-base.js';
 import './terminal-icon.js';
 import './notification-status.js';
@@ -15,13 +16,13 @@ export class FullHeader extends HeaderBase {
   private get authMethodLabel(): string {
     switch (this.authMethod) {
       case 'password':
-        return 'System Account';
+        return t('header.auth.password');
       case 'ssh-key':
-        return 'SSH Key';
+        return t('header.auth.sshKey');
       case 'tailscale':
         return 'Tailscale';
       default:
-        return 'Authenticated';
+        return t('header.auth.authenticated');
     }
   }
 
@@ -36,7 +37,7 @@ export class FullHeader extends HeaderBase {
         <div class="flex items-center justify-between gap-2 overflow-hidden">
           <button
             class="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer group min-w-0 flex-shrink"
-            title="Go to home"
+            title=${t('header.goHome')}
             @click=${this.handleHomeClick}
           >
             <terminal-icon size="24" class="flex-shrink-0"></terminal-icon>
@@ -64,7 +65,7 @@ export class FullHeader extends HeaderBase {
             <button
               class="p-2 bg-bg-tertiary text-muted border border-border hover:border-primary hover:text-primary hover:bg-surface-hover rounded-lg transition-all duration-200"
               @click=${() => this.dispatchEvent(new CustomEvent('open-file-browser'))}
-              title="Browse Files (⌘O)"
+              title="${t('menu.browseFiles')} (⌘O)"
               data-testid="file-browser-button"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -76,7 +77,7 @@ export class FullHeader extends HeaderBase {
             <button
               class="p-2 bg-bg-tertiary text-muted border border-border hover:border-primary hover:text-primary hover:bg-surface-hover rounded-lg transition-all duration-200"
               @click=${this.handleOpenTmuxSessions}
-              title="tmux Sessions"
+              title=${t('header.tmuxSessionsButton')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M2 2v12h12V2H2zM1 2a1 1 0 011-1h12a1 1 0 011 1v12a1 1 0 01-1 1H2a1 1 0 01-1-1V2zm7 3h5v2H8V5zm0 3h5v2H8V8zm0 3h5v2H8v-2zM3 5h4v2H3V5zm0 3h4v2H3V8zm0 3h4v2H3v-2z"/>
@@ -85,7 +86,7 @@ export class FullHeader extends HeaderBase {
             <button
               class="p-2 bg-primary text-text-bright hover:bg-primary-light rounded-lg transition-all duration-200 vt-create-button"
               @click=${this.handleCreateSession}
-              title="Create New Session"
+              title=${t('header.createSession')}
               data-testid="create-session-button"
             >
               <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
@@ -110,7 +111,7 @@ export class FullHeader extends HeaderBase {
         <button
           class="font-mono text-sm px-3 py-2 text-text border border-border hover:bg-bg-tertiary hover:text-text rounded-lg transition-all duration-200 flex items-center gap-2"
           @click=${this.toggleUserMenu}
-          title="User menu"
+          title=${t('header.userMenu')}
         >
           <span class="hidden sm:inline">${this.currentUser}</span>
           <svg
@@ -148,7 +149,7 @@ export class FullHeader extends HeaderBase {
                   class="w-full text-left px-3 py-2 text-sm font-mono text-status-warning hover:bg-bg-secondary hover:text-status-error"
                   @click=${this.handleLogout}
                 >
-                  Logout
+                  ${t('header.logoutButton')}
                 </button>
               </div>
             `

@@ -2,6 +2,8 @@
  * Centralized title management for VibeTunnel
  */
 
+import { t } from '../i18n/index.js';
+
 export class TitleManager {
   private static instance: TitleManager;
   private cleanupFunctions: Array<() => void> = [];
@@ -27,17 +29,14 @@ export class TitleManager {
    * Set title for list view with session count
    */
   setListTitle(sessionCount: number): void {
-    document.title =
-      sessionCount > 0
-        ? `VibeTunnel - ${sessionCount} Session${sessionCount !== 1 ? 's' : ''}`
-        : 'VibeTunnel';
+    document.title = sessionCount > 0 ? t('title.sessions', { n: sessionCount }) : 'VibeTunnel';
   }
 
   /**
    * Set title for file browser
    */
   setFileBrowserTitle(): void {
-    document.title = 'VibeTunnel - File Browser';
+    document.title = `VibeTunnel - ${t('files.title')}`;
   }
 
   /**

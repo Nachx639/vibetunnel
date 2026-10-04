@@ -42,6 +42,7 @@
 
 import type { TitleMode } from '../../shared/types.js';
 import { HttpMethod } from '../../shared/types.js';
+import { t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import type { AuthClient } from './auth-client.js';
 
@@ -198,7 +199,7 @@ export class SessionService {
       } else {
         const error: SessionCreateError = await response.json();
         // Use the detailed error message if available, otherwise fall back to the error field
-        const errorMessage = error.details || error.error || 'Unknown error';
+        const errorMessage = error.details || error.error || t('common.unknownError');
         logger.error('Failed to create session:', errorMessage);
         throw new Error(errorMessage);
       }
@@ -209,7 +210,7 @@ export class SessionService {
       }
       // Otherwise wrap it
       logger.error('Error creating session:', error);
-      throw new Error('Failed to create session');
+      throw new Error(t('create.failed'));
     }
   }
 }
