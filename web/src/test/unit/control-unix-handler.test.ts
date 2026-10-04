@@ -121,33 +121,6 @@ describe('Control Unix Handler', () => {
       expect(result).toBe(null);
     }, 1000);
 
-    it('greets a new Mac connection with a pong, so the app does not reconnect forever', async () => {
-      class MockSocket extends EventEmitter {
-        destroyed = false;
-        readable = true;
-        writable = true;
-        setNoDelay = vi.fn();
-        write = vi.fn((_data: Buffer, callback?: (error?: Error) => void) => {
-          callback?.();
-          return true;
-        });
-        destroy = vi.fn();
-      }
-      await controlUnixHandler.start();
-      const socket = new MockSocket();
-      netMock.connectionHandler?.(socket);
-      const frames = socket.write.mock.calls.map(([data]) =>
-        JSON.parse((data as Buffer).subarray(4).toString('utf8'))
-      );
-      expect(frames).toContainEqual(
-        expect.objectContaining({ type: 'event', category: 'system', action: 'ready' })
-      );
-      // What VibeTunnel.app takes as a keep-alive pong (type, category and action only).
-      expect(frames).toContainEqual(
-        expect.objectContaining({ type: 'response', category: 'system', action: 'ping' })
-      );
-    });
-
     it('does not carry a partial frame into a replacement Mac connection', async () => {
       class MockSocket extends EventEmitter {
         destroyed = false;

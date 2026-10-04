@@ -346,7 +346,7 @@ export class ControlUnixHandler {
           );
 
           const message: ControlMessage = JSON.parse(messageStr);
-          // The app pings every 30 s: at log level that was 15 % of the log (2026-10-03).
+          // The app pings every 30 s: at log level that was ~15 % of the server log.
           // Anything else it sends is rare and worth seeing.
           const isPing = message.category === 'system' && message.action === 'ping';
           (isPing ? logger.debug : logger.log)(
@@ -403,18 +403,7 @@ export class ControlUnixHandler {
     // Send ready event to Mac
     logger.debug('📤 Sending initial system:ready event to Mac');
     this.sendToMac(createControlEvent('system', 'ready'));
-    // VibeTunnel.app (1.0.0-beta.18) never resets its last-pong time when it reconnects: once a
-    // server restart left it over 60 s without a pong, every keep-alive tick found the pong
-    // stale and reconnected BEFORE sending a ping, every ~31 s for good (2026-10-03: 86 % of
-    // the log, and "No pong received" in the app's own log). A pong right away restarts its
-    // clock; from then on its real pings get real pongs. The app checks only type, category
-    // and action.
-    this.sendToMac(
-      createControlResponse(
-        { id: `connect-pong-${Date.now()}`, type: 'request', category: 'system', action: 'ping' },
-        { status: 'ok' }
-      )
-    );
+    logger.debug('✅ system:ready event sent');
   }
 
   handleBrowserConnection(ws: WebSocket, userId?: string) {
