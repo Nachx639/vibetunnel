@@ -19,6 +19,11 @@ export interface NotificationPreferences {
   // UI preferences
   soundEnabled: boolean;
   vibrationEnabled: boolean;
+  /**
+   * "Claude finished" / "Claude needs you" pushes from Claude Code's own status (the server
+   * checks its sessions every 3 s while on). Off when missing.
+   */
+  agentStatus?: boolean;
 }
 
 export interface VibeTunnelConfig {

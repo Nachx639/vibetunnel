@@ -59,6 +59,7 @@ const ConfigSchema = z.object({
           bell: z.boolean(),
           soundEnabled: z.boolean(),
           vibrationEnabled: z.boolean(),
+          agentStatus: z.boolean().optional(),
         })
         .optional(),
     })
@@ -308,6 +309,7 @@ export class ConfigService {
           bell: z.boolean(),
           soundEnabled: z.boolean(),
           vibrationEnabled: z.boolean(),
+          agentStatus: z.boolean().optional(),
         })
         .partial();
 

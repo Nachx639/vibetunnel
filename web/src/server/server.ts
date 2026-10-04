@@ -11,6 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocketServer } from 'ws';
+import { parseScreenChoices } from '../shared/claude-screen.js';
 import { ServerEventType } from '../shared/types.js';
 import { apiSocketServer } from './api-socket-server.js';
 import type { AuthenticatedRequest } from './middleware/auth.js';
@@ -32,6 +33,7 @@ import { createTmuxRoutes } from './routes/tmux.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { AuthService } from './services/auth-service.js';
 import { CastOutputHub } from './services/cast-output-hub.js';
+import { ClaudeStatusNotifier } from './services/claude-status-notifier.js';
 import { CloudflareService } from './services/cloudflare-service.js';
 import { ConfigService } from './services/config-service.js';
 import { ControlDirWatcher } from './services/control-dir-watcher.js';
@@ -43,7 +45,7 @@ import { PushNotificationService } from './services/push-notification-service.js
 import { RemoteRegistry } from './services/remote-registry.js';
 import { SessionMonitor } from './services/session-monitor.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
-import { TerminalManager } from './services/terminal-manager.js';
+import { LARGE_REPLAY_MAX_BYTES, TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
 import { agentChatEnabled } from './utils/agent-chat.js';
 import { closeLogger, createLogger, initLogger, setDebugMode } from './utils/logger.js';
@@ -669,6 +671,50 @@ export async function createApp(): Promise<AppInstance> {
     }
   } else {
     logger.debug('Push notifications disabled');
+  }
+
+  // Push "Claude finished / needs you" from Claude Code's own session status. Off unless the
+  // user turns on Settings > Notifications > Claude status (notificationPreferences.agentStatus):
+  // while off the notifier reads nothing (no ps, no transcript).
+  if (pushNotificationService) {
+    const pushService = pushNotificationService;
+    const claudeNotifier = new ClaudeStatusNotifier(
+      () =>
+        ptyManager.listSessions().map((session) => ({
+          id: session.id,
+          name: session.name,
+          pid: session.pid,
+          status: session.status,
+        })),
+      (payload) => {
+        logger.log(`Claude status push: ${payload.type} for session ${payload.data?.sessionId}`);
+        pushService.sendNotification(payload).catch((error) => {
+          logger.warn(`Failed to send Claude status notification: ${error}`);
+        });
+      },
+      undefined,
+      (error) => logger.warn(`Claude status check failed: ${error}`),
+      // The prompt on screen travels in the push, so the answer sheet opens with its options.
+      async (sessionId) => {
+        // Once, when Claude starts to wait: a long session's replay is worth it here.
+        if (!terminalManager.canSnapshotCheaply(sessionId, LARGE_REPLAY_MAX_BYTES)) return null;
+        // Read like the phone reads it (see readScreenChoices in routes/sessions.ts).
+        const recent = await terminalManager.getRecentText(sessionId, 60);
+        return parseScreenChoices(recent.text, {
+          cols: recent.cols,
+          wrappedRows: recent.wrappedRows,
+          visibleRows: recent.rows,
+        });
+      },
+      {
+        log: (message) => logger.log(message),
+        enabled: () => {
+          const preferences = configService.getNotificationPreferences();
+          return preferences.enabled === true && preferences.agentStatus === true;
+        },
+      }
+    );
+    claudeNotifier.start();
   }
 
   // Connect SessionMonitor to push notification service

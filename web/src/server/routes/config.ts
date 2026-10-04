@@ -24,6 +24,7 @@ const NotificationPreferencesSchema = z
     bell: z.boolean(),
     soundEnabled: z.boolean(),
     vibrationEnabled: z.boolean(),
+    agentStatus: z.boolean().optional(),
   })
   .partial();
 
