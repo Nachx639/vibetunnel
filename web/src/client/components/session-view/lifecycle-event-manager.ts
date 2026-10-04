@@ -32,6 +32,21 @@ function isFileBrowserShortcut(e: KeyboardEvent): boolean {
   return hasSinglePrimaryModifier && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o';
 }
 
+/**
+ * Soft keyboard height from viewport sizes. Safari: innerHeight minus the visual viewport.
+ * Chrome on iOS shrinks innerHeight too, so compare with the tallest viewport seen at this
+ * width; under 150 px that is the browser's own bars collapsing, not a keyboard.
+ */
+export function estimateKeyboardHeight(
+  innerHeight: number,
+  viewportHeight: number,
+  tallestViewport: number
+): number {
+  const safari = innerHeight - viewportHeight;
+  const shrink = tallestViewport - viewportHeight;
+  return Math.max(0, safari, shrink >= 150 ? shrink : 0);
+}
+
 export class LifecycleEventManager extends ManagerEventEmitter {
   private callbacks: LifecycleEventManagerCallbacks | null = null;
   private session: Session | null = null;
@@ -45,6 +60,7 @@ export class LifecycleEventManager extends ManagerEventEmitter {
   private mobileKeyboardListenerAdded = false;
   private touchListenersAdded = false;
   private visualViewportHandler: (() => void) | null = null;
+  private keyboardDismissRecheck: ReturnType<typeof setTimeout> | null = null;
   private viewportTrackingHandler: (() => void) | null = null;
   private viewportTrackingTarget: 'visual' | 'window' | null = null;
   private clickHandler: (() => void) | null = null;
@@ -460,11 +476,29 @@ export class LifecycleEventManager extends ManagerEventEmitter {
     // Set up Visual Viewport API for Safari keyboard detection
     if (isMobile && window.visualViewport) {
       let previousKeyboardHeight = 0;
+      // Primed with the viewport as the session opens (keyboard down), so the first
+      // measurement can't be the keyboard opening itself.
+      let viewportBaseline = window.visualViewport.height;
+      let viewportBaselineWidth = window.visualViewport.width;
 
       this.visualViewportHandler = () => {
         const viewport = window.visualViewport;
         if (!viewport || !this.callbacks) return;
-        const keyboardHeight = window.innerHeight - viewport.height;
+        // Safari keeps innerHeight and shrinks the visual viewport; Chrome on iOS shrinks
+        // both, so innerHeight - viewport.height stays ~0 there and a keyboard closed with
+        // its own button went unnoticed (keyboard mode stayed on, the hidden input kept
+        // stealing focus and taps showed only the quick keys). Also measure against the
+        // tallest viewport seen at this width.
+        if (viewport.width !== viewportBaselineWidth) {
+          viewportBaselineWidth = viewport.width;
+          viewportBaseline = viewport.height;
+        }
+        viewportBaseline = Math.max(viewportBaseline, viewport.height);
+        const keyboardHeight = estimateKeyboardHeight(
+          window.innerHeight,
+          viewport.height,
+          viewportBaseline
+        );
 
         // Store keyboard height in state
         this.callbacks.setKeyboardHeight(keyboardHeight);
@@ -530,21 +564,22 @@ export class LifecycleEventManager extends ManagerEventEmitter {
               directKeyboardManager.isRecentlyEnteredKeyboardMode?.() ?? false;
 
             if (isRecentlyEntered) {
-              logger.log(
-                'Ignoring keyboard dismissal - recently entered keyboard mode, likely iOS animation'
-              );
-              return; // Don't hide quick keys during iOS keyboard animation
+              // Re-check once the animation window is over instead of dropping it: a quick
+              // swipe-down otherwise left the quick keys up with no keyboard.
+              logger.log('Deferring keyboard dismissal - recently entered keyboard mode');
+              if (this.keyboardDismissRecheck) clearTimeout(this.keyboardDismissRecheck);
+              this.keyboardDismissRecheck = setTimeout(() => {
+                this.keyboardDismissRecheck = null;
+                const vv = window.visualViewport;
+                if (!vv || window.innerHeight - vv.height >= KEYBOARD_VISIBLE_THRESHOLD) return;
+                this.callbacks?.getDirectKeyboardManager()?.exitKeyboardMode();
+              }, 2100);
+            } else {
+              // Leave keyboard mode entirely; only hiding the quick keys kept keyboard mode
+              // on, which re-focused the input and brought them back without a keyboard.
+              directKeyboardManager.exitKeyboardMode();
+              logger.log('Left keyboard mode after keyboard dismissal');
             }
-
-            // Force hide quick keys when keyboard dismisses
-            this.callbacks.setShowQuickKeys(false);
-
-            // Also update the direct keyboard manager's internal state
-            if (directKeyboardManager.setShowQuickKeys) {
-              directKeyboardManager.setShowQuickKeys(false);
-            }
-
-            logger.log('Force hiding quick keys after keyboard dismissal');
           }
         }
 
@@ -638,6 +673,10 @@ export class LifecycleEventManager extends ManagerEventEmitter {
     }
 
     // Clean up Visual Viewport listener
+    if (this.keyboardDismissRecheck) {
+      clearTimeout(this.keyboardDismissRecheck);
+      this.keyboardDismissRecheck = null;
+    }
     if (this.visualViewportHandler && window.visualViewport) {
       window.visualViewport.removeEventListener('resize', this.visualViewportHandler);
       window.visualViewport.removeEventListener('scroll', this.visualViewportHandler);

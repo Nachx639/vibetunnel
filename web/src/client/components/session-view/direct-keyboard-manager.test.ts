@@ -140,6 +140,77 @@ describe('DirectKeyboardManager', () => {
     expect(mockInputManager.sendInputText).toHaveBeenCalledWith(expected);
   });
 
+  describe('when the hidden input loses focus in keyboard mode', () => {
+    const enterKeyboardMode = () => {
+      const updateShowQuickKeys = vi.fn();
+      const callbacks = new Proxy(
+        { updateShowQuickKeys, getChatMode: () => false, getKeyboardHeight: () => 0 },
+        { get: (target, key) => (target as Record<string, unknown>)[key as string] ?? vi.fn() }
+      );
+      manager.setCallbacks(callbacks as never);
+      vi.useFakeTimers();
+      manager.focusHiddenInput();
+      vi.advanceTimersByTime(200);
+      return { input: getManagerState().hiddenInput as HTMLTextAreaElement, updateShowQuickKeys };
+    };
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('leaves keyboard mode when iOS closed the keyboard without a tap in the page', () => {
+      const { input, updateShowQuickKeys } = enterKeyboardMode();
+      vi.advanceTimersByTime(1000);
+
+      input.dispatchEvent(new FocusEvent('blur'));
+      vi.advanceTimersByTime(500);
+
+      expect(manager.getKeyboardMode()).toBe(false);
+      expect(updateShowQuickKeys).toHaveBeenLastCalledWith(false);
+      expect(getManagerState().focusRetentionInterval).toBeNull();
+    });
+
+    it('leaves keyboard mode when another text field takes focus', () => {
+      const { input } = enterKeyboardMode();
+      const other = document.createElement('textarea');
+      document.body.appendChild(other);
+      document.dispatchEvent(new Event('touchstart'));
+
+      input.dispatchEvent(new FocusEvent('blur', { relatedTarget: other }));
+
+      expect(manager.getKeyboardMode()).toBe(false);
+      other.remove();
+    });
+
+    it('leaves keyboard mode when focus moves into a field inside a shadow root', () => {
+      const { input } = enterKeyboardMode();
+      const host = document.createElement('div');
+      const field = document.createElement('textarea');
+      host.attachShadow({ mode: 'open' }).appendChild(field);
+      document.body.appendChild(host);
+      document.dispatchEvent(new Event('touchstart'));
+
+      // As in a browser: the blur names no field (it sits behind its host), and focus lands
+      // inside the shadow root.
+      input.blur();
+      field.focus();
+      vi.advanceTimersByTime(100);
+
+      expect(manager.getKeyboardMode()).toBe(false);
+      host.remove();
+    });
+
+    it('keeps keyboard mode when a tap in the page moved focus', () => {
+      const { input } = enterKeyboardMode();
+      document.dispatchEvent(new Event('touchstart'));
+
+      input.dispatchEvent(new FocusEvent('blur'));
+      vi.advanceTimersByTime(100);
+
+      expect(manager.getKeyboardMode()).toBe(true);
+    });
+  });
+
   it('uses a textarea, so phones show no AutoFill bar above the keyboard', () => {
     expect(getManagerState().hiddenInput?.tagName).toBe('TEXTAREA');
   });

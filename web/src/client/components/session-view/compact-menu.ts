@@ -226,6 +226,20 @@ export class CompactMenu extends LitElement {
     }
   }
 
+  /**
+   * The menu fits the screen: on a short phone its last items (Settings, Kill session) were
+   * below the screen and the panel didn't scroll. It gets the height left under the button,
+   * and scrolls inside.
+   */
+  protected updated(): void {
+    if (!this.showMenu) return;
+    const panel = this.querySelector<HTMLElement>('#compact-menu-panel');
+    if (!panel) return;
+    const visible = window.visualViewport?.height ?? window.innerHeight;
+    const top = panel.getBoundingClientRect().top;
+    panel.style.maxHeight = `${Math.max(160, Math.floor(visible - top - 12))}px`;
+  }
+
   render() {
     return html`
       <div class="relative w-[44px] flex-shrink-0">
@@ -251,8 +265,9 @@ export class CompactMenu extends LitElement {
   private renderDropdown() {
     let menuItemIndex = 0;
     return html`
-      <div 
-        class="absolute right-0 top-full mt-2 bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[250px]"
+      <div
+        id="compact-menu-panel"
+        class="absolute right-0 top-full mt-2 bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[250px] overflow-y-auto overscroll-contain"
         style="z-index: ${Z_INDEX.WIDTH_SELECTOR_DROPDOWN};"
       >
         

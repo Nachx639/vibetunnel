@@ -66,6 +66,7 @@ export interface ManagerAccessCallbacks {
     setShowQuickKeys?(value: boolean): void;
     ensureHiddenInputVisible(): void;
     cleanup(): void;
+    exitKeyboardMode(): void;
     getKeyboardMode(): boolean;
     isRecentlyEnteredKeyboardMode(): boolean;
   };

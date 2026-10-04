@@ -62,6 +62,19 @@ export interface DirectKeyboardCallbacks {
   getChatMode(): boolean;
 }
 
+/** The focused element, looking inside shadow roots (focus events only report the host). */
+function deepFocus(element: Element | null): Element | null {
+  let current = element;
+  while (current?.shadowRoot?.activeElement) current = current.shadowRoot.activeElement;
+  return current;
+}
+
+function isEditable(element: Element | null): boolean {
+  if (!element) return false;
+  const html = element as HTMLElement;
+  return html.tagName === 'INPUT' || html.tagName === 'TEXTAREA' || html.isContentEditable === true;
+}
+
 export class DirectKeyboardManager extends ManagerEventEmitter {
   private hiddenInput: HTMLTextAreaElement | null = null;
   private focusRetentionInterval: number | null = null;
@@ -78,6 +91,12 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
   private keyboardActivationTimeout: number | null = null;
   private captureClickHandler: ((e: Event) => void) | null = null;
   private globalPasteHandler: ((e: Event) => void) | null = null;
+  // Last touch anywhere in the page. A blur with no touch just before it means iOS itself
+  // closed the keyboard (swipe down, its Done key); a refocus then can't bring it back.
+  private lastTouchAt = 0;
+  private readonly touchTracker = () => {
+    this.lastTouchAt = Date.now();
+  };
 
   // IME composition state tracking for Japanese/CJK input
   private isComposing = false;
@@ -101,6 +120,9 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
     // Add global paste listener for environments where Clipboard API doesn't work
     this.setupGlobalPasteListener();
     this.ensureHiddenInputVisible();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('touchstart', this.touchTracker, { capture: true, passive: true });
+    }
   }
 
   setInputManager(inputManager: InputManager): void {
@@ -537,6 +559,21 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
 
       // If we're in keyboard mode, ALWAYS try to maintain focus
       // Only the Done button should exit keyboard mode
+      if (this.keyboardMode && !this.reopeningKeyboard) {
+        // Refocusing after iOS closed the keyboard (swipe down, its Done key) or after the
+        // user picked another field brought the quick keys back without a keyboard. Only
+        // keep focus when the blur came from a tap in the page. The keyboard proxy/catcher
+        // only hand focus back to this input: they are not another field.
+        const next = deepFocus(_event.relatedTarget as Element | null);
+        const otherField =
+          isEditable(next) && !next?.matches?.('.keyboard-catcher, .keyboard-proxy');
+        if (otherField || Date.now() - this.lastTouchAt > 600) {
+          logger.log('Keyboard closed outside the page - leaving keyboard mode');
+          this.dismissKeyboard();
+          return;
+        }
+      }
+
       if (this.keyboardMode) {
         logger.log('In keyboard mode - maintaining focus');
 
@@ -546,14 +583,21 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
           // Skip while reopening via TAP so this doesn't re-focus the stale input and
           // make iOS refuse to show the keyboard.
           if (
-            this.keyboardMode &&
-            !this.reopeningKeyboard &&
-            this.hiddenInput &&
-            document.activeElement !== this.hiddenInput
+            !this.keyboardMode ||
+            this.reopeningKeyboard ||
+            !this.hiddenInput ||
+            document.activeElement === this.hiddenInput
           ) {
-            logger.log('Refocusing hidden input to maintain keyboard');
-            this.hiddenInput.focus();
+            return;
           }
+          // Focus moved into a field inside a shadow root: blur only saw its host, so check
+          // where focus really is before taking it back.
+          if (isEditable(deepFocus(document.activeElement))) {
+            this.dismissKeyboard();
+            return;
+          }
+          logger.log('Refocusing hidden input to maintain keyboard');
+          this.hiddenInput.focus();
         }, 50); // 50ms delay to allow Done button processing
 
         // Don't exit keyboard mode or hide quick keys
@@ -1003,6 +1047,11 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
     }
   }
 
+  /** Leave keyboard mode (hide the soft keyboard and the quick keys). */
+  exitKeyboardMode(): void {
+    if (this.keyboardMode || this.showQuickKeys) this.dismissKeyboard();
+  }
+
   private dismissKeyboard(): void {
     // Exit keyboard mode
     this.keyboardMode = false;
@@ -1063,6 +1112,10 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
       document.removeEventListener('click', this.captureClickHandler, true);
       document.removeEventListener('pointerdown', this.captureClickHandler, true);
       this.captureClickHandler = null;
+    }
+
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('touchstart', this.touchTracker, { capture: true });
     }
 
     // Remove global paste listener

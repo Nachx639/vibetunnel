@@ -124,6 +124,7 @@ export class SessionView extends LitElement {
         setShowQuickKeys: (value: boolean) => this.directKeyboardManager.setShowQuickKeys(value),
         ensureHiddenInputVisible: () => this.directKeyboardManager.ensureHiddenInputVisible(),
         cleanup: () => this.directKeyboardManager.cleanup(),
+        exitKeyboardMode: () => this.directKeyboardManager.exitKeyboardMode(),
         getKeyboardMode: () => this.directKeyboardManager.getKeyboardMode(),
         isRecentlyEnteredKeyboardMode: () =>
           this.directKeyboardManager.isRecentlyEnteredKeyboardMode(),
@@ -637,6 +638,8 @@ export class SessionView extends LitElement {
   }
 
   private handleSidebarToggle() {
+    // The sidebar covers the terminal; the fixed quick keys would otherwise stay on top of it.
+    if (this.uiStateManager.getState().isMobile) this.directKeyboardManager.exitKeyboardMode();
     // Dispatch event to toggle sidebar
     this.dispatchEvent(
       new CustomEvent('toggle-sidebar', {

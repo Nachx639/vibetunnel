@@ -22,7 +22,7 @@ import type { Session } from '../../shared/types.js';
 import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import { detectMobile } from '../utils/mobile-utils.js';
-import { endsADrag } from '../utils/pointer-drag.js';
+import { endsADrag, touchEndsADrag } from '../utils/pointer-drag.js';
 import type { ClipboardManagerCallbacks } from './clipboard-manager.js';
 import type { CommandPaletteCallbacks } from './command-palette.js';
 import type { SlashCommandsCallbacks } from './slash-commands.js';
@@ -166,6 +166,9 @@ export class MobileActionBar extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    if (this.outsideClickTimer) clearTimeout(this.outsideClickTimer);
+    this.outsideClickTimer = null;
+    document.removeEventListener('click', this.handleOutsideClick);
 
     window.removeEventListener('orientationchange', this.handleOrientationChange);
 
@@ -295,6 +298,103 @@ export class MobileActionBar extends LitElement {
     }
   }
 
+  updated(changed: Map<string, unknown>) {
+    if (changed.has('isExpanded')) {
+      if (this.outsideClickTimer) clearTimeout(this.outsideClickTimer);
+      this.outsideClickTimer = null;
+      if (this.isExpanded) {
+        // Defer so the click that opened the popover does not immediately close it.
+        this.outsideClickTimer = setTimeout(() => {
+          this.outsideClickTimer = null;
+          document.addEventListener('click', this.handleOutsideClick);
+        }, 0);
+      } else {
+        document.removeEventListener('click', this.handleOutsideClick);
+      }
+    }
+  }
+
+  private outsideClickTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** The More popover closes on a click anywhere else, like other menus. */
+  private handleOutsideClick = (e: MouseEvent) => {
+    if (!e.composedPath().includes(this)) this.isExpanded = false;
+  };
+
+  private lastKeyboardTouchEnd = 0;
+
+  /**
+   * A real (transparent) textarea covers the Keyboard button. On iPhone, once the page has
+   * lost keyboard focus (after Done, or right after loading), iOS ignores a scripted focus():
+   * activeElement changes but no focus event fires and the keyboard never appears, leaving
+   * only the quick keys. A finger landing on a real field always brings the keyboard up;
+   * focus then moves to the hidden terminal input with the keyboard already open.
+   */
+  private handleKeyboardProxyFocus = () => {
+    // The tap's click comes after focus, when the quick keys may already sit under the
+    // finger (this bar hides): swallow it so it neither sends a key nor steals focus.
+    const swallow = (e: Event) => this.swallowClick(e);
+    document.addEventListener('click', swallow, true);
+    setTimeout(() => document.removeEventListener('click', swallow, true), 700);
+    this.cancelLongPress();
+    this.lastKeyboardTouchEnd = Date.now();
+    this.executeAction('onShowKeyboard');
+  };
+
+  /**
+   * The keyboard button focuses the hidden input from touchend, like a terminal tap: in
+   * Chrome on iOS (WKWebView) a focus() from pointerup sometimes left only the quick keys
+   * up without the soft keyboard.
+   */
+  private handleKeyboardTouchEnd(button: ActionButton, e: TouchEvent) {
+    if (button.action !== 'onShowKeyboard') return;
+    // A scroll that started on the button ends here too: not a tap.
+    if (touchEndsADrag(e)) return;
+    e.preventDefault();
+    this.cancelLongPress();
+    this.lastKeyboardTouchEnd = Date.now();
+    this.executeAction(button.action);
+  }
+
+  private handleButtonClick(button: ActionButton, e: MouseEvent) {
+    this.swallowClick(e);
+    // Mouse or keyboard activation of the keyboard button (touch already ran on touchend).
+    if (button.action === 'onShowKeyboard' && Date.now() - this.lastKeyboardTouchEnd > 700) {
+      this.cancelLongPress();
+      this.executeAction(button.action);
+    }
+  }
+
+  private cancelLongPress() {
+    if (this.longPressTimer) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+  }
+
+  // The click after a tap must not bubble to session-view: its click handler focuses the
+  // session view and steals focus from the hidden input, closing the keyboard just opened.
+  private swallowClick = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  /** The transparent field over the Keyboard button (see handleKeyboardProxyFocus). */
+  private renderKeyboardProxy() {
+    return html`<textarea
+      class="keyboard-proxy"
+      rows="1"
+      tabindex="-1"
+      aria-hidden="true"
+      autocomplete="off"
+      autocapitalize="none"
+      autocorrect="off"
+      spellcheck="false"
+      @focus=${this.handleKeyboardProxyFocus}
+      style="position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;outline:none;resize:none;opacity:0.01;font-size:16px;color:transparent;background:transparent;caret-color:transparent;"
+    ></textarea>`;
+  }
+
   private closeAllModals(): void {
     this.showCommandPalette = false;
     this.showClipboardManager = false;
@@ -335,6 +435,7 @@ export class MobileActionBar extends LitElement {
           <div class="flex items-center gap-2">
             ${this.primaryActions.map(
               (button) => html`
+              <span class="relative inline-flex" @click=${this.swallowClick}>
               <button
                 class="relative flex flex-col items-center justify-center w-14 h-14 rounded-xl transition-all duration-200 ${
                   button.highlight
@@ -342,13 +443,12 @@ export class MobileActionBar extends LitElement {
                     : 'bg-bg-secondary/80 hover:bg-surface-hover text-text hover:text-primary'
                 } active:scale-95 touch-manipulation"
                 @pointerdown=${(e: PointerEvent) => this.handleButtonPress(button, e)}
-                @pointerup=${(e: PointerEvent) => this.handleButtonRelease(button, e)}
-                @pointercancel=${() => {
-                  if (this.longPressTimer) {
-                    clearTimeout(this.longPressTimer);
-                    this.longPressTimer = null;
-                  }
+                @pointerup=${(e: PointerEvent) => {
+                  if (button.action !== 'onShowKeyboard') this.handleButtonRelease(button, e);
                 }}
+                @pointercancel=${() => this.cancelLongPress()}
+                @touchend=${(e: TouchEvent) => this.handleKeyboardTouchEnd(button, e)}
+                @click=${(e: MouseEvent) => this.handleButtonClick(button, e)}
                 title=${button.longPressAction ? t('actionBar.longPressHint', { action: t(button.title) }) : t(button.title)}
                 aria-label=${t(button.title)}
               >
@@ -373,6 +473,8 @@ export class MobileActionBar extends LitElement {
                     : ''
                 }
               </button>
+              ${button.action === 'onShowKeyboard' ? this.renderKeyboardProxy() : ''}
+              </span>
             `
             )}
             
