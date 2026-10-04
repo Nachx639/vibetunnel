@@ -24,10 +24,20 @@ import {
 } from '../utils/file-icons.js';
 import { createLogger } from '../utils/logger.js';
 import { copyToClipboard, formatPathForDisplay } from '../utils/path-utils.js';
+import type { MonacoEditorOptions } from './monaco-editor.js';
 import './monaco-editor.js';
 import './modal-wrapper.js';
 
 const logger = createLogger('file-browser');
+
+// On a phone there's no room for horizontal scrolling or a folding gutter: wrap long lines so
+// code and markdown read top to bottom.
+const PHONE_EDITOR_OPTIONS: MonacoEditorOptions = {
+  wordWrap: 'on',
+  fontSize: 13,
+  folding: false,
+  lineNumbersMinChars: 3,
+};
 
 interface FileInfo {
   name: string;
@@ -118,6 +128,7 @@ export class FileBrowser extends LitElement {
   private copyFeedbackTimer?: ReturnType<typeof setTimeout>;
 
   private editorRef = createRef<HTMLElement>();
+  private breadcrumbsRef = createRef<HTMLElement>();
   private pathInputRef = createRef<HTMLInputElement>();
   private noAuthMode = false;
 
@@ -158,6 +169,11 @@ export class FileBrowser extends LitElement {
         await this.loadDirectory(this.currentPath);
       }
       // If only the session object reference changed but workingDir is the same, don't reload
+    }
+
+    // Keep the current folder in view: long paths overflow to the left
+    if (changedProperties.has('currentFullPath') && this.breadcrumbsRef.value) {
+      this.breadcrumbsRef.value.scrollLeft = this.breadcrumbsRef.value.scrollWidth;
     }
 
     // Monaco editor will handle its own updates through properties
@@ -455,6 +471,68 @@ export class FileBrowser extends LitElement {
     this.dispatchEvent(new CustomEvent('browser-cancel'));
   }
 
+  /** Ancestors of the current folder (home collapsed to ~), each with the path to jump to. */
+  private get breadcrumbs(): Array<{ label: string; path: string }> {
+    const fullPath = this.currentFullPath || this.currentPath;
+    if (!fullPath) return [];
+    const display = formatPathForDisplay(fullPath);
+    const crumbs: Array<{ label: string; path: string }> = [];
+    let base: string;
+    let rest: string;
+    if (display.startsWith('~') && fullPath.startsWith('/')) {
+      base = fullPath.slice(0, fullPath.length - (display.length - 1)) || '/';
+      rest = display.slice(1);
+      crumbs.push({ label: '~', path: base });
+    } else if (fullPath.startsWith('/')) {
+      base = '';
+      rest = fullPath;
+      crumbs.push({ label: '/', path: '/' });
+    } else {
+      // Relative or Windows path: nothing reliable to split, show it whole
+      return [{ label: display, path: fullPath }];
+    }
+    let current = base.replace(/\/$/, '');
+    for (const part of rest.split('/').filter(Boolean)) {
+      current = `${current}/${part}`;
+      crumbs.push({ label: part, path: current });
+    }
+    return crumbs;
+  }
+
+  private renderBreadcrumbs(tap: string) {
+    const crumbs = this.breadcrumbs;
+    const fullPath = this.currentFullPath || this.currentPath || t('files.title');
+    return html`
+      <nav
+        ${ref(this.breadcrumbsRef)}
+        class="flex items-center min-w-0 overflow-x-auto whitespace-nowrap font-mono text-xs sm:text-sm text-status-info"
+        style="scrollbar-width: none;"
+        dir="ltr"
+        aria-label=${fullPath}
+      >
+        ${
+          crumbs.length === 0
+            ? html`<span class="px-1">${t('files.title')}</span>`
+            : crumbs.map((crumb, i) => {
+                const last = i === crumbs.length - 1;
+                return html`
+                  ${i > 1 || (i === 1 && crumbs[0].label !== '/') ? html`<span class="text-text-muted">/</span>` : ''}
+                  <button
+                    class="flex-shrink-0 rounded px-1 py-1 hover:bg-light ${tap} ${
+                      last ? 'font-semibold' : 'text-text-muted'
+                    }"
+                    title=${last ? t('files.clickToEdit', { path: fullPath }) : crumb.path}
+                    @click=${() => (last ? this.handlePathClick() : this.loadDirectory(crumb.path))}
+                  >
+                    ${crumb.label}
+                  </button>
+                `;
+              })
+        }
+      </nav>
+    `;
+  }
+
   private renderPreview() {
     if (this.previewLoading) {
       return html`
@@ -497,6 +575,7 @@ export class FileBrowser extends LitElement {
             .language=${this.preview.language || ''}
             .filename=${this.selectedFile?.name || ''}
             .readOnly=${true}
+            .options=${this.isMobile ? PHONE_EDITOR_OPTIONS : {}}
             mode="normal"
             class="h-full w-full"
           ></monaco-editor>
@@ -536,6 +615,7 @@ export class FileBrowser extends LitElement {
           .language=${this.diffContent.language || ''}
           .filename=${this.selectedFile?.name || ''}
           .readOnly=${true}
+          .options=${this.isMobile ? PHONE_EDITOR_OPTIONS : {}}
           mode="diff"
           .showModeToggle=${true}
           class="h-full w-full"
@@ -564,6 +644,9 @@ export class FileBrowser extends LitElement {
     if (!this.visible) {
       return html``;
     }
+
+    // Phones get 44px-tall controls (Apple HIG minimum); desktop keeps the dense look
+    const tap = this.isMobile ? 'min-h-[44px]' : '';
 
     return html`
       <div class="fixed inset-0 bg-bg/80 backdrop-blur-sm flex items-center justify-center" style="z-index: ${Z_INDEX.FILE_BROWSER};" @click=${this.handleCancel}>
@@ -595,7 +678,7 @@ export class FileBrowser extends LitElement {
           >
             <div class="flex items-center gap-3 min-w-0 flex-1">
               <button
-                class="text-text-muted hover:text-primary font-mono text-xs px-2 py-1 flex-shrink-0 transition-colors flex items-center gap-1"
+                class="text-text-muted hover:text-primary font-mono text-xs px-2 py-1 flex-shrink-0 transition-colors flex items-center gap-1 ${tap}"
                 @click=${this.handleCancel}
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -619,47 +702,43 @@ export class FileBrowser extends LitElement {
                         @input=${this.handlePathInput}
                         @keydown=${this.handlePathKeyDown}
                         @blur=${this.handlePathBlur}
-                        class="bg-bg border border-border/50 rounded px-2 py-1 text-status-info text-xs sm:text-sm font-mono w-full min-w-0 focus:outline-none focus:border-primary"
+                        class="bg-bg border border-border/50 rounded px-2 py-1 text-status-info ${
+                          this.isMobile ? 'text-base' : 'text-xs sm:text-sm'
+                        } font-mono w-full min-w-0 focus:outline-none focus:border-primary"
                         placeholder=${t('files.pathPlaceholder')}
+                        dir="ltr"
                       />
                     `
-                    : html`
-                      <div
-                        class="text-status-info text-xs sm:text-sm overflow-hidden text-ellipsis whitespace-nowrap font-mono cursor-pointer hover:bg-light rounded px-1 py-1 -mx-1"
-                        title=${t('files.clickToEdit', {
-                          path: this.currentFullPath || this.currentPath || t('files.title'),
-                        })}
-                        @click=${this.handlePathClick}
-                      >
-                        ${formatPathForDisplay(this.currentFullPath || this.currentPath || t('files.title'))}
-                      </div>
-                    `
+                    : this.renderBreadcrumbs(tap)
                 }
                 ${
                   this.gitStatus?.branch
                     ? html`
-                      <span class="text-text-muted text-xs flex items-center gap-1 font-mono flex-shrink-0">
-                        ${UIIcons.git} ${this.gitStatus.branch}
+                      <span
+                        class="text-text-muted text-xs flex items-center gap-1 font-mono flex-shrink-0 max-w-[35%] min-w-0"
+                        title=${this.gitStatus.branch}
+                      >
+                        ${UIIcons.git} <span class="truncate">${this.gitStatus.branch}</span>
                       </span>
                     `
                     : ''
                 }
               </div>
             </div>
-            <div class="flex items-center gap-2 text-xs flex-shrink-0 ml-2">
-              ${
-                this.errorMessage
-                  ? html`
-                    <div
-                      class="bg-status-error/20 border border-status-error text-status-error px-2 py-1 rounded text-xs"
-                    >
-                      ${this.errorMessage}
-                    </div>
-                  `
-                  : ''
-              }
-            </div>
           </div>
+          ${
+            // Full-width row so a long error doesn't squeeze the path to nothing on a phone
+            this.errorMessage
+              ? html`
+                <div
+                  class="bg-status-error/20 border-b border-status-error text-status-error px-3 py-2 text-xs break-words"
+                  role="alert"
+                >
+                  ${this.errorMessage}
+                </div>
+              `
+              : ''
+          }
 
           <!-- Main content -->
           <div class="flex-1 flex overflow-hidden">
@@ -673,9 +752,9 @@ export class FileBrowser extends LitElement {
               <div
                 class="bg-bg-secondary border-b border-border/50 p-3 flex items-center justify-between"
               >
-                <div class="flex gap-2">
+                <div class="flex flex-wrap gap-2">
                   <button
-                    class="btn-secondary text-xs px-2 py-1 font-mono ${
+                    class="btn-secondary text-xs px-2 py-1 font-mono ${tap} ${
                       this.gitFilter === 'changed' ? 'bg-primary text-bg' : ''
                     }"
                     @click=${this.toggleGitFilter}
@@ -684,7 +763,7 @@ export class FileBrowser extends LitElement {
                     ${t('files.gitChanges')}
                   </button>
                   <button
-                    class="btn-secondary text-xs px-2 py-1 font-mono ${
+                    class="btn-secondary text-xs px-2 py-1 font-mono ${tap} ${
                       this.showHidden ? 'bg-primary text-bg' : ''
                     }"
                     @click=${this.toggleHidden}
@@ -697,7 +776,8 @@ export class FileBrowser extends LitElement {
 
               <!-- File list content -->
               <div
-                class="flex-1 overflow-y-auto overflow-x-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent hover:scrollbar-thumb-white/30"
+                class="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent hover:scrollbar-thumb-white/30"
+                style=${this.mode === 'browse' ? 'padding-bottom: env(safe-area-inset-bottom);' : ''}
               >
                 ${
                   this.loading
@@ -711,7 +791,7 @@ export class FileBrowser extends LitElement {
                         this.currentFullPath !== '/'
                           ? html`
                             <div
-                              class="p-3 hover:bg-light cursor-pointer transition-colors flex items-center gap-2 border-b border-border/50"
+                              class="p-3 hover:bg-light cursor-pointer transition-colors flex items-center gap-2 border-b border-border/50 ${tap}"
                               @click=${this.handleParentClick}
                             >
                               ${getParentDirectoryIcon()}
@@ -723,7 +803,7 @@ export class FileBrowser extends LitElement {
                       ${this.files.map(
                         (file) => html`
                           <div
-                            class="p-3 hover:bg-light cursor-pointer transition-colors flex items-center gap-2 
+                            class="p-3 hover:bg-light cursor-pointer transition-colors flex items-center gap-2 min-w-0 ${tap}
                             ${
                               this.selectedFile?.path === file.path
                                 ? 'bg-light border-l-2 border-primary'
@@ -737,7 +817,7 @@ export class FileBrowser extends LitElement {
                                 file.isSymlink
                                   ? html`
                                     <svg
-                                      class="w-3 h-3 text-text-muted absolute -bottom-1 -right-1">
+                                      class="w-3 h-3 text-text-muted absolute -bottom-1 -right-1"
                                       fill="currentColor"
                                       viewBox="0 0 20 20"
                                     >
@@ -752,7 +832,7 @@ export class FileBrowser extends LitElement {
                               }
                             </span>
                             <span
-                              class="flex-1 text-sm whitespace-nowrap ${
+                              class="flex-1 min-w-0 truncate text-sm ${
                                 file.type === 'directory' ? 'text-status-info' : 'text-text'
                               }"
                               title=${file.isSymlink ? t('files.symlinkTitle', { name: file.name }) : file.name}
@@ -791,8 +871,9 @@ export class FileBrowser extends LitElement {
                                 @click=${() => {
                                   this.mobileView = 'list';
                                 }}
-                                class="text-text-muted hover:text-primary transition-colors flex-shrink-0"
+                                class="text-text-muted hover:text-primary transition-colors flex-shrink-0 flex items-center justify-center min-w-[44px] min-h-[44px] -my-2 -ml-2"
                                 title=${t('files.backToFiles')}
+                                aria-label=${t('files.backToFiles')}
                               >
                                 <svg
                                   class="w-5 h-5"
@@ -817,7 +898,7 @@ export class FileBrowser extends LitElement {
                             this.selectedFile.isSymlink
                               ? html`
                                 <svg
-                                  class="w-3 h-3 text-muted absolute -bottom-1 -right-1"
+                                  class="w-3 h-3 text-text-muted absolute -bottom-1 -right-1"
                                   fill="currentColor"
                                   viewBox="0 0 20 20"
                                 >
@@ -845,7 +926,7 @@ export class FileBrowser extends LitElement {
                           this.selectedFile.type === 'file'
                             ? html`
                               <button
-                                class="btn-secondary text-xs px-2 py-1 font-mono"
+                                class="btn-secondary text-xs px-2 py-1 font-mono ${tap}"
                                 @click=${() =>
                                   this.selectedFile &&
                                   this.handleCopyToClipboard(
@@ -865,7 +946,7 @@ export class FileBrowser extends LitElement {
                                 this.mode === 'browse'
                                   ? html`
                                     <button
-                                      class="btn-primary text-xs px-2 py-1 font-mono"
+                                      class="btn-primary text-xs px-2 py-1 font-mono ${tap}"
                                       @click=${this.insertPathIntoTerminal}
                                       title=${`${t('files.insertPath.title')} (Enter)`}
                                     >
@@ -881,7 +962,7 @@ export class FileBrowser extends LitElement {
                           this.selectedFile.gitStatus && this.selectedFile.gitStatus !== 'unchanged'
                             ? html`
                               <button
-                                class="btn-secondary text-xs px-2 py-1 font-mono ${
+                                class="btn-secondary text-xs px-2 py-1 font-mono ${tap} ${
                                   this.showDiff ? 'bg-primary text-bg' : ''
                                 } ${
                                   this.isMobile &&
@@ -909,7 +990,10 @@ export class FileBrowser extends LitElement {
           ${
             this.mode === 'select'
               ? html`
-                <div class="p-4 border-t border-border/50 flex gap-4">
+                <div
+                  class="p-4 border-t border-border/50 flex gap-4"
+                  style="padding-bottom: max(1rem, env(safe-area-inset-bottom));"
+                >
                   <button class="btn-ghost font-mono flex-1" @click=${this.handleCancel}>
                     ${t('common.cancel')}
                   </button>

@@ -37,6 +37,8 @@ export interface MonacoEditorOptions {
   wordWrap?: 'on' | 'off' | 'wordWrapColumn' | 'bounded';
   scrollBeyondLastLine?: boolean;
   renderWhitespace?: 'all' | 'none' | 'boundary' | 'selection' | 'trailing';
+  folding?: boolean;
+  lineNumbersMinChars?: number;
 }
 
 @customElement('monaco-editor')
@@ -203,6 +205,8 @@ export class MonacoEditor extends LitElement {
           renderWhitespace: 'selection',
           renderSideBySide: this.diffMode === 'sideBySide',
           ignoreTrimWhitespace: false,
+          ...(this.options.wordWrap ? { wordWrap: this.options.wordWrap } : {}),
+          ...(this.options.fontSize ? { fontSize: this.options.fontSize } : {}),
         };
 
         this.editor = window.monaco.editor.createDiffEditor(this.containerRef.value, diffOptions);

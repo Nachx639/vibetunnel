@@ -23,19 +23,19 @@ export class FileBrowserFAB extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 8px color-mix(in srgb, var(--color-bg-base) 30%, transparent);
+      box-shadow: 0 4px 8px color-mix(in srgb, var(--color-bg) 30%, transparent);
       transition: all 0.3s ease;
     }
 
     .fab:hover {
       background: var(--color-primary-hover);
-      box-shadow: 0 6px 12px color-mix(in srgb, var(--color-bg-base) 40%, transparent);
+      box-shadow: 0 6px 12px color-mix(in srgb, var(--color-bg) 40%, transparent);
       transform: translateY(-2px);
     }
 
     .fab:active {
       transform: translateY(0);
-      box-shadow: 0 2px 4px color-mix(in srgb, var(--color-bg-base) 30%, transparent);
+      box-shadow: 0 2px 4px color-mix(in srgb, var(--color-bg) 30%, transparent);
     }
 
     .icon {

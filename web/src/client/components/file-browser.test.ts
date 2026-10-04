@@ -401,4 +401,27 @@ describe('FileBrowser', () => {
       expect(button?.textContent?.trim()).toBe('Copied');
     });
   });
+
+  describe('breadcrumbs', () => {
+    it('jumps straight to an ancestor folder when tapped', async () => {
+      fetchMock.mockResponse('/api/fs/browse?path=%2Fhome%2Fuser&showHidden=false&gitFilter=all', {
+        path: '/srv/app/src/lib',
+        fullPath: '/srv/app/src/lib',
+        gitStatus: null,
+        files: [],
+      });
+      element.visible = true;
+      await element.updateComplete;
+      await waitForAsync();
+      await element.updateComplete;
+
+      const crumbs = [...element.querySelectorAll('nav button')];
+      expect(crumbs.map((b) => b.textContent?.trim())).toEqual(['/', 'srv', 'app', 'src', 'lib']);
+      (crumbs[2] as HTMLButtonElement).click();
+      await waitForAsync();
+
+      const urls = fetchMock.getCalls().map(([url]) => url);
+      expect(urls).toContain('/api/fs/browse?path=%2Fsrv%2Fapp&showHidden=false&gitFilter=all');
+    });
+  });
 });
