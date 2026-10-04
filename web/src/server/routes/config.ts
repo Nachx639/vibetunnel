@@ -2,17 +2,26 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
 import type { MacOpenMode } from '../../shared/mac-sessions.js';
+import type { MacShareLauncher, MacShareOffReason } from '../../shared/mac-share.js';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   type NotificationPreferences,
   type QuickStartCommand,
   type VibeTunnelConfig,
 } from '../../types/config.js';
-import { type ConfigService, MacOpenModeSchema } from '../services/config-service.js';
+import {
+  type ConfigService,
+  MacOpenModeSchema,
+  MacShareLauncherSchema,
+} from '../services/config-service.js';
 import {
   type MacSessionsStartOptions,
   macSessionsSettings,
 } from '../services/mac-sessions/settings.js';
+import {
+  type MacShareStartOptions,
+  macShareSettings,
+} from '../services/mac-sessions/share-settings.js';
 import { agentChatEnabled } from '../utils/agent-chat.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -54,6 +63,17 @@ export interface AppConfig {
   macSessionsLockedBy?: string;
   /** False where nothing can be listed (not macOS or Linux, HQ mode): Settings hides it. */
   macSessionsSupported: boolean;
+  /** "Share with phone": the switch, forced or from config.json (default off). */
+  macShare: boolean;
+  /** What is typed to reopen an agent (default vt). */
+  macShareLauncher: MacShareLauncher;
+  /** The switch was forced when the server started; macShareLockedBy names how. */
+  macShareLocked: boolean;
+  macShareLockedBy?: string;
+  /** False off macOS and in HQ mode: Settings hides it. */
+  macShareSupported: boolean;
+  /** Why it isn't offered although supported: off, "On this computer" off, or no login. */
+  macShareReason?: MacShareOffReason;
   /** The server's platform ("darwin", "linux"…): the app says "this Mac" only on macOS. */
   platform: string;
 }
@@ -62,6 +82,8 @@ interface ConfigRouteOptions {
   configService: ConfigService;
   /** How the server was started, for the Mac sessions switch (--[no-]mac-sessions, HQ mode). */
   macSessions?: MacSessionsStartOptions;
+  /** Same, for "Share with phone" (--[no-]mac-share, --no-auth); defaults to macSessions. */
+  macShare?: MacShareStartOptions;
 }
 
 /**
@@ -81,6 +103,7 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
       const repositoryBasePath =
         vibeTunnelConfig.repositoryBasePath || DEFAULT_REPOSITORY_BASE_PATH;
       const macSessions = macSessionsSettings(vibeTunnelConfig, options.macSessions);
+      const macShare = macShareSettings(vibeTunnelConfig, options.macShare ?? options.macSessions);
 
       const config: AppConfig = {
         repositoryBasePath: repositoryBasePath,
@@ -93,6 +116,12 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         macSessionsLocked: macSessions.lockedBy !== undefined,
         ...(macSessions.lockedBy ? { macSessionsLockedBy: macSessions.lockedBy } : {}),
         macSessionsSupported: macSessions.supported,
+        macShare: macShare.on,
+        macShareLauncher: macShare.launcher,
+        macShareLocked: macShare.lockedBy !== undefined,
+        ...(macShare.lockedBy ? { macShareLockedBy: macShare.lockedBy } : {}),
+        macShareSupported: macShare.supported,
+        ...(macShare.reason && macShare.supported ? { macShareReason: macShare.reason } : {}),
         platform: options.macSessions?.platform ?? process.platform,
       };
 
@@ -116,9 +145,12 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         notificationPreferences,
         macSessions,
         macSessionsOpenMode,
+        macShare,
+        macShareLauncher,
       } = req.body;
       const updates: { [key: string]: unknown } = {};
       let validatedOpenMode: MacOpenMode | undefined;
+      let validatedLauncher: MacShareLauncher | undefined;
       let validatedCommands: QuickStartCommand[] | undefined;
       let validatedPath: string | undefined;
       let validatedPrefs: Partial<NotificationPreferences> | undefined;
@@ -190,6 +222,22 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         }
       }
 
+      // Likewise saved while forced. The other macShare* keys (auto-trust, Codex, vt path,
+      // timeout) are edited in config.json only.
+      if (typeof macShare === 'boolean') {
+        updates.macShare = macShare;
+      }
+
+      if (macShareLauncher !== undefined) {
+        const parsed = MacShareLauncherSchema.safeParse(macShareLauncher);
+        if (parsed.success) {
+          validatedLauncher = parsed.data;
+          updates.macShareLauncher = validatedLauncher;
+        } else {
+          logger.error('[PUT /api/config] Invalid macShareLauncher:', parsed.error);
+        }
+      }
+
       if (Object.keys(updates).length > 0) {
         const currentConfig = configService.getConfig();
         const updatedConfig: VibeTunnelConfig = { ...currentConfig };
@@ -199,6 +247,12 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         }
         if (validatedOpenMode) {
           updatedConfig.macSessionsOpenMode = validatedOpenMode;
+        }
+        if (typeof macShare === 'boolean') {
+          updatedConfig.macShare = macShare;
+        }
+        if (validatedLauncher) {
+          updatedConfig.macShareLauncher = validatedLauncher;
         }
 
         if (validatedCommands) {

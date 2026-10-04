@@ -12,6 +12,8 @@
  * tmux target: an `-S` path from a client would let it make the server connect to any socket.
  */
 
+import type { MacShareAvailability, MacShareStatus } from './mac-share.js';
+
 export const MAC_SESSION_ID_RE = /^(t|p|a)-\d{1,10}-\d{1,12}(-\d{1,10})?$/;
 
 /** Whether `value` has the shape of a Mac session id (the server still looks it up). */
@@ -113,6 +115,8 @@ export interface MacAgentSession extends MacAgent {
   tty?: string;
   /** It runs in a pane of a tmux server that can't be listed (socket removed, no answer). */
   inTmux?: { server: string };
+  /** "Share with phone" (shared/mac-share.ts): set only while the feature is on. */
+  share?: MacShareAvailability;
 }
 
 export type MacSessionItem = MacTmuxSession | MacAgentSession;
@@ -140,6 +144,8 @@ export interface MacSessionsResponse {
   /** In the server's order: waiting, busy, idle agents, then tmux sessions without agents. */
   items: MacSessionItem[];
   warnings: MacSessionsWarning[];
+  /** "Share with phone" for this server (shared/mac-share.ts). */
+  share?: MacShareStatus;
 }
 
 /** POST /api/mac-sessions/:id/open */
@@ -204,6 +210,8 @@ export interface MacSessionViewDetail {
   cwd?: string;
   /** For an agent in a pane of a tmux server that can't be listed (MacAgentSession.inTmux). */
   inTmux?: { server: string };
+  /** For an agent on its own: "Share with phone" (MacAgentSession.share). */
+  share?: MacShareAvailability;
   /** For a pane: its tmux session's id and name, and the window it is in. */
   tmuxId?: string;
   tmuxName?: string;

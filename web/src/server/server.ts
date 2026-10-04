@@ -34,7 +34,7 @@ import { createTmuxRoutes } from './routes/tmux.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { AuthService } from './services/auth-service.js';
 import { CastOutputHub } from './services/cast-output-hub.js';
-import { processTable } from './services/claude-chat.js';
+import { processTable, readProcessTable } from './services/claude-chat.js';
 import { ClaudeStatusNotifier } from './services/claude-status-notifier.js';
 import { CloudflareService } from './services/cloudflare-service.js';
 import { ConfigService } from './services/config-service.js';
@@ -42,18 +42,29 @@ import { ControlDirWatcher } from './services/control-dir-watcher.js';
 import { GitStatusHub } from './services/git-status-hub.js';
 import { HQClient } from './services/hq-client.js';
 import { MacAttach } from './services/mac-sessions/attach.js';
+import { openInNewWindow } from './services/mac-sessions/new-window.js';
+import { OsascriptRunner } from './services/mac-sessions/osascript.js';
 import { MacSessionsScanner } from './services/mac-sessions/scanner.js';
+import { screenLock } from './services/mac-sessions/screen-lock.js';
 import {
   MAC_SESSIONS_CLI_ENABLE_FLAG,
   MAC_SESSIONS_CLI_FLAG,
   type MacSessionsStartOptions,
   macSessionsSettings,
 } from './services/mac-sessions/settings.js';
+import { MacShare } from './services/mac-sessions/share.js';
+import {
+  MAC_SHARE_CLI_ENABLE_FLAG,
+  MAC_SHARE_CLI_FLAG,
+  type MacShareStartOptions,
+  macShareSettings,
+} from './services/mac-sessions/share-settings.js';
 import { tmuxVersion } from './services/mac-sessions/tmux-run.js';
 import { mdnsService } from './services/mdns-service.js';
 import { NgrokService } from './services/ngrok-service.js';
 import { PushNotificationService } from './services/push-notification-service.js';
 import { RemoteRegistry } from './services/remote-registry.js';
+import { createScreenMenu } from './services/screen-menu.js';
 import { SessionMonitor } from './services/session-monitor.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { LARGE_REPLAY_MAX_BYTES, TerminalManager } from './services/terminal-manager.js';
@@ -158,6 +169,10 @@ interface Config {
   noMacSessions: boolean;
   /** --mac-sessions: "On this computer" is on whatever Settings says. */
   macSessions: boolean;
+  /** --no-mac-share: "Share with phone" is off whatever Settings says. */
+  noMacShare: boolean;
+  /** --mac-share: "Share with phone" is on whatever Settings says. */
+  macShare: boolean;
 }
 
 /**
@@ -236,6 +251,9 @@ Options:
   --mac-sessions        List this computer's tmux sessions and the agents running outside
                         VibeTunnel ("On this computer"), whatever Settings says (off by default)
   --no-mac-sessions     Don't list them, whatever Settings says
+  --mac-share           Offer "Share with phone" for an idle agent in a Terminal or iTerm2
+                        tab, whatever Settings says (macOS; off by default)
+  --no-mac-share        Don't offer it, whatever Settings says
   --debug               Enable debug logging
 
 Push Notification Options:
@@ -278,6 +296,8 @@ Environment Variables:
                         what runs inside them
   VIBETUNNEL_MAC_SESSIONS_HIDE_IN Comma-separated folders: "On this computer" leaves out what
                         runs inside them (adds to config.json's macSessionsHideIn)
+  VIBETUNNEL_MAC_SHARE  0 or 1: "Share with phone" off or on, whatever Settings says
+                        (--mac-share and --no-mac-share win)
   VIBETUNNEL_TMUX_BIN   tmux binary to use (default: Homebrew, /usr/bin or PATH)
   PUSH_CONTACT_EMAIL    Contact email for VAPID configuration
   NGROK_AUTHTOKEN       Ngrok auth token (used with --ngrok)
@@ -351,6 +371,8 @@ function parseArgs(): Config {
     enableCloudflare: false,
     noMacSessions: false,
     macSessions: false,
+    noMacShare: false,
+    macShare: false,
   };
 
   // Check for help flag first
@@ -443,6 +465,10 @@ function parseArgs(): Config {
       config.noMacSessions = true;
     } else if (args[i] === MAC_SESSIONS_CLI_ENABLE_FLAG) {
       config.macSessions = true;
+    } else if (args[i] === MAC_SHARE_CLI_FLAG) {
+      config.noMacShare = true;
+    } else if (args[i] === MAC_SHARE_CLI_ENABLE_FLAG) {
+      config.macShare = true;
     } else if (args[i].startsWith('--')) {
       // Unknown argument
       logger.error(`Unknown argument: ${args[i]}`);
@@ -553,6 +579,8 @@ interface AppInstance {
   hqClient: HQClient | null;
   controlDirWatcher: ControlDirWatcher | null;
   pushNotificationService: PushNotificationService | null;
+  /** "Share with phone": stops its jobs and kills any osascript still running. */
+  disposeMacShare: () => void;
 }
 
 // Track if app has been created
@@ -1239,13 +1267,58 @@ export async function createApp(): Promise<AppInstance> {
     hqMode: config.isHQMode,
   };
   const macSessionsNow = () => macSessionsSettings(configService.getConfig(), macSessionsStart);
+  // "Share with phone" (docs/features/mac-share.md): an idle agent in a Terminal or iTerm2 tab
+  // is closed there and reopened in the same tab through vt. Off unless turned on; macOS only.
+  const macShareStart: MacShareStartOptions = {
+    ...macSessionsStart,
+    shareCliDisabled: config.noMacShare,
+    shareCliEnabled: config.macShare,
+    noAuth: config.noAuth,
+  };
+  let macShare: MacShare | undefined;
   const macSessionsScanner = new MacSessionsScanner({
     settings: macSessionsNow,
     table: processTable,
     vtSessions: () => ptyManager.listSessions(),
     tmuxVersion: () => tmuxVersion(),
     controlPath: CONTROL_DIR,
+    share: () => macShare,
   });
+  // The only osascript runner, made on the first share: every call killed at 5 s, and
+  // whatever still runs at shutdown too.
+  let osascriptRunner: OsascriptRunner | undefined;
+  if (process.platform === 'darwin') {
+    const shareMenu = createScreenMenu({
+      recentText: (sessionId, lines) => terminalManager.getRecentText(sessionId, lines),
+      sendInput: (sessionId, input) => ptyManager.sendInput(sessionId, input),
+    });
+    macShare = new MacShare({
+      settings: () => macShareSettings(configService.getConfig(), macShareStart),
+      scanner: macSessionsScanner,
+      // A ps of its own: the shared table may be 2 s old, and a close acts on what it reads.
+      freshTable: () => readProcessTable(),
+      screenLock: () => screenLock(),
+      runner: {
+        run: (app, script, args) => {
+          osascriptRunner ??= new OsascriptRunner();
+          return osascriptRunner.run(app, script, args);
+        },
+      },
+      sigterm: (pid) => process.kill(pid, 'SIGTERM'),
+      openWindow: (app, command) => openInNewWindow(app, command),
+      vtSessions: () => ptyManager.listSessions(),
+      screen: {
+        ...shareMenu,
+        pressEnter: (sessionId) => ptyManager.sendInput(sessionId, { key: 'enter' }),
+      },
+      controlDir: CONTROL_DIR,
+      defaultControlDir: path.join(os.homedir(), '.vibetunnel', 'control'),
+    });
+  }
+  const disposeMacShare = () => {
+    macShare?.dispose();
+    osascriptRunner?.dispose();
+  };
 
   // Mount routes
   app.use(
@@ -1268,6 +1341,7 @@ export async function createApp(): Promise<AppInstance> {
       settings: macSessionsNow,
       scanner: macSessionsScanner,
       attach: new MacAttach({ scanner: macSessionsScanner, ptyManager }),
+      ...(macShare ? { share: macShare } : {}),
     })
   );
   logger.debug('Mounted Mac sessions routes');
@@ -1305,6 +1379,7 @@ export async function createApp(): Promise<AppInstance> {
     createConfigRoutes({
       configService,
       macSessions: macSessionsStart,
+      macShare: macShareStart,
     })
   );
   logger.debug('Mounted config routes');
@@ -1803,6 +1878,7 @@ export async function createApp(): Promise<AppInstance> {
     hqClient,
     controlDirWatcher,
     pushNotificationService,
+    disposeMacShare,
   };
 }
 
@@ -1838,6 +1914,7 @@ export async function startVibeTunnelServer() {
     controlDirWatcher,
     config,
     configService,
+    disposeMacShare,
   } = appInstance;
 
   // Update debug mode based on config or environment variable
@@ -1893,6 +1970,9 @@ export async function startVibeTunnelServer() {
       logger.debug('Cleared cleanup intervals');
 
       // Stop configuration service watcher
+      // No share job goes on, and no osascript outlives the server.
+      disposeMacShare();
+
       configService.stopWatching();
       logger.debug('Stopped configuration service watcher');
 

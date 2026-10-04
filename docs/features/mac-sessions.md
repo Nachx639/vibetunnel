@@ -81,6 +81,8 @@ in can type into it. To control an agent from the phone, start it inside tmux, o
 | `macSessionsIncludeHeadless` | `config.json` only | `false` | Also lists agents without a terminal, and Claude Code processes not started from its CLI (SDK clients), read-only. |
 | `macSessionsHideIn` | `config.json` only | none | Absolute folders (`~` allowed) whose tmux sessions and agents are not listed, below them included. |
 
+"Share with phone" (macOS, off by default) has its own settings: see [mac-share.md](mac-share.md).
+
 The Mac app rewrites `config.json` from its own settings; these keys survive that only with the
 config-preserving change of the Mac app (see the PR that keeps unknown keys).
 

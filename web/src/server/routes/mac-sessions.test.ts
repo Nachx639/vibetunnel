@@ -14,6 +14,7 @@ import {
 } from '../services/mac-sessions/attach';
 import { MacSessionsScanner } from '../services/mac-sessions/scanner';
 import type { MacSessionsSettings } from '../services/mac-sessions/settings';
+import { type MacShare, MacShareError } from '../services/mac-sessions/share';
 import type { TmuxAvailability } from '../services/mac-sessions/tmux-run';
 import type { AttachedMode } from '../services/tmux-attach-tracker';
 import { TMUX_FIELD_SEPARATOR } from '../services/tmux-manager';
@@ -146,7 +147,9 @@ describe('Mac sessions routes', () => {
     fs.rmSync(claudeDir, { recursive: true, force: true });
   });
 
-  function appWith(options: { auth?: boolean } = {}) {
+  function appWith(
+    options: { auth?: boolean; share?: Pick<MacShare, 'plan' | 'start' | 'job'> } = {}
+  ) {
     const table = async () => {
       tableCalls++;
       return parseProcessTable(machine.join('\n'));
@@ -225,6 +228,7 @@ describe('Mac sessions routes', () => {
         attach,
         table,
         readChat,
+        ...(options.share ? { share: options.share } : {}),
       })
     );
     return app;
@@ -471,5 +475,105 @@ describe('Mac sessions routes', () => {
     ).toBe(401);
     expect(tableCalls).toBe(0);
     expect(createSession).not.toHaveBeenCalled();
+  });
+  describe('share with phone', () => {
+    const JOB = 'j'.repeat(22);
+    const TOKEN = 't'.repeat(22);
+    const fakeShare = () => ({
+      plan: vi.fn(async (_id: string, _options: { allowPrompt?: boolean }) => ({
+        token: TOKEN,
+        command: 'cd /x && vt claude --resume id',
+      })),
+      start: vi.fn(async (_token: unknown, _id?: string) => ({ jobId: JOB })),
+      job: vi.fn((id: string) =>
+        id === JOB ? { id: JOB, state: 'running', step: 'checking' } : undefined
+      ),
+    });
+    const asShare = (share: ReturnType<typeof fakeShare>) =>
+      share as unknown as Pick<MacShare, 'plan' | 'start' | 'job'>;
+
+    it('plans, starts and polls; the client sends only the id, a flag and the token', async () => {
+      const share = fakeShare();
+      const app = appWith({ share: asShare(share) });
+      const plan = await request(app)
+        .post(`/api/mac-sessions/${AGENT_ID}/share/plan`)
+        .send({ allowPrompt: 'yes', command: 'rm -rf /' });
+      expect(plan.status).toBe(200);
+      expect(plan.headers['cache-control']).toBe('no-store');
+      expect(share.plan).toHaveBeenCalledWith(AGENT_ID, { allowPrompt: false });
+      const started = await request(app)
+        .post(`/api/mac-sessions/${AGENT_ID}/share`)
+        .send({ token: TOKEN });
+      expect(started.status).toBe(202);
+      expect(started.body).toEqual({ jobId: JOB });
+      expect(share.start).toHaveBeenCalledWith(TOKEN, AGENT_ID);
+      const job = await request(app).get(`/api/mac-sessions/share/${JOB}`);
+      expect(job.status).toBe(200);
+      expect(job.body).toMatchObject({ id: JOB, state: 'running' });
+      expect((await request(app).get(`/api/mac-sessions/share/${'k'.repeat(22)}`)).status).toBe(
+        404
+      );
+      expect((await request(app).get('/api/mac-sessions/share/../../etc')).status).toBe(404);
+    });
+
+    it('answers each refusal with its status and code, and nothing else', async () => {
+      const share = fakeShare();
+      const app = appWith({ share: asShare(share) });
+      const cases: Array<[ConstructorParameters<typeof MacShareError>[0], number]> = [
+        ['no-auth', 403],
+        ['disabled', 503],
+        ['gone', 404],
+        ['busy', 409],
+        ['locked', 409],
+        ['automation-ask', 409],
+        ['unsupported-app', 422],
+      ];
+      for (const [code, status] of cases) {
+        share.plan.mockRejectedValueOnce(new MacShareError(code));
+        const res = await request(app).post(`/api/mac-sessions/${AGENT_ID}/share/plan`).send({});
+        expect([res.status, res.body]).toEqual([status, { error: code }]);
+      }
+      share.plan.mockRejectedValueOnce(new MacShareError('unsupported-shell', 'tcsh'));
+      const shell = await request(app).post(`/api/mac-sessions/${AGENT_ID}/share/plan`).send({});
+      expect([shell.status, shell.body]).toEqual([
+        422,
+        { error: 'unsupported-shell', shell: 'tcsh' },
+      ]);
+      share.plan.mockRejectedValueOnce(new Error('/Users/me/secret path'));
+      const failed = await request(app).post(`/api/mac-sessions/${AGENT_ID}/share/plan`).send({});
+      expect(failed.status).toBe(500);
+      expect(JSON.stringify(failed.body)).not.toContain('secret');
+      share.start.mockRejectedValueOnce(new MacShareError('plan-expired'));
+      const expired = await request(app)
+        .post(`/api/mac-sessions/${AGENT_ID}/share`)
+        .send({ token: TOKEN });
+      expect([expired.status, expired.body]).toEqual([409, { error: 'plan-expired' }]);
+    });
+
+    it('refuses an id it never makes, and answers disabled without the feature', async () => {
+      const share = fakeShare();
+      const app = appWith({ share: asShare(share) });
+      const bad = await request(app).post('/api/mac-sessions/..%2Fx/share/plan').send({});
+      expect([bad.status, bad.body]).toEqual([400, { error: 'bad-id' }]);
+      expect(share.plan).not.toHaveBeenCalled();
+      const off = appWith();
+      const res = await request(off).post(`/api/mac-sessions/${AGENT_ID}/share/plan`).send({});
+      expect([res.status, res.body]).toEqual([503, { error: 'disabled' }]);
+    });
+
+    it('is behind the login', async () => {
+      const share = fakeShare();
+      const app = appWith({ auth: true, share: asShare(share) });
+      expect(
+        (await request(app).post(`/api/mac-sessions/${AGENT_ID}/share/plan`).send({})).status
+      ).toBe(401);
+      expect(
+        (await request(app).post(`/api/mac-sessions/${AGENT_ID}/share`).send({ token: TOKEN }))
+          .status
+      ).toBe(401);
+      expect((await request(app).get(`/api/mac-sessions/share/${JOB}`)).status).toBe(401);
+      expect(share.plan).not.toHaveBeenCalled();
+      expect(share.start).not.toHaveBeenCalled();
+    });
   });
 });

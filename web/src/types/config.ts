@@ -1,5 +1,6 @@
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../shared/constants.js';
 import type { MacOpenMode } from '../shared/mac-sessions.js';
+import type { MacShareLauncher } from '../shared/mac-share.js';
 
 export interface QuickStartCommand {
   name?: string; // Optional display name (can include emoji), if empty uses command
@@ -52,6 +53,20 @@ export interface VibeTunnelConfig {
    * folders are listed even when hidden here.
    */
   macSessionsHideIn?: string[];
+  /**
+   * "Share with phone" (macOS): an idle agent in a Terminal or iTerm2 tab can be closed there
+   * and reopened in the same tab through vt. Missing = off. VIBETUNNEL_MAC_SHARE=0|1,
+   * --mac-share and --no-mac-share override it (services/mac-sessions/share-settings.ts).
+   */
+  macShare?: boolean;
+  /** What is typed to reopen it: `vt <agent> …` (default) or the shell's own command. */
+  macShareLauncher?: MacShareLauncher;
+  /** An absolute path to type instead of the bare `vt`. Edited by hand in config.json. */
+  macShareVtPath?: string;
+  /** Answer the reopened agent's trust dialog for the folder it already ran in. Missing = off. */
+  macShareAutoTrust?: boolean;
+  /** How long the reopened agent has to show up through vt, in seconds. Missing = 30. */
+  macShareStartTimeoutSec?: number;
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { QuickStartCommand, VibeTunnelConfig } from '../../types/config.js';
 import type { ConfigService } from '../services/config-service.js';
 import type { MacSessionsStartOptions } from '../services/mac-sessions/settings.js';
+import type { MacShareStartOptions } from '../services/mac-sessions/share-settings.js';
 import { createConfigRoutes } from './config.js';
 
 // Never the real environment: a developer's VIBETUNNEL_MAC_SESSIONS must not change the answers.
@@ -16,6 +17,12 @@ const macSessionsDefaults = {
   macSessionsLocked: false,
   macSessionsSupported: true,
   platform: 'darwin',
+  // "Share with phone" is off unless turned on, and types `vt <agent> …`.
+  macShare: false,
+  macShareLauncher: 'vt',
+  macShareLocked: false,
+  macShareSupported: true,
+  macShareReason: 'disabled',
 };
 
 describe('Config Routes', () => {
@@ -554,6 +561,129 @@ describe('Config Routes', () => {
         { macSessionsOpenMode: ['watch'] },
         { macSessions: 'yes' },
         { macSessions: 1 },
+      ]) {
+        const response = await request(app).put('/api/config').send(body);
+        expect(response.status, JSON.stringify(body)).toBe(400);
+      }
+      expect(mockConfigService.updateConfig).not.toHaveBeenCalled();
+    });
+  });
+  describe('Share with phone', () => {
+    function shareApp(config: Partial<VibeTunnelConfig>, macShare: MacShareStartOptions) {
+      const shareApp = express();
+      shareApp.use(express.json());
+      shareApp.use(
+        '/api',
+        createConfigRoutes({
+          configService: {
+            ...mockConfigService,
+            getConfig: () => ({ ...defaultConfig, ...config }),
+          } as unknown as ConfigService,
+          macSessions: macOnly,
+          macShare,
+        })
+      );
+      return shareApp;
+    }
+
+    it('is off until turned on, and then offered with the launcher chosen', async () => {
+      const off = await request(shareApp({}, macOnly)).get('/api/config');
+      expect(off.body).toMatchObject({ macShare: false, macShareReason: 'disabled' });
+
+      const response = await request(
+        shareApp({ macSessions: true, macShare: true, macShareLauncher: 'shell' }, macOnly)
+      ).get('/api/config');
+      expect(response.body).toMatchObject({
+        macShare: true,
+        macShareLauncher: 'shell',
+        macShareLocked: false,
+        macShareSupported: true,
+      });
+      expect(response.body).not.toHaveProperty('macShareReason');
+      expect(response.body).not.toHaveProperty('macShareLockedBy');
+    });
+
+    it('a switch forced at start wins over config.json and is reported locked', async () => {
+      let response = await request(
+        shareApp(
+          { macSessions: true, macShare: false },
+          { ...macOnly, env: { VIBETUNNEL_MAC_SHARE: '1' } }
+        )
+      ).get('/api/config');
+      expect(response.body).toMatchObject({
+        macShare: true,
+        macShareLocked: true,
+        macShareLockedBy: 'VIBETUNNEL_MAC_SHARE=1',
+      });
+
+      response = await request(
+        shareApp({ macSessions: true }, { ...macOnly, shareCliEnabled: true })
+      ).get('/api/config');
+      expect(response.body).toMatchObject({
+        macShare: true,
+        macShareLocked: true,
+        macShareLockedBy: '--mac-share',
+      });
+
+      response = await request(
+        shareApp(
+          { macShare: true },
+          { ...macOnly, env: { VIBETUNNEL_MAC_SHARE: '1' }, shareCliDisabled: true }
+        )
+      ).get('/api/config');
+      expect(response.body).toMatchObject({
+        macShare: false,
+        macShareLocked: true,
+        macShareLockedBy: '--no-mac-share',
+        macShareReason: 'disabled',
+      });
+    });
+
+    it('says why it is not offered while on: no login, or "On this computer" off', async () => {
+      let response = await request(
+        shareApp({ macSessions: true, macShare: true }, { ...macOnly, noAuth: true })
+      ).get('/api/config');
+      expect(response.body).toMatchObject({ macShare: true, macShareReason: 'no-auth' });
+
+      response = await request(shareApp({ macShare: true }, macOnly)).get('/api/config');
+      expect(response.body.macShareReason).toBe('mac-sessions-off');
+    });
+
+    it('is not offered off macOS or in HQ mode, without a reason to show', async () => {
+      for (const options of [
+        { ...macOnly, platform: 'linux' as const },
+        { ...macOnly, hqMode: true },
+      ]) {
+        const response = await request(shareApp({ macShare: true }, options)).get('/api/config');
+        expect(response.body.macShareSupported).toBe(false);
+        expect(response.body).not.toHaveProperty('macShareReason');
+      }
+    });
+
+    it('PUT saves the switch and the launcher', async () => {
+      const response = await request(app)
+        .put('/api/config')
+        .send({ macShare: true, macShareLauncher: 'shell' });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, macShare: true, macShareLauncher: 'shell' });
+      expect(mockConfigService.updateConfig).toHaveBeenCalledWith({
+        ...defaultConfig,
+        macShare: true,
+        macShareLauncher: 'shell',
+      });
+    });
+
+    it('PUT refuses another launcher, a switch that is not a boolean, and config.json-only keys', async () => {
+      for (const body of [
+        { macShareLauncher: 'zsh' },
+        { macShareLauncher: '' },
+        { macShareLauncher: null },
+        { macShare: 'yes' },
+        { macShare: 1 },
+        { macShareVtPath: '/tmp/vt' },
+        { macShareCodex: true },
+        { macShareAutoTrust: false },
+        { macShareStartTimeoutSec: 60 },
       ]) {
         const response = await request(app).put('/api/config').send(body);
         expect(response.status, JSON.stringify(body)).toBe(400);

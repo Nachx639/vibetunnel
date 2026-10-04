@@ -11,11 +11,18 @@ import {
   type VibeTunnelConfig,
 } from '../../types/config.js';
 import { createLogger } from '../utils/logger.js';
+import {
+  MAC_SHARE_START_TIMEOUT_MAX_SEC,
+  MAC_SHARE_START_TIMEOUT_MIN_SEC,
+} from './mac-sessions/share-settings.js';
 
 const logger = createLogger('config-service');
 
 /** What a tap on a tmux session in "On this computer" opens. */
 export const MacOpenModeSchema = z.enum(['control', 'watch']);
+
+/** What "Share with phone" types to reopen an agent. */
+export const MacShareLauncherSchema = z.enum(['vt', 'shell']);
 
 // Zod schema for config validation
 const ConfigSchema = z.object({
@@ -33,6 +40,22 @@ const ConfigSchema = z.object({
   macSessionsOpenMode: MacOpenModeSchema.optional().catch(undefined),
   macSessionsIncludeHeadless: z.boolean().optional().catch(undefined),
   macSessionsHideIn: z.array(z.string()).optional().catch(undefined),
+  // Share with phone: likewise.
+  macShare: z.boolean().optional().catch(undefined),
+  macShareLauncher: MacShareLauncherSchema.optional().catch(undefined),
+  macShareVtPath: z
+    .string()
+    .refine((value) => path.isAbsolute(value), 'macShareVtPath must be absolute')
+    .optional()
+    .catch(undefined),
+  macShareAutoTrust: z.boolean().optional().catch(undefined),
+  macShareStartTimeoutSec: z
+    .number()
+    .int()
+    .min(MAC_SHARE_START_TIMEOUT_MIN_SEC)
+    .max(MAC_SHARE_START_TIMEOUT_MAX_SEC)
+    .optional()
+    .catch(undefined),
   // Extended configuration sections - we parse but don't use most of these yet
   server: z
     .object({

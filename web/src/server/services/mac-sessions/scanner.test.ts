@@ -517,6 +517,39 @@ describe('MacSessionsScanner', () => {
     expect(calls.table).toBe(1);
   });
 
+  it('puts "Share with phone" on agent rows when answering, from the cache too', async () => {
+    let enabled = true;
+    let can = true;
+    const scanner = new MacSessionsScanner(
+      deps({
+        share: () => ({
+          status: () => (enabled ? { enabled: true } : { enabled: false, reason: 'disabled' }),
+          availability: (row) =>
+            row.app === 'Terminal'
+              ? { can, ...(can ? {} : { reason: 'busy' as const }) }
+              : undefined,
+        }),
+      })
+    );
+    const first = await scanner.scan();
+    expect(first.share).toEqual({ enabled: true });
+    const agent = first.items.find((item) => item.kind === 'agent');
+    expect(agent).toMatchObject({ id: expect.stringMatching(/^a-530-/), share: { can: true } });
+    expect(
+      first.items.filter((item) => item.kind === 'tmux').every((item) => !('share' in item))
+    ).toBe(true);
+    can = false;
+    const cached = await scanner.scan();
+    expect(cached.items.find((item) => item.kind === 'agent')).toMatchObject({
+      share: { can: false, reason: 'busy' },
+    });
+    enabled = false;
+    const off = await scanner.scan();
+    expect(off.share).toEqual({ enabled: false, reason: 'disabled' });
+    expect(off.items.some((item) => 'share' in item)).toBe(false);
+    expect(calls.table).toBe(1);
+  });
+
   it('runs nothing while Mac Sessions is off', async () => {
     current = settings({ on: false, enabled: false, reason: 'disabled' });
     const spies = {

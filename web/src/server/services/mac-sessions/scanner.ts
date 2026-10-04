@@ -28,6 +28,7 @@ import type {
   MacTmuxPaneAgent,
   MacTmuxSession,
 } from '../../../shared/mac-sessions.js';
+import type { MacShareAvailability, MacShareStatus } from '../../../shared/mac-share.js';
 import type { SessionInfo } from '../../../shared/types.js';
 import type { ProcessTable } from '../claude-chat.js';
 import { paneLabel } from '../tmux-manager.js';
@@ -113,6 +114,18 @@ export interface MacSessionsScannerDeps {
   /** A folder with its links resolved (the ONLY_IN and hidden-folder filters). */
   realpath?: (folder: string) => string;
   now?: () => number;
+  /**
+   * "Share with phone" (share.ts): the response's `share` and each agent row's. Read when the
+   * list is answered, not when it was scanned, so a share in flight shows at once; cheap (no
+   * AppleScript, no ps).
+   */
+  share?: () => MacShareRows | undefined;
+}
+
+/** What the scanner asks of MacShare. */
+export interface MacShareRows {
+  status(): MacShareStatus;
+  availability(row: MacAgentSession): MacShareAvailability | undefined;
 }
 
 interface PaneAgent {
@@ -234,12 +247,12 @@ export class MacSessionsScanner {
       };
     }
     if (this.inFlight?.generation === this.generation) {
-      return this.inFlight.promise;
+      return this.inFlight.promise.then((response) => this.withShare(response));
     }
     const now = this.now();
     const age = this.last ? now - this.last.at : Number.POSITIVE_INFINITY;
     if (this.last && age >= 0 && age < SCAN_CACHE_MS && !(options.force && age >= FORCE_MIN_MS)) {
-      return { ...this.last.response, openMode: settings.openMode };
+      return this.withShare({ ...this.last.response, openMode: settings.openMode });
     }
     const generation = this.generation;
     const promise = this.run(settings, now)
@@ -251,7 +264,27 @@ export class MacSessionsScanner {
         if (this.inFlight?.promise === promise) this.inFlight = null;
       });
     this.inFlight = { generation, promise };
-    return promise;
+    return promise.then((response) => this.withShare(response));
+  }
+
+  /** The response with "Share with phone" on it, while that feature is wired in. */
+  private withShare(response: MacSessionsResponse): MacSessionsResponse {
+    const share = this.deps.share?.();
+    if (!share) return response;
+    const status = share.status();
+    return {
+      ...response,
+      share: status,
+      items: response.items.map((item) => {
+        if (item.kind !== 'agent') return item;
+        const availability = status.enabled ? share.availability(item) : undefined;
+        if (!availability) {
+          const { share: _old, ...rest } = item;
+          return rest;
+        }
+        return { ...item, share: availability };
+      }),
+    };
   }
 
   /** Drop the cached list: the next scan runs again (after an open, a disconnect…). */

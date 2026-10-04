@@ -1,7 +1,7 @@
 /**
  * Mac Sessions API ("On this computer", shared/mac-sessions.ts): the list, the read-only
- * conversation of an agent in it, opening one of its tmux sessions, and switching how an opened
- * one behaves.
+ * conversation of an agent in it, opening one of its tmux sessions, switching how an opened one
+ * behaves, and "Share with phone" for an agent in a Terminal or iTerm2 tab (shared/mac-share.ts).
  * Mounted after the auth middleware, like the rest of /api: there is no bypass of its own.
  *
  * Clients only send ids the server made. What an id names (a socket, a pid, a tmux target) is
@@ -15,12 +15,18 @@ import {
   type MacSessionsErrorCode,
   type MacSizing,
 } from '../../shared/mac-sessions.js';
+import {
+  isMacShareJobId,
+  type MacShareErrorCode,
+  type MacSharePlanRequest,
+} from '../../shared/mac-share.js';
 import type { SessionInfo } from '../../shared/types.js';
 import { type ProcessTable, processTable } from '../services/claude-chat.js';
 import { parseUtcStart } from '../services/codex-process.js';
 import { type MacAttach, MacSessionsError } from '../services/mac-sessions/attach.js';
 import type { MacSessionsScanner } from '../services/mac-sessions/scanner.js';
 import type { MacSessionsSettings } from '../services/mac-sessions/settings.js';
+import { type MacShare, MacShareError } from '../services/mac-sessions/share.js';
 import { chatAnswer, readSessionChat } from '../services/session-chat.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -35,6 +41,8 @@ export interface MacSessionsRouteOptions {
   table?: () => Promise<ProcessTable>;
   /** readSessionChat unless given (tests). */
   readChat?: typeof readSessionChat;
+  /** "Share with phone" (services/mac-sessions/share.ts); absent off macOS or when it is off. */
+  share?: Pick<MacShare, 'plan' | 'start' | 'job'>;
 }
 
 /** Terminal sizes a phone may ask for. */
@@ -52,6 +60,22 @@ function sendFailure(res: Response, error: unknown, fallback: MacSessionsErrorCo
     return;
   }
   sendError(res, fallback, error instanceof Error ? error.message : String(error));
+}
+
+function sendShareError(res: Response, code: MacShareErrorCode): void {
+  res.status(new MacShareError(code).status).json({ error: code });
+}
+
+/** A share call's failure: its own code, else a 500 that names nothing from the computer. */
+function sendShareFailure(res: Response, error: unknown, what: string): void {
+  if (error instanceof MacShareError) {
+    res
+      .status(error.status)
+      .json({ error: error.code, ...(error.shell ? { shell: error.shell } : {}) });
+    return;
+  }
+  logger.warn(`Share with phone: ${what} failed: ${errorName(error)}`);
+  res.status(500).json({ error: 'Failed to share' });
 }
 
 const errorName = (error: unknown) =>
@@ -93,6 +117,45 @@ export function createMacSessionsRoutes(options: MacSessionsRouteOptions): Route
   });
 
   /** POST /api/mac-sessions/attached/:sessionId/mode {mode?, sizing?} → {mode, sizing} */
+  // Before the /mac-sessions/:id routes.
+  /** GET /api/mac-sessions/share/:jobId → MacShareJob: where a share is (polled every 1 s). */
+  router.get('/mac-sessions/share/:jobId', (req, res) => {
+    const { jobId } = req.params;
+    if (!options.share) return sendShareError(res, 'disabled');
+    if (!isMacShareJobId(jobId)) return res.status(404).json({ error: 'not-found' });
+    const job = options.share.job(jobId);
+    if (!job) return res.status(404).json({ error: 'not-found' });
+    res.json(job);
+  });
+
+  /**
+   * POST /api/mac-sessions/:id/share/plan {allowPrompt?} → MacSharePlan: everything checked
+   * and the tab probed, nothing changed; the token starts it.
+   */
+  router.post('/mac-sessions/:id/share/plan', async (req, res) => {
+    const { id } = req.params;
+    if (!options.share) return sendShareError(res, 'disabled');
+    if (!isMacSessionId(id)) return sendShareError(res, 'bad-id');
+    const { allowPrompt } = bodyOf(req) as MacSharePlanRequest;
+    try {
+      res.json(await options.share.plan(id, { allowPrompt: allowPrompt === true }));
+    } catch (error) {
+      sendShareFailure(res, error, 'plan');
+    }
+  });
+
+  /** POST /api/mac-sessions/:id/share {token} → 202 {jobId}: closes it and reopens it there. */
+  router.post('/mac-sessions/:id/share', async (req, res) => {
+    const { id } = req.params;
+    if (!options.share) return sendShareError(res, 'disabled');
+    if (!isMacSessionId(id)) return sendShareError(res, 'bad-id');
+    try {
+      res.status(202).json(await options.share.start(bodyOf(req).token, id));
+    } catch (error) {
+      sendShareFailure(res, error, 'start');
+    }
+  });
+
   router.post('/mac-sessions/attached/:sessionId/mode', async (req, res) => {
     const { sessionId } = req.params;
     if (!VIBETUNNEL_SESSION_ID.test(sessionId)) return sendError(res, 'not-attached');
