@@ -258,6 +258,12 @@ final class UnixSocketConnection {
         // Start continuous receive loop
         self.startReceiveLoop()
 
+        // A new connection starts its pong clock afresh. Without this, one long outage (a
+        // server restart over 60 s) left every later connection judged dead at its first
+        // keep-alive tick, before it ever sent a ping: a reconnect every ~31 s for good
+        // (2026-10-03; the server now also greets with a pong, for builds without this fix).
+        self.lastPongTime = Date()
+
         // Start keep-alive timer
         self.startKeepAlive()
 

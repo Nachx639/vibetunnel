@@ -31,6 +31,9 @@ vi.mock('net', () => ({
 }));
 
 // Mock logger
+const { moduleLogger } = vi.hoisted(() => ({
+  moduleLogger: { log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+}));
 vi.mock('../../server/utils/logger', () => ({
   logger: {
     log: vi.fn(),
@@ -38,12 +41,7 @@ vi.mock('../../server/utils/logger', () => ({
     warn: vi.fn(),
     debug: vi.fn(),
   },
-  createLogger: vi.fn(() => ({
-    log: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  })),
+  createLogger: vi.fn(() => moduleLogger),
 }));
 
 describe('Control Unix Handler', () => {
@@ -71,7 +69,7 @@ describe('Control Unix Handler', () => {
     });
 
     it('rejects startup when restrictive socket permissions cannot be set', async () => {
-      const fs = await vi.importMock<typeof import('fs')>('fs');
+      const fs = await import('fs');
       vi.mocked(fs.chmod).mockImplementationOnce((_path, _mode, callback) => {
         callback(new Error('permission denied'));
       });
@@ -123,6 +121,33 @@ describe('Control Unix Handler', () => {
       expect(result).toBe(null);
     }, 1000);
 
+    it('greets a new Mac connection with a pong, so the app does not reconnect forever', async () => {
+      class MockSocket extends EventEmitter {
+        destroyed = false;
+        readable = true;
+        writable = true;
+        setNoDelay = vi.fn();
+        write = vi.fn((_data: Buffer, callback?: (error?: Error) => void) => {
+          callback?.();
+          return true;
+        });
+        destroy = vi.fn();
+      }
+      await controlUnixHandler.start();
+      const socket = new MockSocket();
+      netMock.connectionHandler?.(socket);
+      const frames = socket.write.mock.calls.map(([data]) =>
+        JSON.parse((data as Buffer).subarray(4).toString('utf8'))
+      );
+      expect(frames).toContainEqual(
+        expect.objectContaining({ type: 'event', category: 'system', action: 'ready' })
+      );
+      // What VibeTunnel.app takes as a keep-alive pong (type, category and action only).
+      expect(frames).toContainEqual(
+        expect.objectContaining({ type: 'response', category: 'system', action: 'ping' })
+      );
+    });
+
     it('does not carry a partial frame into a replacement Mac connection', async () => {
       class MockSocket extends EventEmitter {
         destroyed = false;
@@ -167,6 +192,33 @@ describe('Control Unix Handler', () => {
       secondSocket.emit('data', Buffer.concat([pingHeader, ping]));
 
       expect(secondSocket.write).toHaveBeenCalledOnce();
+    });
+
+    it("logs the app's keep-alive pings at debug level only", async () => {
+      class MockSocket extends EventEmitter {
+        destroyed = false;
+        readable = true;
+        writable = true;
+        setNoDelay = vi.fn();
+        write = vi.fn((_data: Buffer, callback?: (error?: Error) => void) => {
+          callback?.();
+          return true;
+        });
+        destroy = vi.fn();
+      }
+      await controlUnixHandler.start();
+      const socket = new MockSocket();
+      netMock.connectionHandler?.(socket);
+      const ping = Buffer.from(
+        JSON.stringify({ id: 'ping-2', type: 'request', category: 'system', action: 'ping' })
+      );
+      const header = Buffer.alloc(4);
+      header.writeUInt32BE(ping.length, 0);
+      socket.emit('data', Buffer.concat([header, ping]));
+
+      const at = (fn: typeof moduleLogger.log) => fn.mock.calls.flat().join('\n');
+      expect(at(moduleLogger.log)).not.toContain('Parsed Mac message');
+      expect(at(moduleLogger.debug)).toContain('action=ping');
     });
   });
 });

@@ -469,19 +469,24 @@ public final class GitRepositoryMonitor {
     private nonisolated func findGitRoot(from path: String) async -> String? {
         let expandedPath = NSString(string: path).expandingTildeInPath
 
-        // Use HTTP endpoint to check if it's a git repository
-        let url = await MainActor.run {
-            self.serverManager.buildURL(
-                endpoint: "/api/git/repo-info",
-                queryItems: [URLQueryItem(name: "path", value: expandedPath)])
-        }
-
-        guard let url else {
+        // Use HTTP endpoint to check if it's a git repository. makeRequest adds the local auth
+        // header like every other call to the server: a bare URLSession GET gets 401 from a
+        // server started with --local-auth-token, so every folder looked like "not a git repo"
+        // and was asked again every 10 minutes.
+        let request: URLRequest
+        do {
+            request = try await MainActor.run {
+                try self.serverManager.makeRequest(
+                    endpoint: "/api/git/repo-info",
+                    method: "GET",
+                    queryItems: [URLQueryItem(name: "path", value: expandedPath)])
+            }
+        } catch {
             return nil
         }
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, _) = try await URLSession.shared.data(for: request)
             let decoder = JSONDecoder()
             let response = try decoder.decode(GitRepoInfoResponse.self, from: data)
 
@@ -530,19 +535,21 @@ public final class GitRepositoryMonitor {
 
     /// Get basic repository status without GitHub URL
     private nonisolated func getBasicGitStatus(at repoPath: String) async -> GitRepository? {
-        // Use HTTP endpoint to get git status
-        let url = await MainActor.run {
-            self.serverManager.buildURL(
-                endpoint: "/api/git/repository-info",
-                queryItems: [URLQueryItem(name: "path", value: repoPath)])
-        }
-
-        guard let url else {
+        // Use HTTP endpoint to get git status (authenticated like every other call)
+        let request: URLRequest
+        do {
+            request = try await MainActor.run {
+                try self.serverManager.makeRequest(
+                    endpoint: "/api/git/repository-info",
+                    method: "GET",
+                    queryItems: [URLQueryItem(name: "path", value: repoPath)])
+            }
+        } catch {
             return nil
         }
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, _) = try await URLSession.shared.data(for: request)
             let decoder = JSONDecoder()
             let response = try decoder.decode(GitRepositoryInfoResponse.self, from: data)
 
@@ -591,16 +598,15 @@ public final class GitRepositoryMonitor {
         // Mark as in progress
         self.githubURLFetchesInProgress.insert(repoPath)
 
-        // Try to get from HTTP endpoint first
-        let url = await MainActor.run {
-            self.serverManager.buildURL(
-                endpoint: "/api/git/remote",
-                queryItems: [URLQueryItem(name: "path", value: repoPath)])
-        }
+        // Try to get from HTTP endpoint first (authenticated like every other call)
+        let request = try? self.serverManager.makeRequest(
+            endpoint: "/api/git/remote",
+            method: "GET",
+            queryItems: [URLQueryItem(name: "path", value: repoPath)])
 
-        if let url {
+        if let request {
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
+                let (data, _) = try await URLSession.shared.data(for: request)
                 let decoder = JSONDecoder()
                 // Response from the Git remote API endpoint.
                 struct RemoteResponse: Codable {

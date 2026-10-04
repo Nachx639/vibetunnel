@@ -76,7 +76,7 @@ class TerminalHandler implements MessageHandler {
 
 class SystemHandler implements MessageHandler {
   async handleMessage(message: ControlMessage): Promise<ControlMessage | null> {
-    logger.log(`System handler: ${message.action}, type: ${message.type}, id: ${message.id}`);
+    logger.debug(`System handler: ${message.action}, type: ${message.type}, id: ${message.id}`);
 
     switch (message.action) {
       case 'ping':
@@ -247,7 +247,7 @@ export class ControlUnixHandler {
 
   private handleMacConnection(socket: net.Socket) {
     logger.log('🔌 New Mac connection via UNIX socket');
-    logger.log(`🔍 Socket info: local=${socket.localAddress}, remote=${socket.remoteAddress}`);
+    logger.debug(`🔍 Socket info: local=${socket.localAddress}, remote=${socket.remoteAddress}`);
 
     // Close any existing Mac connection
     if (this.macSocket) {
@@ -257,11 +257,11 @@ export class ControlUnixHandler {
 
     this.macSocket = socket;
     let messageBuffer = Buffer.alloc(0);
-    logger.log('✅ Mac socket stored');
+    logger.debug('✅ Mac socket stored');
 
     // Set socket options for better handling of large messages
     socket.setNoDelay(true); // Disable Nagle's algorithm for lower latency
-    logger.log('✅ Socket options set: NoDelay=true');
+    logger.debug('✅ Socket options set: NoDelay=true');
 
     // Increase the buffer size for receiving large messages
     const bufferSize = 1024 * 1024; // 1MB
@@ -271,7 +271,7 @@ export class ControlUnixHandler {
       };
       if (socketWithState._readableState) {
         socketWithState._readableState.highWaterMark = bufferSize;
-        logger.log(`Set socket receive buffer to ${bufferSize} bytes`);
+        logger.debug(`Set socket receive buffer to ${bufferSize} bytes`);
       }
     } catch (error) {
       logger.warn('Failed to set socket buffer size:', error);
@@ -287,7 +287,7 @@ export class ControlUnixHandler {
       // Append new data to our buffer
       messageBuffer = Buffer.concat([messageBuffer, chunk]);
 
-      logger.log(
+      logger.debug(
         `📥 Received from Mac: ${chunk.length} bytes, buffer size: ${messageBuffer.length}`
       );
 
@@ -346,7 +346,10 @@ export class ControlUnixHandler {
           );
 
           const message: ControlMessage = JSON.parse(messageStr);
-          logger.log(
+          // The app pings every 30 s: at log level that was 15 % of the log (2026-10-03).
+          // Anything else it sends is rare and worth seeing.
+          const isPing = message.category === 'system' && message.action === 'ping';
+          (isPing ? logger.debug : logger.log)(
             `✅ Parsed Mac message: category=${message.category}, action=${message.action}, id=${message.id}`
           );
 
@@ -377,13 +380,13 @@ export class ControlUnixHandler {
 
     socket.on('close', (hadError) => {
       logger.log(`🔌 Mac disconnected (hadError: ${hadError})`);
-      logger.log(
+      logger.debug(
         `📊 Socket state: destroyed=${socket.destroyed}, readable=${socket.readable}, writable=${socket.writable}`
       );
 
       if (socket === this.macSocket) {
         this.macSocket = null;
-        logger.log('🧹 Cleared Mac socket reference');
+        logger.debug('🧹 Cleared Mac socket reference');
       }
     });
 
@@ -394,13 +397,24 @@ export class ControlUnixHandler {
 
     // Add event for socket end (clean close)
     socket.on('end', () => {
-      logger.log('📴 Mac socket received FIN packet (clean close)');
+      logger.debug('📴 Mac socket received FIN packet (clean close)');
     });
 
     // Send ready event to Mac
-    logger.log('📤 Sending initial system:ready event to Mac');
+    logger.debug('📤 Sending initial system:ready event to Mac');
     this.sendToMac(createControlEvent('system', 'ready'));
-    logger.log('✅ system:ready event sent');
+    // VibeTunnel.app (1.0.0-beta.18) never resets its last-pong time when it reconnects: once a
+    // server restart left it over 60 s without a pong, every keep-alive tick found the pong
+    // stale and reconnected BEFORE sending a ping, every ~31 s for good (2026-10-03: 86 % of
+    // the log, and "No pong received" in the app's own log). A pong right away restarts its
+    // clock; from then on its real pings get real pongs. The app checks only type, category
+    // and action.
+    this.sendToMac(
+      createControlResponse(
+        { id: `connect-pong-${Date.now()}`, type: 'request', category: 'system', action: 'ping' },
+        { status: 'ok' }
+      )
+    );
   }
 
   handleBrowserConnection(ws: WebSocket, userId?: string) {
@@ -445,7 +459,7 @@ export class ControlUnixHandler {
   }
 
   private async handleMacMessage(message: ControlMessage) {
-    logger.log(
+    logger.debug(
       `Mac message - category: ${message.category}, action: ${message.action}, type: ${message.type}, id: ${message.id}`
     );
 
@@ -589,10 +603,10 @@ export class ControlUnixHandler {
       const fullData = Buffer.concat([lengthBuffer, jsonData]);
 
       // Log message details
-      logger.log(
+      logger.debug(
         `📤 Sending to Mac: ${message.category}:${message.action}, header: 4 bytes, payload: ${jsonData.length} bytes, total: ${fullData.length} bytes`
       );
-      logger.log(`📋 Message ID being sent: ${message.id}`);
+      logger.debug(`📋 Message ID being sent: ${message.id}`);
       logger.debug(`📝 Message content: ${jsonStr.substring(0, 200)}...`);
 
       // Log the actual bytes for the first few messages
