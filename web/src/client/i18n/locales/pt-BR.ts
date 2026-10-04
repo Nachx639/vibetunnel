@@ -921,4 +921,7 @@ export const ptBR: Messages = {
   'switcher.quickLabel': 'Troca rápida de sessão',
   'switcher.quickPlaceholder': 'Trocar de sessão… (digite para filtrar)',
   'switcher.noMatches': 'Nenhuma sessão corresponde',
+  'settings.compactList': 'Lista compacta',
+  'settings.compactList.description':
+    'Cabem mais sessões em um celular pequeno: menos espaçamento, e as seções acima das sessões ocupam menos espaço. Ativada por padrão em telas de até 700 pt de altura.',
 };

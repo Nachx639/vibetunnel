@@ -48,6 +48,11 @@ import {
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
+import {
+  COMPACT_LIST_CHANGED_EVENT,
+  currentPhoneListLayout,
+  type PhoneListLayout,
+} from '../utils/phone-list-layout.js';
 import { PHONE_UI_CHANGED_EVENT, usesCompactPhoneUi } from '../utils/phone-ui.js';
 import { loadPinned, pinnedFirst, setPinned } from '../utils/pinned-sessions.js';
 import { endsADrag } from '../utils/pointer-drag.js';
@@ -128,6 +133,7 @@ export class SessionList extends LitElement {
     super.connectedCallback();
     window.addEventListener('resize', this.placeFab);
     window.addEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
+    window.addEventListener(COMPACT_LIST_CHANGED_EVENT, this.handlePhoneUiChanged);
     // Make the component focusable
     this.tabIndex = 0;
     // Add keyboard listener only to this component
@@ -286,6 +292,7 @@ export class SessionList extends LitElement {
     this.fabRestTimer = null;
     window.removeEventListener('resize', this.placeFab);
     window.removeEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
+    window.removeEventListener(COMPACT_LIST_CHANGED_EVENT, this.handlePhoneUiChanged);
     this.closeSheet();
     this.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('click', this.handleClickOutside);
@@ -966,7 +973,7 @@ export class SessionList extends LitElement {
     return html`
       <div class="font-mono text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 focus:ring-offset-bg-primary rounded-lg" data-testid="session-list-container">
         ${this.renderActiveSessionInfo()}
-        <div class="p-4 pt-5 ${this.usePhoneRows() && !this.compactMode ? 'phone-list-fab-room' : ''}">
+        <div class="${this.contentClasses()}">
         ${
           !hasRunningSessions && (!hasExitedSessions || this.hideExited)
             ? this.usePhoneRows() && !this.compactMode && !this.loading
@@ -1194,6 +1201,30 @@ export class SessionList extends LitElement {
         ${this.renderExitedControls()}
       </div>
     `;
+  }
+
+  /**
+   * How the compact phone list fits the screen (utils/phone-list-layout.ts); the sidebar
+   * opened from a session (compactMode), the classic layout and larger screens keep theirs.
+   */
+  private listLayout(): PhoneListLayout {
+    if (this.compactMode || !this.usePhoneRows()) return { tight: false, compact: false };
+    return currentPhoneListLayout();
+  }
+
+  /** The list's padding, and in the compact phone list the room for the "+" and the fit. */
+  private contentClasses(): string {
+    if (!this.usePhoneRows() || this.compactMode) return 'p-4 pt-5';
+    const layout = this.listLayout();
+    return [
+      'p-4',
+      layout.tight ? 'pt-3' : 'pt-5',
+      'phone-list-fab-room',
+      layout.tight ? 'phone-list-tight' : '',
+      layout.compact ? 'phone-list-compact' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
   }
 
   /** The compact phone layout: chat-style rows (phone-session-row) instead of cards. */

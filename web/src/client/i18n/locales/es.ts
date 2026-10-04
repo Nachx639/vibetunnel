@@ -923,4 +923,7 @@ export const es: Messages = {
   'switcher.quickLabel': 'Cambio rápido de sesión',
   'switcher.quickPlaceholder': 'Cambiar de sesión… (escribe para filtrar)',
   'switcher.noMatches': 'Ninguna sesión coincide',
+  'settings.compactList': 'Lista compacta',
+  'settings.compactList.description':
+    'Caben más sesiones en un móvil pequeño: menos espacio entre elementos y las secciones encima de las sesiones ocupan menos. Activada por defecto en pantallas de hasta 700 pt de alto.',
 };

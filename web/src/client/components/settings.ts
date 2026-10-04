@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from 'lit';
+import { html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/config.js';
@@ -13,7 +13,13 @@ import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
 import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
 import { createLogger } from '../utils/logger.js';
-import { getPhoneUi, type PhoneUi, setPhoneUi } from '../utils/phone-ui.js';
+import {
+  compactListOn,
+  currentScreen,
+  readCompactListPref,
+  writeCompactListPref,
+} from '../utils/phone-list-layout.js';
+import { getPhoneUi, isPhoneScreen, type PhoneUi, setPhoneUi } from '../utils/phone-ui.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
 import { isQuickSwitcherEnabled, setQuickSwitcherEnabled } from './session-quick-switcher.js';
@@ -774,6 +780,47 @@ export class Settings extends LitElement {
     `;
   }
 
+  /** "Compact list" for the compact phone list (utils/phone-list-layout.ts). */
+  @state() private compactList = compactListOn(currentScreen(), readCompactListPref());
+
+  private handleCompactListToggle = () => {
+    this.compactList = !this.compactList;
+    // An explicit choice: it sticks, whatever the screen.
+    writeCompactListPref(this.compactList ? 'on' : 'off');
+  };
+
+  /** Only offered with the compact phone layout on a phone: nothing else uses it. */
+  private renderCompactList() {
+    if (this.phoneUi !== 'compact' || !isPhoneScreen()) return nothing;
+    const on = this.compactList;
+    return html`
+      <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-compact-list">
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="text-primary font-medium" id="compact-list-label">${t('settings.compactList')}</label>
+            <p class="text-muted text-xs mt-1">${t('settings.compactList.description')}</p>
+          </div>
+          <button
+            role="switch"
+            aria-checked=${on ? 'true' : 'false'}
+            aria-labelledby="compact-list-label"
+            data-testid="settings-compact-list-toggle"
+            @click=${this.handleCompactListToggle}
+            class="relative flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-bg ${
+              on ? 'bg-primary' : 'bg-border'
+            }"
+          >
+            <span
+              class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+                on ? 'translate-x-5' : 'translate-x-0.5'
+              }"
+            ></span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   private selectPhoneUi(value: PhoneUi) {
     this.phoneUi = value;
     setPhoneUi(value);
@@ -816,6 +863,8 @@ export class Settings extends LitElement {
         ${this.renderAppearance()}
 
         ${this.renderPhoneLayout()}
+
+        ${this.renderCompactList()}
 
         <!-- Language -->
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">

@@ -933,4 +933,7 @@ export const fr: Messages = {
   'switcher.quickLabel': 'Changement rapide de session',
   'switcher.quickPlaceholder': 'Changer de session… (tapez pour filtrer)',
   'switcher.noMatches': 'Aucune session ne correspond',
+  'settings.compactList': 'Liste compacte',
+  'settings.compactList.description':
+    'Plus de sessions sur un petit téléphone : un espacement réduit, et les sections au-dessus des sessions prennent moins de place. Activée par défaut sur les écrans de 700 pt de haut au plus.',
 };

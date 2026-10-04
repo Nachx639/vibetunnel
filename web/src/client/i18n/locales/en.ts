@@ -917,6 +917,9 @@ export const en = {
   'switcher.quickLabel': 'Quick switch session',
   'switcher.quickPlaceholder': 'Switch session… (type to filter)',
   'switcher.noMatches': 'No matching sessions',
+  'settings.compactList': 'Compact list',
+  'settings.compactList.description':
+    'Fits more sessions on a small phone: tighter spacing, and the sections above the sessions take less room. On by default on screens up to 700 pt tall.',
 };
 
 export type MessageKey = keyof typeof en;

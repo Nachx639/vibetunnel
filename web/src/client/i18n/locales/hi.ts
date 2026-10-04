@@ -896,4 +896,7 @@ export const hi: Messages = {
   'switcher.quickLabel': 'सत्र जल्दी बदलें',
   'switcher.quickPlaceholder': 'सत्र बदलें… (फ़िल्टर करने के लिए लिखें)',
   'switcher.noMatches': 'कोई सत्र मेल नहीं खाता',
+  'settings.compactList': 'कॉम्पैक्ट सूची',
+  'settings.compactList.description':
+    'छोटे फ़ोन पर ज़्यादा सेशन दिखते हैं: कम खाली जगह, और सेशन के ऊपर के हिस्से कम जगह लेते हैं। 700 pt तक ऊँची स्क्रीन पर डिफ़ॉल्ट रूप से चालू।',
 };

@@ -2899,6 +2899,17 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   color: var(--color-text);
   font: 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
 }
+/* Compact phone list on a small screen (utils/phone-list-layout.ts): `phone-list-tight` only
+   tightens vertical spacing; `phone-list-compact` (Settings > "Compact list") implies it, and
+   is the hook for sections above the rows that fold or shrink to give the rows room. */
+.phone-list-tight .phone-search {
+  margin-bottom: 8px;
+  padding: 7px 12px;
+}
+.phone-list-tight .psr {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
 .phone-search-empty {
   padding: 24px 0;
   text-align: center;

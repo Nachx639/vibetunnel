@@ -898,4 +898,7 @@ export const bn: Messages = {
   'switcher.quickLabel': 'দ্রুত সেশন বদলান',
   'switcher.quickPlaceholder': 'সেশন বদলান… (ফিল্টার করতে লিখুন)',
   'switcher.noMatches': 'কোনো সেশন মেলেনি',
+  'settings.compactList': 'কমপ্যাক্ট তালিকা',
+  'settings.compactList.description':
+    'ছোট ফোনে আরও সেশন দেখা যায়: কম ফাঁকা জায়গা, আর সেশনের উপরের অংশগুলো কম জায়গা নেয়। 700 pt পর্যন্ত উঁচু স্ক্রিনে ডিফল্টভাবে চালু।',
 };

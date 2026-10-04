@@ -895,4 +895,7 @@ export const ar: Messages = {
   'switcher.quickLabel': 'تبديل سريع للجلسة',
   'switcher.quickPlaceholder': 'تبديل الجلسة… (اكتب للتصفية)',
   'switcher.noMatches': 'لا توجد جلسات مطابقة',
+  'settings.compactList': 'قائمة مضغوطة',
+  'settings.compactList.description':
+    'تتسع لجلسات أكثر على هاتف صغير: مسافات أقل، والأقسام فوق الجلسات تشغل مساحة أقل. مفعّلة افتراضيًا على الشاشات التي لا يزيد ارتفاعها عن 700 pt.',
 };

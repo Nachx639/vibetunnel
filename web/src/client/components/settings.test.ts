@@ -64,6 +64,62 @@ describe('Settings', () => {
     });
   });
 
+  // "Compact list" for the compact phone list (utils/phone-list-layout.ts).
+  describe('compact list', () => {
+    const IPHONE =
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1';
+    async function mountOnPhone(width: number, height: number, phoneUi = 'compact') {
+      component.remove();
+      localStorage.setItem('vibetunnel_app_preferences', JSON.stringify({ phoneUi }));
+      vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(IPHONE);
+      vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(width);
+      vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(height);
+      Object.defineProperty(window.screen, 'width', { configurable: true, get: () => width });
+      Object.defineProperty(window.screen, 'height', { configurable: true, get: () => height });
+      component = new Settings();
+      component.visible = true;
+      document.body.append(component);
+      await component.updateComplete;
+      return button('settings-compact-list-toggle');
+    }
+    afterEach(() => vi.restoreAllMocks());
+
+    it('is on by default on a screen up to 700 pt tall, off on a larger phone', async () => {
+      expect((await mountOnPhone(375, 667))?.getAttribute('aria-checked')).toBe('true');
+      expect((await mountOnPhone(393, 852))?.getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('a tap stores an explicit choice the list follows', async () => {
+      const toggle = await mountOnPhone(375, 667);
+      const changed = vi.fn();
+      window.addEventListener('vibetunnel-compact-list-changed', changed);
+      toggle?.click();
+      await component.updateComplete;
+      window.removeEventListener('vibetunnel-compact-list-changed', changed);
+      expect(toggle?.getAttribute('aria-checked')).toBe('false');
+      expect(JSON.parse(localStorage.getItem('vibetunnel_app_preferences') ?? '{}')).toEqual({
+        phoneUi: 'compact',
+        compactList: false,
+      });
+      expect(changed).toHaveBeenCalledOnce();
+    });
+
+    it('classic unchanged: not offered with the classic phone layout', async () => {
+      expect(await mountOnPhone(375, 667, 'classic')).toBeNull();
+    });
+
+    it('appears as soon as Compact is picked on a phone', async () => {
+      await mountOnPhone(375, 667, 'classic');
+      button('settings-phone-layout-compact')?.click();
+      await component.updateComplete;
+      expect(button('settings-compact-list-toggle')).not.toBeNull();
+    });
+
+    it('is not offered on a desktop', () => {
+      expect(button('settings-compact-list-toggle')).toBeNull();
+    });
+  });
+
   describe('appearance', () => {
     it('starts on the default color theme', () => {
       expect(button('settings-accent-emerald')?.getAttribute('aria-pressed')).toBe('true');

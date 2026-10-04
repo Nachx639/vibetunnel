@@ -887,4 +887,7 @@ export const zhCN: Messages = {
   'switcher.quickLabel': '快速切换会话',
   'switcher.quickPlaceholder': '切换会话…（输入以筛选）',
   'switcher.noMatches': '没有匹配的会话',
+  'settings.compactList': '紧凑列表',
+  'settings.compactList.description':
+    '在小屏手机上显示更多会话：间距更紧凑，会话上方的区域占用更少空间。在高度不超过 700 pt 的屏幕上默认开启。',
 };
