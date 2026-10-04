@@ -57,6 +57,7 @@ import { PHONE_UI_CHANGED_EVENT, usesCompactPhoneUi } from '../utils/phone-ui.js
 import { loadPinned, pinnedFirst, setPinned } from '../utils/pinned-sessions.js';
 import { endsADrag } from '../utils/pointer-drag.js';
 import { holdSheetFocus } from '../utils/sheet-a11y.js';
+import { ShortLandscapeController } from '../utils/short-landscape.js';
 
 const logger = createLogger('session-list');
 
@@ -208,10 +209,14 @@ export class SessionList extends LitElement {
   /** What the FAB follows: the list's scrolling ancestor, or the window. Null: not watching. */
   private fabScrollTarget: HTMLElement | Window | null = null;
 
-  /** Only the compact phone list has the button: nothing is watched in the classic layout. */
+  /**
+   * Only the compact phone list has the button: nothing is watched in the classic layout. On
+   * a phone on its side the rows' column scrolls on its own (renderPhoneColumns).
+   */
   private watchFabScroller() {
     const hasFab = this.querySelector('[data-testid="new-session-fab"]') !== null;
-    const target = hasFab ? (listScroller(this) ?? window) : null;
+    const column = this.querySelector<HTMLElement>('.phone-landscape .pl-main');
+    const target = hasFab ? (column ?? listScroller(this) ?? window) : null;
     if (target === this.fabScrollTarget) return;
     this.fabScrollTarget?.removeEventListener('scroll', this.handleListScroll);
     this.fabScrollTarget = target;
@@ -970,13 +975,24 @@ export class SessionList extends LitElement {
     // Track session index for numbering
     let sessionIndex = 0;
 
+    const phoneEmpty =
+      !hasRunningSessions &&
+      (!hasExitedSessions || this.hideExited) &&
+      this.usePhoneRows() &&
+      !this.compactMode &&
+      !this.loading;
+    // A phone on its side: two columns, each scrolling on its own (renderPhoneColumns). With
+    // nothing running the page is short anyway and keeps one column.
+    const twoColumns =
+      this.shortLandscape.value && this.usePhoneRows() && !this.compactMode && !phoneEmpty;
+
     return html`
       <div class="font-mono text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 focus:ring-offset-bg-primary rounded-lg" data-testid="session-list-container">
         ${this.renderActiveSessionInfo()}
-        <div class="${this.contentClasses()}">
+        <div class="${this.contentClasses(twoColumns)}">
         ${
           !hasRunningSessions && (!hasExitedSessions || this.hideExited)
-            ? this.usePhoneRows() && !this.compactMode && !this.loading
+            ? phoneEmpty
               ? this.renderPhoneEmpty(exitedSessions.length)
               : html`
               <div class="text-text-muted text-center py-8">
@@ -1209,11 +1225,17 @@ export class SessionList extends LitElement {
    */
   private listLayout(): PhoneListLayout {
     if (this.compactMode || !this.usePhoneRows()) return { tight: false, compact: false };
-    return currentPhoneListLayout();
+    return currentPhoneListLayout(this.shortLandscape.value);
   }
 
-  /** The list's padding, and in the compact phone list the room for the "+" and the fit. */
-  private contentClasses(): string {
+  /** A phone on its side (utils/short-landscape.ts): re-renders the list on every rotation. */
+  private readonly shortLandscape = new ShortLandscapeController(this);
+
+  /**
+   * The list's padding, and in the compact phone list the room for the "+", the fit and the
+   * two columns of a phone on its side (styles.css `phone-landscape`).
+   */
+  private contentClasses(twoColumns = false): string {
     if (!this.usePhoneRows() || this.compactMode) return 'p-4 pt-5';
     const layout = this.listLayout();
     return [
@@ -1222,6 +1244,7 @@ export class SessionList extends LitElement {
       'phone-list-fab-room',
       layout.tight ? 'phone-list-tight' : '',
       layout.compact ? 'phone-list-compact' : '',
+      twoColumns ? 'phone-landscape' : '',
     ]
       .filter(Boolean)
       .join(' ');
@@ -1294,7 +1317,7 @@ export class SessionList extends LitElement {
     const recency = (session: Session) =>
       new Date(session.lastModified || session.startedAt || 0).getTime();
     const row = (session: Session) => this.renderPhoneRow(session);
-    return html`
+    const controls = html`
       ${this.compactMode ? '' : this.renderNewChatButton()}
       ${
         searchable
@@ -1322,6 +1345,8 @@ export class SessionList extends LitElement {
           ? html`<div class="phone-search-empty">${t('sessions.searchEmpty')}</div>`
           : ''
       }
+    `;
+    const rows = html`
       ${
         running.length
           ? html`<div class="psr-list" data-testid="phone-session-list">
@@ -1359,6 +1384,20 @@ export class SessionList extends LitElement {
           : ''
       }
     `;
+    if (this.compactMode) return html`${controls}${rows}`;
+    return this.renderPhoneColumns(controls, rows);
+  }
+
+  /**
+   * The compact phone list's two parts: what you act with (the search field; later sections
+   * above the rows go here too) and what you look at (the sessions). One column, as if the
+   * wrappers weren't there (`display: contents`), until the phone is on its side
+   * (`phone-landscape`, styles.css): then they are two columns, each scrolling on its own.
+   * Always the same elements, so a rotation keeps what was typed and the focus.
+   */
+  private renderPhoneColumns(controls: unknown, rows: unknown) {
+    return html`<div class="pl-side" data-testid="phone-list-controls">${controls}</div
+      ><div class="pl-main" data-testid="phone-list-rows">${rows}</div>`;
   }
 
   /** Clears every finished session (not only the ones a search shows), after asking. */

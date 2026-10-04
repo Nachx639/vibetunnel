@@ -2976,6 +2976,67 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   padding-top: 10px;
   padding-bottom: 10px;
 }
+/* A phone on its side (utils/short-landscape.ts): a Pro Max in landscape, about 300 pt tall
+   under Safari's bars, showed no session at all. The compact phone list gets two columns,
+   each scrolling on its own: on the left the header and what sits above the rows (search);
+   on the right the sessions, the bottom bar under them only. The left column is 46% of the
+   width, 300-440 pt. Every level between the page (app.ts `phone-list-page`) and the two
+   columns (session-list.ts renderPhoneColumns) steps aside with `display: contents`; in
+   portrait so do the columns, so nothing changes there. */
+.pl-side,
+.pl-main {
+  display: contents;
+}
+.phone-list-page:has(.phone-landscape) {
+  display: grid;
+  grid-template-columns: minmax(0, clamp(300px, 46%, 440px)) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: var(--app-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+}
+.phone-list-page:has(.phone-landscape) > app-header {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+.phone-list-page:has(.phone-landscape) > .flex-1,
+.phone-list-page:has(.phone-landscape) session-list,
+.phone-list-page:has(.phone-landscape) [data-testid='session-list-container'],
+.phone-list-page .phone-landscape {
+  display: contents;
+}
+.phone-landscape .pl-side,
+.phone-landscape .pl-main {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.phone-landscape .pl-side {
+  grid-column: 1;
+  grid-row: 2 / 4;
+  padding: 12px 1rem calc(16px + env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-left, 0px));
+  border-right: 1px solid var(--color-border);
+}
+/* The rows' column keeps the room for the floating "+" (phone-list-fab-room) at its end. */
+.phone-landscape .pl-main {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  padding: 12px max(1rem, env(safe-area-inset-right, 0px)) calc(58px + 14px + 16px) 1rem;
+}
+.phone-list-page:has(.phone-landscape) [data-testid='session-list-footer'] {
+  grid-column: 2;
+  grid-row: 3;
+  min-width: 0;
+}
+.phone-landscape .new-chat-fab {
+  right: max(18px, env(safe-area-inset-right, 0px));
+}
 .phone-search-empty {
   padding: 24px 0;
   text-align: center;

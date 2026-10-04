@@ -46,6 +46,22 @@ describe('phone list layout decision', () => {
   });
 });
 
+describe('a phone on its side', () => {
+  // iOS reports the screen in portrait whatever the orientation: on its own, the screen of a
+  // Pro Max in landscape (about 300 pt tall) never counted as short.
+  it('tightens the spacing, and leaves "compact" to the setting', () => {
+    expect(phoneListLayout(PRO_MAX, 'auto', true)).toEqual({ tight: true, compact: false });
+    expect(phoneListLayout(PRO_MAX, 'on', true)).toEqual({ tight: true, compact: true });
+    expect(phoneListLayout(PRO_MAX, 'off', true)).toEqual({ tight: true, compact: false });
+    expect(phoneListLayout(SE, 'auto', true)).toEqual({ tight: true, compact: true });
+  });
+
+  it('portrait is unchanged', () => {
+    expect(phoneListLayout(PRO_MAX, 'auto', false)).toEqual({ tight: false, compact: false });
+    expect(phoneListLayout(IPHONE_15, 'auto')).toEqual({ tight: false, compact: false });
+  });
+});
+
 describe('compact list setting', () => {
   let store: Map<string, string>;
   const prefs = () => JSON.parse(store.get(APP_PREFERENCES_STORAGE_KEY) ?? '{}');

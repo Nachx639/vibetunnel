@@ -1826,8 +1826,9 @@ export class VibeTunnelApp extends LitElement {
 
   private get sidebarClasses(): string {
     if (!this.showSplitView) {
-      // Main view - allow normal document flow and scrolling
-      return 'w-full min-h-screen flex flex-col';
+      // Main view - allow normal document flow and scrolling. `phone-list-page` only matters
+      // for the compact phone list on a phone on its side (styles.css `phone-landscape`).
+      return 'w-full min-h-screen flex flex-col phone-list-page';
     }
 
     const baseClasses = 'bg-secondary flex flex-col split-view-sidebar';
