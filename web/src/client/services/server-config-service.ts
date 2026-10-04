@@ -10,7 +10,7 @@ import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
 import { HttpMethod } from '../../shared/types.js';
 import type { NotificationPreferences, QuickStartCommand } from '../../types/config.js';
 import { createLogger } from '../utils/logger.js';
-import type { AuthClient } from './auth-client.js';
+import { type AuthClient, authClient } from './auth-client.js';
 
 const logger = createLogger('server-config-service');
 
@@ -207,4 +207,6 @@ export class ServerConfigService {
 }
 
 // Export singleton instance for easy access
-export const serverConfigService = new ServerConfigService();
+// The shared instance uses the app's auth: without it /api/config answered 401 and callers
+// silently got defaults (no quick start commands) unless a settings screen had set it first.
+export const serverConfigService = new ServerConfigService(authClient);
