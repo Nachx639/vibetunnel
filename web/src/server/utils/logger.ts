@@ -124,7 +124,9 @@ function openLogFile(
   initialSize: number = getLogFileSize(filePath)
 ): void {
   try {
-    const handle = fs.createWriteStream(filePath, { flags: 'a' });
+    // Owner only when created: it survives restarts and holds DEBUG lines and client error
+    // messages; the umask usually made it world-readable (0644).
+    const handle = fs.createWriteStream(filePath, { flags: 'a', mode: 0o600 });
     handle.on('error', () => {
       if (generation === loggerGeneration && logFileHandle === handle) {
         logFileHandle = null;

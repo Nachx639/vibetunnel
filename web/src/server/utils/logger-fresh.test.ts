@@ -32,6 +32,16 @@ describe('initLogger and the log file', () => {
     return logger;
   }
 
+  it('creates the log file readable by its owner only', async () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'vt-log-'));
+    vi.stubEnv('VIBETUNNEL_CONTROL_DIR', dir);
+    vi.resetModules();
+    const logger = await import('./logger.js');
+    logger.initLogger(false);
+    await vi.waitFor(() => expect(existsSync(logger.getLogFilePath())).toBe(true));
+    expect(statSync(logger.getLogFilePath()).mode & 0o777).toBe(0o600);
+  });
+
   it('a client command appends and leaves the server log in place', async () => {
     const logger = await loggerWithExistingLog();
     logger.initLogger(false, undefined, { fresh: false });
