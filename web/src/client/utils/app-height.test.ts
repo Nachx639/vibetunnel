@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { iosStandaloneShortfall, resetAppHeight, standaloneAppHeight } from './app-height.js';
+import {
+  followRotationsOutsideSession,
+  iosStandaloneShortfall,
+  resetAppHeight,
+  standaloneAppHeight,
+} from './app-height.js';
 
 const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15';
 
@@ -64,6 +69,62 @@ describe('the iPhone home-screen app height', () => {
 
     iphone([440, 894]);
     resetAppHeight();
+    expect(appHeight()).toBe('956px');
+  });
+});
+
+describe('the page height across rotations, outside a session', () => {
+  let stop: (() => void) | undefined;
+
+  afterEach(() => {
+    stop?.();
+    stop = undefined;
+  });
+
+  it('drops the portrait height on its side and brings it back upright', () => {
+    iphone([440, 894]);
+    document.documentElement.style.setProperty('--app-height', '956px');
+    stop = followRotationsOutsideSession(() => false);
+
+    iphone([956, 440]);
+    window.dispatchEvent(new Event('resize'));
+    // The window's own height (100dvh in styles.css).
+    expect(appHeight()).toBe('');
+
+    iphone([440, 894]);
+    window.dispatchEvent(new Event('resize'));
+    expect(appHeight()).toBe('956px');
+  });
+
+  it('checks again after orientationchange, when iOS has the new size', () => {
+    vi.useFakeTimers();
+    try {
+      iphone([440, 894]);
+      stop = followRotationsOutsideSession(() => false);
+      window.dispatchEvent(new Event('orientationchange'));
+      expect(appHeight()).toBe('956px');
+      iphone([956, 440]);
+      vi.advanceTimersByTime(300);
+      expect(appHeight()).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves the height to an open session, which tracks it itself', () => {
+    document.documentElement.style.setProperty('--app-height', '956px');
+    stop = followRotationsOutsideSession(() => true);
+    iphone([956, 440]);
+    window.dispatchEvent(new Event('resize'));
+    expect(appHeight()).toBe('956px');
+  });
+
+  it('stops when asked', () => {
+    document.documentElement.style.setProperty('--app-height', '956px');
+    stop = followRotationsOutsideSession(() => false);
+    stop();
+    iphone([956, 440]);
+    window.dispatchEvent(new Event('resize'));
     expect(appHeight()).toBe('956px');
   });
 });

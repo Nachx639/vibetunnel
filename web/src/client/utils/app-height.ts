@@ -47,3 +47,36 @@ export function resetAppHeight(): void {
     root.style.removeProperty('--app-height');
   }
 }
+
+/**
+ * Puts the page height right again after every rotation, outside a session. index.html sets it
+ * once, at load: in the home-screen app in portrait, the screen's height. Turned on its side,
+ * the list kept that portrait height (956 pt on a Pro Max, in a 440 pt window): its bottom was
+ * off screen. Loaded on its side and turned upright, it missed the status bar's height instead.
+ * Inside a session the session view tracks the height itself (lifecycle-event-manager.ts), so
+ * this leaves it alone while `inSession()` says so. iOS fires orientationchange before the
+ * window has its new size: it is checked again a moment later. Returns the function that stops
+ * it.
+ */
+export function followRotationsOutsideSession(inSession: () => boolean): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const update = () => {
+    if (!inSession()) resetAppHeight();
+  };
+  const rotated = () => {
+    update();
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      update();
+    }, 300);
+  };
+  window.addEventListener('resize', update);
+  window.addEventListener('orientationchange', rotated);
+  return () => {
+    window.removeEventListener('resize', update);
+    window.removeEventListener('orientationchange', rotated);
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
+}

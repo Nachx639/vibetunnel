@@ -11,6 +11,7 @@ import { HttpMethod } from '../shared/types.js';
 import { LocaleController, t, whenLocaleReady } from './i18n/index.js';
 import { showActionToast } from './utils/action-toast.js';
 import { announce, ensureLiveRegion } from './utils/announce.js';
+import { followRotationsOutsideSession } from './utils/app-height.js';
 import { getAutoReloadOnUpdate, startVersionWatch, userIsTyping } from './utils/app-version.js';
 import { fetchAuthConfig } from './utils/auth-config.js';
 import { isBrowserShortcut } from './utils/browser-shortcuts.js';
@@ -84,6 +85,7 @@ export class VibeTunnelApp extends LitElement {
   @state() private currentView: 'list' | 'session' | 'auth' | 'file-browser' = 'auth';
   @state() private selectedSessionId: string | null = null;
   private stopVersionWatch?: () => void;
+  private stopRotationWatch?: () => void;
   private loadFailures = 0;
   @state() private reconnecting = false;
   @state() private hideExited = this.loadHideExitedState();
@@ -148,6 +150,11 @@ export class VibeTunnelApp extends LitElement {
           timeoutMs: 0,
         }),
     });
+    // The page height outside a session after a rotation (utils/app-height.ts); a session
+    // view tracks its own.
+    this.stopRotationWatch ??= followRotationsOutsideSession(() =>
+      Boolean(document.querySelector('session-view'))
+    );
     this.setupHotReload();
     this.setupKeyboardShortcuts();
     this.setupNotificationHandlers();
@@ -216,6 +223,8 @@ export class VibeTunnelApp extends LitElement {
     super.disconnectedCallback();
     this.stopVersionWatch?.();
     this.stopVersionWatch = undefined;
+    this.stopRotationWatch?.();
+    this.stopRotationWatch = undefined;
     if (this.hotReloadWs) {
       this.hotReloadWs.close();
     }
