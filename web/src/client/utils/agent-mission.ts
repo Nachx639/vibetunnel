@@ -5,9 +5,9 @@
  */
 import { parseScreenChoices } from '../../shared/claude-screen.js';
 import type { Session } from '../../shared/types.js';
-import { modeSwitchBlocked } from '../components/claude-chat-view.js';
 import { sessionTool } from '../components/phone-session-row.js';
 import { isBackgroundWait } from './claude-activity.js';
+import { modeSwitchBlocked } from './claude-mode.js';
 import { isWatching } from './mac-attach-mode.js';
 
 export type AgentKind = 'claude' | 'codex' | 'gemini';

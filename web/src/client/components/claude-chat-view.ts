@@ -22,6 +22,7 @@ import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 import { announce } from '../utils/announce.js';
 import { type ClaudeActivity, formatActivity } from '../utils/claude-activity.js';
+import { modeSwitchBlocked, parseClaudeMode } from '../utils/claude-mode.js';
 import { claudeWaitingLabel } from '../utils/claude-waiting-label.js';
 import { isSwallowingGhostClick, swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
@@ -353,25 +354,7 @@ export function extractUploadedImages(text: string): { text: string; images: str
   return { text: rest, images };
 }
 
-/**
- * Whether pressing Shift+Tab now could answer something instead of changing the mode: no
- * mode line on the live screen, or a numbered permission dialog showing (Claude can keep the
- * mode line visible under it; Shift+Tab there means "allow all edits this session").
- */
-export function modeSwitchBlocked(screen: string): boolean {
-  return !parseClaudeMode(screen) || parseScreenChoices(screen) !== null;
-}
-
-/** Claude Code's permission mode, read from its status line at the bottom of the screen. */
-export function parseClaudeMode(screenText: string): string | null {
-  // e.g. "⏵⏵ bypass permissions on", "⏸ plan mode on", "⏸ manual mode on"
-  const match = screenText.match(/(?:⏵⏵|⏵|⏸)\s*([a-z][a-z -]*?) on\b/i);
-  if (match) {
-    const name = match[1].trim();
-    return name.charAt(0).toUpperCase() + name.slice(1);
-  }
-  return screenText.includes('? for shortcuts') ? 'Default mode' : null;
-}
+export { modeSwitchBlocked, parseClaudeMode };
 
 function formatTime(timestamp?: string): string {
   if (!timestamp) return '';

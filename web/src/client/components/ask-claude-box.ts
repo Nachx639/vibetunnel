@@ -10,10 +10,10 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { t } from '../i18n/index.js';
+import { composerHeightFor } from '../utils/composer-height.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
 import { endsADrag } from '../utils/pointer-drag.js';
-import { composerHeightFor } from './terminal-chat-view.js';
 
 export const ASK_DRAFT_KEY = 'vt-ask-claude-draft';
 export const ASK_AGENT_KEY = 'vt-ask-agent';

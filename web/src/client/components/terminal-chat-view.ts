@@ -11,6 +11,7 @@ import {
 } from '../../shared/claude-screen.js';
 import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
+import { composerHeightFor } from '../utils/composer-height.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { endsADrag } from '../utils/pointer-drag.js';
@@ -114,25 +115,7 @@ function saveDraft(sessionId: string, text: string) {
   }
 }
 
-/**
- * CSS height that fits a textarea's text. scrollHeight already includes the padding, so a
- * content-box field must subtract it (and a border-box one add its borders). The composer is
- * content-box: setting height = scrollHeight would count the padding twice, and the first typed
- * letter would grow the one-line field by an empty extra line.
- */
-export function composerHeightFor(
-  scrollHeight: number,
-  style: Pick<
-    CSSStyleDeclaration,
-    'boxSizing' | 'paddingTop' | 'paddingBottom' | 'borderTopWidth' | 'borderBottomWidth'
-  >
-): number {
-  const px = (value: string) => Number.parseFloat(value) || 0;
-  if (style.boxSizing === 'border-box') {
-    return scrollHeight + px(style.borderTopWidth) + px(style.borderBottomWidth);
-  }
-  return Math.max(0, scrollHeight - px(style.paddingTop) - px(style.paddingBottom));
-}
+export { composerHeightFor };
 
 const MAX_MESSAGE_LENGTH = 20_000;
 
