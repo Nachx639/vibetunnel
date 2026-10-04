@@ -900,6 +900,9 @@ export const es: Messages = {
   'settings.autoReload': 'Recargar automáticamente tras una actualización',
   'settings.autoReload.description':
     'Cuando el servidor tenga una versión más nueva, recarga la próxima vez que vuelvas a la app en lugar de mostrar un botón Recargar. Nunca mientras escribes.',
+  'settings.headerClearance': 'Apartar el desenfoque superior del iPhone',
+  'settings.headerClearance.description':
+    'En la app de la pantalla de inicio del iPhone, baja un poco las cabeceras para que el desenfoque del sistema bajo la barra de estado no las tape.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'Omitir la sesión en pantalla',

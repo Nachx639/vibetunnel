@@ -871,6 +871,9 @@ export const ar: Messages = {
   'settings.autoReload': 'إعادة التحميل تلقائيًا بعد التحديث',
   'settings.autoReload.description':
     'عندما يتوفر إصدار أحدث على الخادم، يُعاد التحميل في المرة التالية التي تعود فيها إلى التطبيق بدلًا من عرض زر إعادة التحميل. لا يحدث ذلك أبدًا أثناء الكتابة.',
+  'settings.headerClearance': 'إبعاد الضبابية العلوية في iPhone',
+  'settings.headerClearance.description':
+    'في تطبيق الشاشة الرئيسية على iPhone، يُنزل العناوين قليلًا حتى لا تغطيها ضبابية النظام أسفل شريط الحالة.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'تخطَّ الجلسة المعروضة على الشاشة',

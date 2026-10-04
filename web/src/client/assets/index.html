@@ -211,6 +211,17 @@
       // Set initial height
       setViewportHeight();
 
+      // The home-screen app, for the CSS only it needs (styles.css, html[data-standalone]).
+      // navigator.standalone is iOS's own flag; display-mode covers the others.
+      try {
+        if (
+          navigator.standalone === true ||
+          window.matchMedia?.('(display-mode: standalone)').matches
+        ) {
+          document.documentElement.setAttribute('data-standalone', '');
+        }
+      } catch (_) {}
+
       // Home-screen web app on iPhone: innerHeight comes up short by the status bar height
       // (black-translucent), leaving a blank band at the bottom of every page. The session
       // view keeps --app-height current (keyboard included); this covers the other pages.

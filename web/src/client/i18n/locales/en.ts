@@ -890,6 +890,9 @@ export const en = {
   'settings.autoReload': 'Reload automatically after an update',
   'settings.autoReload.description':
     'When the server has a newer version, reload the next time you come back to the app instead of showing a Reload button. Never while you are typing.',
+  'settings.headerClearance': 'Clear the iPhone’s top blur',
+  'settings.headerClearance.description':
+    'In the home-screen app on iPhone, starts the headers a little lower so the system’s blur under the status bar doesn’t cover them.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'Skip the session on screen',

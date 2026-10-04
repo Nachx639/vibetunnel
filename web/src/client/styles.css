@@ -2810,3 +2810,21 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   padding: 6px 8px;
   font-size: 18px;
 }
+
+/* The top of the iPhone home-screen app under iOS 26+ (utils/standalone-chrome.ts). iOS blurs
+   about 40 pt past the status bar over the web view; on a phone the headers' content starts
+   below that zone, their opaque background filling it. The clearance is 0 where there is no
+   inset (landscape: no status bar). Home-screen app on a phone with the Settings switch on
+   (the default) only: a browser tab, tablets and desktops are unchanged. */
+html[data-standalone][data-header-clearance] app-header .app-header:not(.sidebar-header) {
+  /* Over full-header.ts's inline padding-top (0.75rem + inset). */
+  padding-top: calc(
+    env(safe-area-inset-top, 0px) +
+      max(0.75rem, min(40px, calc(env(safe-area-inset-top, 0px) * 100)))
+  ) !important;
+}
+/* The session view's header row, the same; the wrapper above it already clears the inset with
+   the same background. */
+html[data-standalone][data-header-clearance] session-view .session-header-area {
+  padding-top: min(40px, calc(env(safe-area-inset-top, 0px) * 100)) !important;
+}

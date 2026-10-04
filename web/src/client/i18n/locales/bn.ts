@@ -873,6 +873,9 @@ export const bn: Messages = {
   'settings.autoReload': 'আপডেটের পরে নিজে থেকে আবার লোড করুন',
   'settings.autoReload.description':
     'সার্ভারে নতুন সংস্করণ এলে, আবার লোড করুন বোতাম না দেখিয়ে পরের বার অ্যাপে ফিরলেই নিজে থেকে লোড হবে। টাইপ করার সময় কখনও নয়।',
+  'settings.headerClearance': 'iPhone-এর উপরের ঝাপসা ভাব এড়ান',
+  'settings.headerClearance.description':
+    'iPhone-এর হোম স্ক্রিন অ্যাপে হেডারগুলো একটু নিচে শুরু হয়, যাতে স্ট্যাটাস বারের নিচের সিস্টেম ঝাপসা ভাব সেগুলো ঢেকে না দেয়।',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'স্ক্রিনে থাকা সেশন বাদ দিন',

@@ -898,6 +898,9 @@ export const ptBR: Messages = {
   'settings.autoReload': 'Recarregar automaticamente após uma atualização',
   'settings.autoReload.description':
     'Quando o servidor tiver uma versão mais nova, recarrega na próxima vez que você voltar ao app em vez de mostrar um botão Recarregar. Nunca enquanto você digita.',
+  'settings.headerClearance': 'Afastar o desfoque do topo do iPhone',
+  'settings.headerClearance.description':
+    'No app da tela de início do iPhone, desce um pouco os cabeçalhos para que o desfoque do sistema sob a barra de status não os cubra.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'Ignorar a sessão na tela',

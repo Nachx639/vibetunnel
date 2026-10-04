@@ -909,6 +909,9 @@ export const fr: Messages = {
   'settings.autoReload': 'Recharger automatiquement après une mise à jour',
   'settings.autoReload.description':
     'Quand le serveur a une version plus récente, recharger la prochaine fois que vous revenez dans l’app au lieu d’afficher un bouton Recharger. Jamais pendant la saisie.',
+  'settings.headerClearance': 'Éviter le flou en haut de l’iPhone',
+  'settings.headerClearance.description':
+    'Dans l’app de l’écran d’accueil sur iPhone, descend un peu les en-têtes pour que le flou du système sous la barre d’état ne les couvre pas.',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': 'Ignorer la session à l’écran',

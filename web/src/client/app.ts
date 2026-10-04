@@ -22,6 +22,7 @@ import { createLogger } from './utils/logger.js';
 import { isIOS } from './utils/mobile-utils.js';
 import { installOfflinePage } from './utils/offline-page.js';
 import { type MediaQueryState, responsiveObserver } from './utils/responsive-utils.js';
+import { trackHeaderClearance } from './utils/standalone-chrome.js';
 import { triggerTerminalResize } from './utils/terminal-utils.js';
 import { titleManager } from './utils/title-manager.js';
 
@@ -86,6 +87,7 @@ export class VibeTunnelApp extends LitElement {
   @state() private selectedSessionId: string | null = null;
   private stopVersionWatch?: () => void;
   private stopRotationWatch?: () => void;
+  private stopHeaderClearance?: () => void;
   private loadFailures = 0;
   @state() private reconnecting = false;
   @state() private hideExited = this.loadHideExitedState();
@@ -155,6 +157,8 @@ export class VibeTunnelApp extends LitElement {
     this.stopRotationWatch ??= followRotationsOutsideSession(() =>
       Boolean(document.querySelector('session-view'))
     );
+    // The home-screen app's header clearance on phones (standalone-chrome.ts).
+    this.stopHeaderClearance ??= trackHeaderClearance();
     this.setupHotReload();
     this.setupKeyboardShortcuts();
     this.setupNotificationHandlers();
@@ -225,6 +229,8 @@ export class VibeTunnelApp extends LitElement {
     this.stopVersionWatch = undefined;
     this.stopRotationWatch?.();
     this.stopRotationWatch = undefined;
+    this.stopHeaderClearance?.();
+    this.stopHeaderClearance = undefined;
     if (this.hotReloadWs) {
       this.hotReloadWs.close();
     }

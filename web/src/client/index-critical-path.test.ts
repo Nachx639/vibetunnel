@@ -72,3 +72,52 @@ describe('the script that applies styles.css', () => {
     expect(document.documentElement.hasAttribute('data-vt-styles')).toBe(true);
   });
 });
+
+// iOS 26+ blurs about 40 pt under the status bar of a home-screen app (standalone-chrome.ts).
+describe('the top of the home-screen app', () => {
+  const css = readFileSync(join(__dirname, 'styles.css'), 'utf8');
+  const flat = css.replace(/\s+/g, ' ');
+
+  it('starts the list header and the session header below the blurred zone', () => {
+    expect(flat).toContain(
+      "html[data-standalone][data-header-clearance] app-header .app-header:not(.sidebar-header) { /* Over full-header.ts's inline padding-top (0.75rem + inset). */ padding-top: calc( env(safe-area-inset-top, 0px) + max(0.75rem, min(40px, calc(env(safe-area-inset-top, 0px) * 100))) ) !important; }"
+    );
+    expect(flat).toContain(
+      'html[data-standalone][data-header-clearance] session-view .session-header-area { padding-top: min(40px, calc(env(safe-area-inset-top, 0px) * 100)) !important; }'
+    );
+  });
+
+  it('every rule of the clearance needs the home-screen app and the switch mark', () => {
+    const selectors = [...flat.matchAll(/([^{}]*data-standalone[^{}]*)\{/g)].map((m) => m[1]);
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const selector of selectors) {
+      expect(selector).toContain('html[data-standalone][data-header-clearance]');
+    }
+  });
+
+  describe('the inline script that marks the home-screen app', () => {
+    const viewport = inlineScripts.find((script) => script.includes('data-standalone')) ?? '';
+    afterEach(() => {
+      document.documentElement.removeAttribute('data-standalone');
+      Reflect.deleteProperty(navigator, 'standalone');
+    });
+
+    it.each([
+      [true, false, true],
+      [undefined, true, true],
+      [undefined, false, false],
+    ])('standalone %s, display-mode %s: marked %s', (standalone, mode, expected) => {
+      Object.defineProperty(navigator, 'standalone', { value: standalone, configurable: true });
+      const matchMedia = window.matchMedia;
+      window.matchMedia = ((query: string) => ({
+        matches: query === '(display-mode: standalone)' && mode,
+      })) as unknown as typeof window.matchMedia;
+      try {
+        new Function(viewport)();
+      } finally {
+        window.matchMedia = matchMedia;
+      }
+      expect(document.documentElement.hasAttribute('data-standalone')).toBe(expected);
+    });
+  });
+});

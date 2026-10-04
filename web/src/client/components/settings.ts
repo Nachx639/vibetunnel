@@ -15,6 +15,7 @@ import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/acce
 import { getAutoReloadOnUpdate, setAutoReloadOnUpdate } from '../utils/app-version.js';
 import { iosBrowser, needsIOSHomeScreenInstall } from '../utils/ios-install.js';
 import { createLogger } from '../utils/logger.js';
+import { getHeaderClearance, setHeaderClearance } from '../utils/standalone-chrome.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
 import { iosInstallSteps } from './ios-install-steps.js';
@@ -41,6 +42,7 @@ export class Settings extends LitElement {
   @state() private isLoading = false;
   @state() private testingNotification = false;
   @state() private autoReloadOnUpdate = getAutoReloadOnUpdate();
+  @state() private headerClearance = getHeaderClearance();
 
   // App settings state
   @state() private repositoryBasePath = DEFAULT_REPOSITORY_BASE_PATH;
@@ -120,6 +122,11 @@ export class Settings extends LitElement {
       }
     }
   }
+
+  private toggleHeaderClearance = () => {
+    this.headerClearance = !this.headerClearance;
+    setHeaderClearance(this.headerClearance);
+  };
 
   private toggleAutoReload = () => {
     this.autoReloadOnUpdate = !this.autoReloadOnUpdate;
@@ -831,6 +838,30 @@ export class Settings extends LitElement {
             <span
               class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
                 this.autoReloadOnUpdate ? 'translate-x-5' : 'translate-x-0.5'
+              }"
+            ></span>
+          </button>
+        </div>
+
+        <!-- Clear the iPhone's top blur in the home-screen app (utils/standalone-chrome.ts) -->
+        <div class="flex items-center justify-between gap-3 p-4 bg-bg-tertiary rounded-lg border border-border/50">
+          <div class="flex-1 min-w-0">
+            <label class="text-primary font-medium" id="settings-header-clearance-label">${t('settings.headerClearance')}</label>
+            <p class="text-muted text-xs mt-1">${t('settings.headerClearance.description')}</p>
+          </div>
+          <button
+            role="switch"
+            aria-checked="${this.headerClearance}"
+            aria-labelledby="settings-header-clearance-label"
+            data-testid="settings-header-clearance"
+            @click=${this.toggleHeaderClearance}
+            class="relative flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-base ${
+              this.headerClearance ? 'bg-primary' : 'bg-border'
+            }"
+          >
+            <span
+              class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+                this.headerClearance ? 'translate-x-5' : 'translate-x-0.5'
               }"
             ></span>
           </button>

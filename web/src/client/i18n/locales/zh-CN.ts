@@ -861,6 +861,9 @@ export const zhCN: Messages = {
   'settings.autoReload': '更新后自动重新加载',
   'settings.autoReload.description':
     '服务器有新版本时，在你下次回到应用时自动重新加载，而不是显示“重新加载”按钮。输入时不会重新加载。',
+  'settings.headerClearance': '避开 iPhone 顶部的模糊',
+  'settings.headerClearance.description':
+    '在 iPhone 主屏幕应用中，将标题栏稍微下移，避免被状态栏下方的系统模糊遮住。',
 
   // Notifications: skip the session on screen
   'settings.notify.skipWhenViewing': '跳过屏幕上的会话',
