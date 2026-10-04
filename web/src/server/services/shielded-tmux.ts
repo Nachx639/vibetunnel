@@ -717,10 +717,11 @@ export function shieldRestorePlan(
   const first = info.command[0] ?? '';
   const claude = shieldReopenPlan(info);
   if (claude.replacesOld) {
+    const resumed = claude.command.filter((arg) => arg !== SKIP_PERMISSIONS_FLAG);
     // Keep the executable the session was started with (a boot-time PATH may lack it).
-    const executable = first.split('/').pop() === 'claude' ? first : 'claude';
-    const args = claude.command.slice(1).filter((arg) => arg !== SKIP_PERMISSIONS_FLAG);
-    return { command: [executable, ...args], kind: 'claude-resume' };
+    if (resumed[0] === 'claude' && first.split('/').pop() === 'claude') resumed[0] = first;
+    const command = withoutPermissionBypass(resumed);
+    return command ? { command, kind: 'claude-resume' } : null;
   }
   if (mode !== 'all') return null;
   const command = withoutPermissionBypass(info.command);
@@ -770,10 +771,18 @@ export function shieldReopenPlan(session: Pick<Session, 'command' | 'claudeSessi
   replacesOld: boolean;
 } {
   const commandLine = session.command.join(' ');
-  if (session.claudeSessionId && /(^|[\s/])claude(\s|$)/.test(commandLine)) {
+  // Claude Code run as a package (`npx -y @anthropic-ai/claude-code@latest`, `pnpm dlx`,
+  // `bunx`) resumes through the same launcher, so it needn't be on the PATH as `claude`.
+  const agentAt = session.command.findIndex((word) => bypassAgent(word) !== null);
+  const agentWord = agentAt === -1 ? '' : session.command[agentAt];
+  const launched =
+    bypassAgent(agentWord) === 'claude' && agentWord.split('/').pop() !== 'claude'
+      ? session.command.slice(0, agentAt + 1)
+      : null;
+  if (session.claudeSessionId && (launched || /(^|[\s/])claude(\s|$)/.test(commandLine))) {
     return {
       command: [
-        'claude',
+        ...(launched ?? ['claude']),
         '--resume',
         session.claudeSessionId,
         ...(commandLine.includes(SKIP_PERMISSIONS_FLAG) ? [SKIP_PERMISSIONS_FLAG] : []),

@@ -465,6 +465,48 @@ describe('shieldRestorePlan', () => {
     ).toEqual(['claude', '--resume', 'c2']);
   });
 
+  it('resumes Claude Code run as a package through the same launcher, without the bypass', () => {
+    expect(
+      shieldRestorePlan(
+        {
+          command: [
+            'npx',
+            '-y',
+            '@anthropic-ai/claude-code@latest',
+            '--dangerously-skip-permissions',
+            '--model',
+            'opus',
+          ],
+          claudeSessionId: 'c4',
+        },
+        'agents'
+      )
+    ).toEqual({
+      command: ['npx', '-y', '@anthropic-ai/claude-code@latest', '--resume', 'c4'],
+      kind: 'claude-resume',
+    });
+    expect(
+      shieldRestorePlan(
+        {
+          command: [
+            'pnpm',
+            'dlx',
+            '@anthropic-ai/claude-code',
+            '--permission-mode=bypassPermissions',
+          ],
+          claudeSessionId: 'c5',
+        },
+        'all'
+      )?.command
+    ).toEqual(['pnpm', 'dlx', '@anthropic-ai/claude-code', '--resume', 'c5']);
+    expect(
+      shieldRestorePlan(
+        { command: ['bunx', '@anthropic-ai/claude-code@2.1.0'], claudeSessionId: 'c6' },
+        'agents'
+      )?.command
+    ).toEqual(['bunx', '@anthropic-ai/claude-code@2.1.0', '--resume', 'c6']);
+  });
+
   it("restores only agents under 'agents': a shell or an unknown conversation stays finished", () => {
     expect(
       shieldRestorePlan({ command: ['/bin/zsh', '-l'], claudeSessionId: 'c1' }, 'agents')
@@ -507,13 +549,10 @@ describe('shieldRestorePlan', () => {
     expect(shieldRestorePlan({ command: ['gemini', '-y'] }, 'all')?.command).toEqual(['gemini']);
     // A bypass inside a shell string can't be removed safely: not restored at all.
     expect(shieldRestorePlan({ command: ['/bin/zsh', '-c', 'codex --yolo'] }, 'all')).toBeNull();
-    // Claude Code through npx, with a conversation id it can't resume as `claude`: no bypass.
+    // Claude Code through npx without a conversation id: started again, no bypass.
     expect(
       shieldRestorePlan(
-        {
-          command: ['npx', '@anthropic-ai/claude-code', '--dangerously-skip-permissions'],
-          claudeSessionId: 'c4',
-        },
+        { command: ['npx', '@anthropic-ai/claude-code', '--dangerously-skip-permissions'] },
         'all'
       )
     ).toEqual({ command: ['npx', '@anthropic-ai/claude-code'], kind: 'same-command' });
