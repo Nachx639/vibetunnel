@@ -42,7 +42,13 @@ const execFileAsync = promisify(execFile);
 const FORWARDER_TERM_GRACE_MS = 2000;
 /** What ending takes once nothing more is sent: after a SIGKILL, or with nothing to signal. */
 const SETTLE_MS = 1000;
-const POLL_MS = 100;
+/**
+ * How long a forwarder whose program has ended may take to end by itself before it is
+ * signalled: it flushes its window for up to 1 s (LOCAL_OUTPUT_FLUSH_TIMEOUT in vt-fwd), then
+ * reaps its program and records the exit.
+ */
+const FORWARDER_EXIT_GRACE_MS = 2500;
+const POLL_MS = 200;
 
 /** What `ps` says about a process still in the process table, zombies included. */
 export interface PsProcess {
@@ -106,6 +112,8 @@ function isEnding(entry: PsProcess): boolean {
 export interface ExternalKillState {
   /** Nothing of the session runs anymore. */
   ended: boolean;
+  /** The program is gone, a zombie or exiting (its forwarder may still run). */
+  programEnded: boolean;
   /** The forwarder, still running and verified: the pid to signal next. */
   forwarderToSignal: number | null;
   /** Why a forwarder still running may not be signalled. */
@@ -138,12 +146,14 @@ export function externalKillState(
 
   const settled = (ended: boolean): ExternalKillState => ({
     ended,
+    programEnded,
     forwarderToSignal: null,
     refusal: null,
     left,
   });
   const holds = (refusal: string | null): ExternalKillState => ({
     ended: false,
+    programEnded,
     forwarderToSignal: refusal ? null : forwarderPid,
     refusal,
     left: refusal ? `${left}; forwarder not signalled: ${refusal}` : left,
@@ -202,6 +212,13 @@ export async function confirmExternalKill(
 
   let state = await look();
   if (state.ended) return state;
+  // A forwarder in its normal exit flush got SIGTERM (program a zombie under it)
+  // or, its program already reaped, nothing at all and the kill failed after SETTLE_MS: a
+  // false 500 for a session that was ending. A hung one is signalled after this grace.
+  if (state.programEnded) {
+    state = await settle(FORWARDER_EXIT_GRACE_MS);
+    if (state.ended) return state;
+  }
   // Nothing that may be signalled (`refusal` says why): it can only end by itself.
   if (state.forwarderToSignal === null) return settle(SETTLE_MS);
 

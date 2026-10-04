@@ -18,7 +18,13 @@ const [, , mode, readyFile, ...command] = process.argv;
 if (mode === 'ignore-term') process.on('SIGTERM', () => {});
 const child = spawn(command[0], command.slice(1), { stdio: 'ignore' });
 fs.writeFileSync(readyFile, String(child.pid));
-Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30000);
+if (mode === 'flush-on-exit') {
+  // Not hung: ending normally, it reaps its program and flushes the window for 2 s first.
+  child.on('exit', () => setTimeout(() => process.exit(0), 2000));
+  setTimeout(() => process.exit(0), 30000);
+} else {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30000);
+}
 `;
 
 // The session's program: ignores SIGTERM like a busy agent, and quits by itself once orphaned
@@ -30,7 +36,7 @@ setInterval(() => { if (process.ppid !== parent) process.exit(0); }, 100);
 setTimeout(() => process.exit(0), 30000);
 `;
 
-type HungMode = 'dies-on-term' | 'ignore-term';
+type HungMode = 'dies-on-term' | 'ignore-term' | 'flush-on-exit';
 
 describe.concurrent('killing a session opened with vt whose forwarder hung', () => {
   let root: string;
@@ -126,6 +132,26 @@ describe.concurrent('killing a session opened with vt whose forwarder hung', () 
       }
     }
   );
+
+  it('lets a forwarder still flushing after its program end by itself, and says killed', async ({
+    expect,
+  }) => {
+    // With the program gone and its forwarder in its exit flush, nothing could be
+    // signalled and the kill gave up after 1 s: a 500 for a session that was ending normally.
+    const { parent: forwarder, programPid } = await startParent('vibetunnel-fwd', 'flush-on-exit');
+    const sessionId = `fwd_${Date.now()}_${forwarder.pid}`;
+    const { ptyManager, exited, status } = sessionOf(sessionId, programPid);
+    try {
+      await ptyManager.killSession(sessionId);
+
+      // It exited by itself (code 0), it was not signalled.
+      await vi.waitFor(() => expect(ended(forwarder)).toBe(0), { timeout: 2000 });
+      expect(status()).toBe('exited');
+      expect(exited).toHaveBeenCalledExactlyOnceWith(sessionId, 'program', 0);
+    } finally {
+      stop(forwarder);
+    }
+  }, 15_000);
 
   it('never signals a pid that runs no forwarder, and fails instead of saying "killed"', async ({
     expect,
