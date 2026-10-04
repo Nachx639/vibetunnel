@@ -3,9 +3,30 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// Log file path
-const LOG_DIR = path.join(os.homedir(), '.vibetunnel');
-let LOG_FILE = path.join(LOG_DIR, 'log.txt');
+/**
+ * Where this server logs: next to its control directory. Every server used
+ * ~/.vibetunnel/log.txt and deleted it on start, so a second server with its own control dir
+ * (a test server, a staging instance) wiped the main server's log.
+ * ~/.vibetunnel/control → ~/.vibetunnel/log.txt (unchanged); ~/.vibetunnel-staging/control →
+ * ~/.vibetunnel-staging/log.txt; a control dir not named "control" (mktemp) keeps it inside.
+ */
+export function defaultLogFile(
+  controlDir: string | undefined = process.env.VIBETUNNEL_CONTROL_DIR,
+  home: string = os.homedir()
+): string {
+  if (!controlDir) return path.join(home, '.vibetunnel', 'log.txt');
+  const resolved = path.resolve(controlDir);
+  const dir = path.basename(resolved) === 'control' ? path.dirname(resolved) : resolved;
+  return path.join(dir, 'log.txt');
+}
+
+let LOG_FILE = defaultLogFile();
+const LOG_DIR = path.dirname(LOG_FILE);
+
+/** The file this server is logging to (the /logs viewer reads the same one). */
+export function getLogFilePath(): string {
+  return LOG_FILE;
+}
 
 /**
  * Set custom log file path
@@ -75,6 +96,12 @@ export function parseVerbosityLevel(value: string): VerbosityLevel | undefined {
 // File handle for log file
 let logFileHandle: fs.WriteStream | null = null;
 let bytesWritten = 0;
+/**
+ * Only the server rotates the log. `vt` client commands append to the same file: when each
+ * process rotated on its own, two crossing 50 MB together renamed twice and the second
+ * rename threw away the backup the first had just made.
+ */
+let rotationAllowed = true;
 let loggerGeneration = 0;
 let loggerClosing = false;
 let closeAfterRotation = false;
@@ -125,15 +152,29 @@ function rotateLogFile(): void {
   const logPath = LOG_FILE;
   const generation = loggerGeneration;
   logFileHandle = null;
+  let ownInode: number | null = null;
+  try {
+    const fd = (handle as fs.WriteStream & { fd?: number }).fd;
+    if (typeof fd === 'number') ownInode = fs.fstatSync(fd).ino;
+  } catch {
+    ownInode = null;
+  }
 
   const rotation = new Promise<void>((resolve) => {
     handle.once('close', () => {
       try {
-        const backupPath = `${logPath}.1`;
-        if (fs.existsSync(backupPath)) {
-          fs.unlinkSync(backupPath);
-        }
-        if (fs.existsSync(logPath)) {
+        // Rotate only the file we filled: if another process already moved it aside (or it
+        // shrank), renaming again would replace that fresh backup with a near-empty file.
+        const onDisk = fs.existsSync(logPath) ? fs.statSync(logPath) : null;
+        const stillOurs =
+          onDisk !== null &&
+          onDisk.size >= MAX_LOG_SIZE &&
+          (ownInode === null || onDisk.ino === ownInode);
+        if (stillOurs) {
+          const backupPath = `${logPath}.1`;
+          if (fs.existsSync(backupPath)) {
+            fs.unlinkSync(backupPath);
+          }
           fs.renameSync(logPath, backupPath);
         }
       } catch {
@@ -153,7 +194,7 @@ function rotateLogFile(): void {
       return;
     }
 
-    openLogFile(logPath, generation, 0);
+    openLogFile(logPath, generation);
     const queuedWrites = pendingFileWrites;
     pendingFileWrites = [];
     for (const output of queuedWrites) {
@@ -167,6 +208,48 @@ function rotateLogFile(): void {
   });
 }
 
+/**
+ * The log file at our path may be deleted or replaced under us: an older VibeTunnel CLI
+ * (`vt status`, `vt title`, `vt` sessions…) deletes ~/.vibetunnel/log.txt every time it runs,
+ * and we kept writing into the unlinked file while log.txt stayed empty. At most every 5 s,
+ * compare our open file with the one at the path and reopen if they differ.
+ */
+let lastLogIdentityCheck = 0;
+const LOG_IDENTITY_CHECK_MS = 5000;
+function reopenLogIfReplaced(): void {
+  const now = Date.now();
+  if (!logFileHandle || rotationPromise || loggerClosing) return;
+  if (now - lastLogIdentityCheck < LOG_IDENTITY_CHECK_MS) return;
+  lastLogIdentityCheck = now;
+  const fd = (logFileHandle as fs.WriteStream & { fd?: number }).fd;
+  if (typeof fd !== 'number') return;
+  try {
+    const open = fs.fstatSync(fd);
+    let onDisk: fs.Stats | null = null;
+    try {
+      onDisk = fs.statSync(LOG_FILE);
+    } catch {
+      onDisk = null;
+    }
+    if (onDisk && onDisk.ino === open.ino && onDisk.dev === open.dev) {
+      // Client commands append to this file too: count their lines toward the rotation size.
+      bytesWritten = Math.max(bytesWritten, open.size);
+      return;
+    }
+  } catch {
+    return;
+  }
+  const stale = logFileHandle;
+  logFileHandle = null;
+  stale.end();
+  openLogFile(LOG_FILE, loggerGeneration, getLogFileSize(LOG_FILE));
+}
+
+/** Tests: run the replaced-file check on the next write. */
+export function checkLogFileOnNextWriteForTests(): void {
+  lastLogIdentityCheck = 0;
+}
+
 function writeOutput(output: string, allowWhileClosing: boolean = false): void {
   if (loggerClosing || (closeAfterRotation && !allowWhileClosing)) {
     return;
@@ -176,6 +259,7 @@ function writeOutput(output: string, allowWhileClosing: boolean = false): void {
     pendingFileWrites.push(output);
     return;
   }
+  reopenLogIfReplaced();
   if (!logFileHandle) {
     return;
   }
@@ -184,7 +268,7 @@ function writeOutput(output: string, allowWhileClosing: boolean = false): void {
   try {
     logFileHandle.write(output);
     bytesWritten += outputBytes;
-    if (bytesWritten >= MAX_LOG_SIZE) {
+    if (bytesWritten >= MAX_LOG_SIZE && rotationAllowed) {
       rotateLogFile();
     }
   } catch {
@@ -226,10 +310,20 @@ const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 /**
  * Initialize the logger - creates log directory and file
  */
-export function initLogger(debug: boolean = false, verbosity?: VerbosityLevel): void {
+export function initLogger(
+  debug: boolean = false,
+  verbosity?: VerbosityLevel,
+  /**
+   * Only the server starts a fresh log. `vt open`, `vt status`, `vt fwd`… run while the
+   * server is up: deleting the file under it left the server writing into an unlinked file
+   * and an empty log.txt on disk.
+   */
+  options: { fresh?: boolean } = {}
+): void {
   _debugMode = debug;
   loggerClosing = false;
   closeAfterRotation = false;
+  rotationAllowed = options.fresh !== false;
 
   // Set verbosity level
   if (verbosity !== undefined) {
@@ -250,17 +344,13 @@ export function initLogger(debug: boolean = false, verbosity?: VerbosityLevel): 
       fs.mkdirSync(LOG_DIR, { recursive: true });
     }
 
-    // Delete old log file if it exists
-    try {
-      if (fs.existsSync(LOG_FILE)) {
-        fs.unlinkSync(LOG_FILE);
-      }
-    } catch {
-      // Ignore unlink errors - file might not exist or be locked
-      // Don't log here as logger isn't fully initialized yet
+    // A server start keeps the earlier runs below a marker line. Deleting the log on start
+    // threw away whatever happened just before each restart (a crash, an update); the 50 MB
+    // rotation keeps it bounded. Client commands just append.
+    openLogFile(LOG_FILE, loggerGeneration);
+    if (options.fresh !== false) {
+      writeOutput(`${new Date().toISOString()} ===== server start (pid ${process.pid}) =====\n`);
     }
-
-    openLogFile(LOG_FILE, loggerGeneration, 0);
   } catch (error) {
     // Don't throw, just log to console
     console.error('Failed to initialize log file:', error);
@@ -422,13 +512,27 @@ function shouldLog(level: string): boolean {
 }
 
 /**
+ * DEBUG lines are written to the log file at every verbosity, as before, unless
+ * VIBETUNNEL_LOG_FILE_DEBUG=0 turns that off. At debug verbosity (--verbosity debug,
+ * VIBETUNNEL_LOG_LEVEL=debug, VIBETUNNEL_DEBUG=1) they are always written. Turning it off
+ * spares debug-heavy paths (per request, per poll, per socket) the formatting and file write
+ * and makes the log roughly ten times smaller; LOG/WARN/ERROR are always written.
+ */
+function shouldWriteDebugToFile(): boolean {
+  if (verbosityLevel >= VerbosityLevel.DEBUG) return true;
+  const flag = process.env.VIBETUNNEL_LOG_FILE_DEBUG;
+  return !(flag === '0' || flag === 'false');
+}
+
+/**
  * Log from a specific module (used by client-side API)
  */
 export function logFromModule(level: string, module: string, args: unknown[]): void {
+  if (level === 'DEBUG' && !shouldWriteDebugToFile() && !shouldLog(level)) return;
   const { console: consoleMsg, file: fileMsg } = formatMessage(level, module, args);
 
-  // Always write to file
-  writeToFile(fileMsg);
+  // LOG/WARN/ERROR always reach the file; DEBUG unless VIBETUNNEL_LOG_FILE_DEBUG=0.
+  if (level !== 'DEBUG' || shouldWriteDebugToFile()) writeToFile(fileMsg);
 
   // Check if we should output to console based on verbosity
   if (!shouldLog(level)) return;
@@ -495,12 +599,14 @@ export function createLogger(moduleName: string) {
       }
     },
     debug: (...args: unknown[]) => {
+      // Skip formatting (JSON.stringify of objects, chalk) when nothing will print.
+      if (!shouldWriteDebugToFile() && !shouldLog('DEBUG')) return;
       const { console: consoleMsg, file: fileMsg } = formatMessage(
         'DEBUG',
         prefixedModuleName,
         args
       );
-      writeToFile(fileMsg); // Always write to file
+      if (shouldWriteDebugToFile()) writeToFile(fileMsg);
       if (shouldLog('DEBUG')) {
         console.log(consoleMsg);
       }

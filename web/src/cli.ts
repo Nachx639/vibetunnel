@@ -22,7 +22,21 @@ const verbosityLevel = parseVerbosityFromEnv();
 // Check for legacy debug mode (for backward compatibility with initLogger)
 const debugMode = process.env.VIBETUNNEL_DEBUG === '1' || process.env.VIBETUNNEL_DEBUG === 'true';
 
-initLogger(debugMode, verbosityLevel);
+// Client commands talk to a running server: they append to its log, never start it afresh
+// (deleting the log under a running server left it writing into an unlinked file).
+const CLIENT_COMMANDS = new Set([
+  'version',
+  'help',
+  '--help',
+  '-h',
+  'fwd',
+  'status',
+  'follow',
+  'unfollow',
+  'git-event',
+  'systemd',
+]);
+initLogger(debugMode, verbosityLevel, { fresh: !CLIENT_COMMANDS.has(process.argv[2] ?? '') });
 const logger = createLogger('cli');
 
 // Source maps are only included if built with --sourcemap flag

@@ -43,6 +43,23 @@ describe('logger rotation', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
+  it('does not replace a backup another process just made when it rotates', async () => {
+    fs.writeFileSync(logPath, '');
+    fs.truncateSync(logPath, MAX_LOG_SIZE);
+    setLogFilePath(logPath);
+    // Another writer (a vt command, an older server) rotated first: our file is now .1 and
+    // a fresh log.txt is at the path.
+    fs.renameSync(logPath, `${logPath}.1`);
+    fs.writeFileSync(logPath, 'new file from the other process\n');
+
+    createLogger('rotation-test').info('line that crosses the threshold');
+    await flushLogger();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(fs.statSync(`${logPath}.1`).size).toBeGreaterThanOrEqual(MAX_LOG_SIZE);
+    expect(fs.readFileSync(logPath, 'utf8')).toContain('new file from the other process');
+  });
+
   it('writes the threshold-crossing message before rotating and preserves queued messages', async () => {
     fs.writeFileSync(logPath, '');
     fs.truncateSync(logPath, MAX_LOG_SIZE);

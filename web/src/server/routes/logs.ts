@@ -1,8 +1,6 @@
 import { type Request, type Response, Router } from 'express';
 import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { createLogger, flushLogger, logFromModule } from '../utils/logger.js';
+import { createLogger, flushLogger, getLogFilePath, logFromModule } from '../utils/logger.js';
 
 const logger = createLogger('logs');
 
@@ -55,7 +53,7 @@ export function createLogRoutes(_config?: LogRoutesConfig): Router {
   // Get raw log file
   router.get('/logs/raw', (_req: Request, res: Response) => {
     try {
-      const logPath = path.join(os.homedir(), '.vibetunnel', 'log.txt');
+      const logPath = getLogFilePath();
 
       // Check if log file exists - if not, return empty content
       if (!fs.existsSync(logPath)) {
@@ -76,7 +74,7 @@ export function createLogRoutes(_config?: LogRoutesConfig): Router {
   // Get log stats/info
   router.get('/logs/info', (_req: Request, res: Response) => {
     try {
-      const logPath = path.join(os.homedir(), '.vibetunnel', 'log.txt');
+      const logPath = getLogFilePath();
 
       if (!fs.existsSync(logPath)) {
         return res.json({
@@ -105,7 +103,7 @@ export function createLogRoutes(_config?: LogRoutesConfig): Router {
   // Clear log file (for development/debugging)
   router.delete('/logs/clear', (_req: Request, res: Response) => {
     try {
-      const logPath = path.join(os.homedir(), '.vibetunnel', 'log.txt');
+      const logPath = getLogFilePath();
 
       if (fs.existsSync(logPath)) {
         fs.truncateSync(logPath, 0);

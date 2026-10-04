@@ -1,0 +1,62 @@
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  truncateSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// `vt open` (a client command) deleted the running server's log.txt: the server kept writing
+// into the unlinked file and the log on disk stayed empty.
+describe('initLogger and the log file', () => {
+  let dir: string;
+  afterEach(async () => {
+    const logger = await import('./logger.js');
+    logger.closeLogger?.();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function loggerWithExistingLog() {
+    dir = mkdtempSync(path.join(tmpdir(), 'vt-log-'));
+    vi.stubEnv('VIBETUNNEL_CONTROL_DIR', dir);
+    vi.resetModules();
+    const logger = await import('./logger.js');
+    writeFileSync(logger.getLogFilePath(), 'line from the running server\n');
+    return logger;
+  }
+
+  it('a client command appends and leaves the server log in place', async () => {
+    const logger = await loggerWithExistingLog();
+    logger.initLogger(false, undefined, { fresh: false });
+    expect(readFileSync(logger.getLogFilePath(), 'utf8')).toContain('line from the running server');
+  });
+
+  it('a server start keeps the earlier runs below a start marker', async () => {
+    const logger = await loggerWithExistingLog();
+    logger.initLogger(false);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const text = readFileSync(logger.getLogFilePath(), 'utf8');
+    expect(text).toContain('line from the running server');
+    expect(text.indexOf('===== server start')).toBeGreaterThan(
+      text.indexOf('line from the running server')
+    );
+  });
+
+  it('a client command never rotates the log, even past 50 MB', async () => {
+    const logger = await loggerWithExistingLog();
+    const file = logger.getLogFilePath();
+    truncateSync(file, 50 * 1024 * 1024 + 10);
+    logger.initLogger(false, undefined, { fresh: false });
+    logger.createLogger('client').log('a line from vt status');
+    await logger.flushLogger();
+    expect(existsSync(`${file}.1`)).toBe(false);
+    expect(statSync(file).size).toBeGreaterThan(50 * 1024 * 1024);
+  });
+});
