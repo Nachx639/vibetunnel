@@ -664,7 +664,8 @@ export class PtyManager extends EventEmitter {
       // Re-scan the end of the previous chunk too: a sequence can straddle two writes.
       session.sessionInfo.terminalModes ??= {};
       const modeText = (session.modeScanTail ?? '') + data;
-      session.modeScanTail = data.slice(-16);
+      // 32: a combined set such as ESC[?1000;1002;1006h is 19 characters.
+      session.modeScanTail = data.slice(-32);
       if (trackDecModes(session.sessionInfo.terminalModes, modeText)) {
         this.scheduleTerminalModesSave(session);
       }

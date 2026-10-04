@@ -400,8 +400,12 @@ export class CastOutputHub {
           listener({ kind: 'header', header: headerToSend });
         }
 
-        // Restore modes the app set before the replayed range (mouse reporting etc.).
-        const modes = decModesToSequence(sessionInfo?.terminalModes);
+        // Restore modes the app set before the replayed range (mouse reporting etc.), only
+        // while it runs: an exited session's saved modes may never have been cleared (the
+        // exit clears them on a 250 ms timer, a session the zombie scan marked exited never
+        // does), and mouse reporting for a dead process sends the wheel nowhere.
+        const modes =
+          sessionInfo?.status === 'exited' ? '' : decModesToSequence(sessionInfo?.terminalModes);
         if (modes) listener({ kind: 'output', data: modes, historical: true });
 
         let exitFound = false;

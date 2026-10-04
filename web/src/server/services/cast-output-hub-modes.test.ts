@@ -16,13 +16,16 @@ describe('CastOutputHub replay of terminal modes', () => {
     tmpDir = null;
   });
 
-  async function replayOutputs(terminalModes?: Record<string, boolean>): Promise<string[]> {
+  async function replayOutputs(
+    terminalModes?: Record<string, boolean>,
+    status?: 'running' | 'exited'
+  ): Promise<string[]> {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cast-hub-'));
     const stdoutPath = path.join(tmpDir, 'stdout');
     fs.writeFileSync(stdoutPath, [HEADER, OUTPUT, ''].join('\n'));
     const sessionManager = {
       getSessionPaths: () => ({ stdoutPath }),
-      loadSessionInfo: () => ({ terminalModes }),
+      loadSessionInfo: () => ({ terminalModes, status }),
       saveSessionInfo: vi.fn(),
     } as unknown as SessionManager;
 
@@ -41,6 +44,12 @@ describe('CastOutputHub replay of terminal modes', () => {
     const outputs = await replayOutputs({ '1000': true, '1006': true });
     expect(outputs[0]).toBe('\x1b[?1000h\x1b[?1006h');
     expect(outputs.join('')).toContain('current screen');
+  });
+
+  it('restores no terminal modes for a session that has exited', async () => {
+    // Marked exited by the zombie scan: its modes were never cleared.
+    const outputs = await replayOutputs({ '1000': true, '1006': true }, 'exited');
+    expect(outputs.join('')).toBe('current screen');
   });
 
   it('replays as before when the app set no modes', async () => {

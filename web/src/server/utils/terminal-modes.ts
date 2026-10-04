@@ -40,7 +40,9 @@ export function trackDecModes(modes: Record<string, boolean>, data: string): boo
 /** Escape sequence that restores `modes` on a fresh terminal. */
 export function decModesToSequence(modes: Record<string, boolean> | undefined): string {
   if (!modes) return '';
+  // Only tracked modes: session.json is a file, and anything else in it is not ours to send.
   return Object.entries(modes)
+    .filter(([mode, enabled]) => TRACKED_MODES.has(Number(mode)) && typeof enabled === 'boolean')
     .map(([mode, enabled]) => `\x1b[?${mode}${enabled ? 'h' : 'l'}`)
     .join('');
 }

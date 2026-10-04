@@ -23,6 +23,12 @@ describe('terminal mode tracking', () => {
     }
   });
 
+  it('restores only the modes it tracks, whatever session.json holds', () => {
+    expect(
+      decModesToSequence({ '1000': true, '1049': true, '9;rm -rf': true, '2004': 'yes' } as never)
+    ).toBe('\x1b[?1000h');
+  });
+
   it('applies a sequence once its chunks are rejoined', () => {
     const modes: Record<string, boolean> = {};
     expect(trackDecModes(modes, 'out\x1b[?10')).toBe(false);
