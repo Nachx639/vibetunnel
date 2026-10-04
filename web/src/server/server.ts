@@ -857,6 +857,10 @@ export async function createApp(): Promise<AppInstance> {
         const openedIn = ptyManager.getSession(event.sessionId);
         schedulePreviewReadyPush(event, openedIn?.name || event.sessionId, {
           send: (payload) => pushService.sendNotification(payload),
+          titleOf: ({ id, port }) => {
+            const record = previews.registry.get(id);
+            return record?.customName || record?.title || previews.registry.knownTitle(port);
+          },
           onError: (error) => logger.debug(`preview-ready push failed: ${error}`),
         });
       });

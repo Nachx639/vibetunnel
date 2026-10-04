@@ -17,8 +17,17 @@ import type { NotificationPayload } from './push-notification-service.js';
  */
 export const PREVIEW_PUSH_DELAY_MS = 1500;
 
-/** The push for one opened preview; `where` names the session it was opened from. */
-export function previewReadyPush(event: PreviewOpenEvent, where: string): NotificationPayload {
+/**
+ * The push for one opened preview; `where` names the session it was opened from. The body is
+ * the preview's name or page title when known, else just `localhost:<port>`: never the path,
+ * whose query can carry a token (`/lab?token=…`) that would sit on a lock screen. The path
+ * travels only in `data`, which the tap needs.
+ */
+export function previewReadyPush(
+  event: PreviewOpenEvent,
+  where: string,
+  title?: string
+): NotificationPayload {
   const data: PreviewReadyPushData = {
     type: PREVIEW_READY_PUSH_TYPE,
     id: event.id,
@@ -29,7 +38,7 @@ export function previewReadyPush(event: PreviewOpenEvent, where: string): Notifi
   return {
     type: PREVIEW_READY_PUSH_TYPE,
     title: `👀 Preview ready · ${where}`,
-    body: `localhost:${event.port}${event.path === '/' ? '' : event.path}`,
+    body: title?.trim().slice(0, 120) || `localhost:${event.port}`,
     tag: `vibetunnel-preview-${event.id}`,
     actions: [
       { action: 'view-session', title: 'Open' },
@@ -46,6 +55,8 @@ export interface PreviewPushOptions {
    * pushed (the push is replaced, not stacked, by the next one for the same preview).
    */
   isOnScreen?: (event: PreviewOpenEvent) => boolean;
+  /** The preview's name or page title, read when the push is sent. */
+  titleOf?: (event: PreviewOpenEvent) => string | undefined;
   delayMs?: number;
   onError?: (error: unknown) => void;
 }
@@ -58,7 +69,9 @@ export function schedulePreviewReadyPush(
 ): void {
   const timer = setTimeout(() => {
     if (options.isOnScreen?.(event)) return;
-    options.send(previewReadyPush(event, where)).catch((error) => options.onError?.(error));
+    options
+      .send(previewReadyPush(event, where, options.titleOf?.(event)))
+      .catch((error) => options.onError?.(error));
   }, options.delayMs ?? PREVIEW_PUSH_DELAY_MS);
   timer.unref?.();
 }

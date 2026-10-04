@@ -13,7 +13,7 @@ describe('previewReadyPush', () => {
     const push = previewReadyPush(event, 'web app');
     expect(push.type).toBe('preview-ready');
     expect(push.title).toBe('👀 Preview ready · web app');
-    expect(push.body).toBe('localhost:5173/cart');
+    expect(push.body).toBe('localhost:5173');
     expect(push.tag).toBe('vibetunnel-preview-pshop123');
     expect(push.data).toEqual({
       type: 'preview-ready',
@@ -25,7 +25,18 @@ describe('previewReadyPush', () => {
     });
   });
 
-  it('leaves "/" out of the body and the link', () => {
+  it('shows the title or host:port only, never the path or a query token', () => {
+    const jupyter = { ...event, port: 8888, path: '/lab?token=abc123#x' };
+    const push = previewReadyPush(jupyter, 'notebook');
+    expect(push.body).toBe('localhost:8888');
+    expect(JSON.stringify([push.title, push.body])).not.toContain('abc123');
+    expect(previewReadyPush(jupyter, 'notebook', '  JupyterLab ').body).toBe('JupyterLab');
+    expect(previewReadyPush(jupyter, 'notebook', '   ').body).toBe('localhost:8888');
+    // The tap still opens the exact page: the path stays in data only.
+    expect(push.data?.path).toBe('/lab?token=abc123#x');
+  });
+
+  it('leaves "/" out of the link', () => {
     const push = previewReadyPush({ ...event, path: '/' }, 'web app');
     expect(push.body).toBe('localhost:5173');
     expect(push.data?.url).toBe('/preview/pshop123');
@@ -55,10 +66,14 @@ describe('schedulePreviewReadyPush', () => {
 
   it('sends the push after the wait when the preview is not on screen', async () => {
     const send = vi.fn().mockResolvedValue(undefined);
-    schedulePreviewReadyPush(event, 'web app', { send, isOnScreen: () => false });
+    const titleOf = vi.fn().mockReturnValue('Shop');
+    schedulePreviewReadyPush(event, 'web app', { send, isOnScreen: () => false, titleOf });
     expect(send).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(PREVIEW_PUSH_DELAY_MS);
     expect(send).toHaveBeenCalledTimes(1);
+    // The title is read when the push goes out (the health check may have found it by then).
+    expect(titleOf).toHaveBeenCalledWith(event);
+    expect(send.mock.calls[0][0].body).toBe('Shop');
     expect(send.mock.calls[0][0].data.url).toBe('/preview/pshop123?path=%2Fcart');
   });
 
