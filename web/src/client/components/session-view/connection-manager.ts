@@ -12,13 +12,18 @@ import type { Terminal } from '../terminal.js';
 
 const logger = createLogger('connection-manager');
 
+/** RIS: back to a blank screen and default modes; the replay restores the rest. */
+const RESET_TERMINAL = '\x1bc';
+
 export class ConnectionManager {
   private unsubscribe: (() => void) | null = null;
   private terminal: Terminal | null = null;
   private session: Session | null = null;
   private isConnected = false;
   private stdoutDecoder = new TextDecoder();
-  private outputBuffer = '';
+  // Chunks joined on flush: thousands of `+=` between flushes (a burst of repaints)
+  // build a deep rope string that crashed WebKit's JS engine when it was resolved.
+  private outputBuffer: string[] = [];
   private batchTimeout: number | null = null;
   private onTerminalOutput: ((data: string) => void) | null = null;
 
@@ -62,18 +67,23 @@ export class ConnectionManager {
     const flush = () => {
       if (!this.terminal) return;
       if (this.outputBuffer.length > 0) {
-        this.terminal.write(this.outputBuffer, true);
-        this.outputBuffer = '';
+        const output = this.outputBuffer.join('');
+        this.outputBuffer = [];
+        this.terminal.write(output, true);
       }
       this.batchTimeout = null;
     };
 
     const enqueue = (chunk: string) => {
-      this.outputBuffer += chunk;
+      this.outputBuffer.push(chunk);
       if (this.batchTimeout === null) {
         this.batchTimeout = window.setTimeout(flush, 16);
       }
     };
+
+    // The server answers every SUBSCRIBE with a full replay (header first). After a
+    // reconnect the terminal already shows that history, so it must start over.
+    let shownOutput = false;
 
     this.unsubscribe = terminalSocketClient.subscribe(this.session.id, {
       stdout: true,
@@ -83,6 +93,7 @@ export class ConnectionManager {
         if (this.onTerminalOutput) {
           this.onTerminalOutput(chunk);
         }
+        shownOutput = true;
         enqueue(chunk);
       },
       onEvent: (event) => {
@@ -96,6 +107,15 @@ export class ConnectionManager {
             type?: string;
             sessionId?: string;
           } & Record<string, unknown>;
+
+          if (e.kind === 'header') {
+            // A reconnect (say, after the phone slept) showed the whole scrollback twice.
+            if (!shownOutput) return;
+            this.outputBuffer = [];
+            this.stdoutDecoder = new TextDecoder();
+            enqueue(RESET_TERMINAL);
+            return;
+          }
 
           if (e.kind === 'exit') {
             flush();
@@ -135,7 +155,7 @@ export class ConnectionManager {
       clearTimeout(this.batchTimeout);
       this.batchTimeout = null;
     }
-    this.outputBuffer = '';
+    this.outputBuffer = [];
     this.unsubscribe?.();
     this.unsubscribe = null;
   }

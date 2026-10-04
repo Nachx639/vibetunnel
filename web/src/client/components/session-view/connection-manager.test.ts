@@ -1,0 +1,73 @@
+/**
+ * @vitest-environment happy-dom
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Session } from '../../../shared/types.js';
+import type { Terminal } from '../terminal.js';
+
+type SubscribeOpts = {
+  onStdout?: (data: Uint8Array) => void;
+  onEvent?: (data: unknown) => void;
+};
+
+const subscriptions: SubscribeOpts[] = [];
+
+vi.mock('../../services/terminal-socket-client.js', () => ({
+  terminalSocketClient: {
+    subscribe: vi.fn((_sessionId: string, opts: SubscribeOpts) => {
+      subscriptions.push(opts);
+      return () => {};
+    }),
+  },
+}));
+
+const { ConnectionManager } = await import('./connection-manager.js');
+
+const encoder = new TextEncoder();
+
+describe('ConnectionManager replay after reconnect', () => {
+  let written: string[];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    subscriptions.length = 0;
+    written = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function connect() {
+    const manager = new ConnectionManager(vi.fn(), vi.fn());
+    manager.setTerminal({ write: (data: string) => written.push(data) } as unknown as Terminal);
+    manager.setSession({ id: 's1' } as Session);
+    manager.setConnected(true);
+    manager.connectToStream();
+    return subscriptions[0];
+  }
+
+  it('starts the terminal over when the server replays history on a new socket', async () => {
+    const sub = connect();
+
+    // First connection: header + history.
+    sub.onEvent?.({ kind: 'header', header: { width: 80, height: 24 } });
+    sub.onStdout?.(encoder.encode('$ ls\r\nfile\r\n'));
+    await vi.advanceTimersByTimeAsync(20);
+
+    // Phone slept, socket came back, the client re-subscribed: same history again.
+    sub.onEvent?.({ kind: 'header', header: { width: 80, height: 24 } });
+    sub.onStdout?.(encoder.encode('$ ls\r\nfile\r\n'));
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(written.join('')).toBe('$ ls\r\nfile\r\n\x1bc$ ls\r\nfile\r\n');
+  });
+
+  it('does not reset a terminal that has shown nothing yet', async () => {
+    const sub = connect();
+    sub.onEvent?.({ kind: 'header', header: { width: 80, height: 24 } });
+    sub.onStdout?.(encoder.encode('hi'));
+    await vi.advanceTimersByTimeAsync(20);
+    expect(written.join('')).toBe('hi');
+  });
+});
