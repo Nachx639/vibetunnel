@@ -848,4 +848,10 @@ export const bn: Messages = {
   'theme.cyber': 'সাইবার',
   'theme.gold': 'সোনালি',
   'theme.clay': 'মাটি',
+
+  // Offline page (service worker)
+  'pwa.offlineTitle': 'সার্ভারে পৌঁছানো যাচ্ছে না',
+  'pwa.offlineBody': 'সার্ভার আবার পাওয়া গেলেই VibeTunnel আবার সংযুক্ত হবে।',
+  'pwa.offlineRetrying': 'আবার চেষ্টা করা হচ্ছে…',
+  'pwa.offlineRetryNow': 'এখনই আবার চেষ্টা করুন',
 };

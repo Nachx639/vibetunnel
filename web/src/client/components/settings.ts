@@ -118,7 +118,11 @@ export class Settings extends LitElement {
   }
 
   private async initializeNotifications(): Promise<void> {
-    await pushNotificationService.waitForInitialization();
+    // whenInitialized(), not waitForInitialization(): the settings connect before the app
+    // starts the push service, and the latter then returned at once, read "no subscription"
+    // and forced a resubscribe before the service worker was even registered.
+    await pushNotificationService.whenInitialized();
+    if (!this.isConnected) return;
 
     this.permission = pushNotificationService.getPermission();
     this.subscription = pushNotificationService.getSubscription();

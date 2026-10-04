@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/config.js';
 import type { NotificationPreferences } from './push-notification-service.js';
-import { pushNotificationService } from './push-notification-service.js';
+import { PushNotificationService, pushNotificationService } from './push-notification-service.js';
 import { serverConfigService } from './server-config-service.js';
 import { serverEventService } from './server-event-service.js';
 
@@ -340,6 +340,30 @@ describe('PushNotificationService', () => {
   });
 
   describe('initialize', () => {
+    it('registers the worker (offline page) even where push is unsupported', async () => {
+      // Safari outside the home-screen app and Chrome on iOS have no PushManager.
+      const noPush = { ...createMockWindow(), isSecureContext: true } as Record<string, unknown>;
+      delete noPush.PushManager;
+      vi.stubGlobal('window', noPush);
+
+      await new PushNotificationService().initialize();
+
+      expect(mockNavigator.serviceWorker.register).toHaveBeenCalledWith('/sw.js', { scope: '/' });
+    });
+
+    it('whenInitialized() waits for an initialize() that starts later', async () => {
+      const service = new PushNotificationService();
+      let settled = false;
+      void service.whenInitialized().then(() => {
+        settled = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(settled).toBe(false);
+      await service.initialize();
+      await Promise.resolve();
+      expect(settled).toBe(true);
+    });
+
     it('should complete initialization without error', async () => {
       await pushNotificationService.initialize();
 
@@ -769,6 +793,33 @@ describe('PushNotificationService', () => {
       );
 
       unsubscribe();
+    });
+  });
+  describe('clearSessionNotifications', () => {
+    it('closes only the opened session’s VibeTunnel notifications', async () => {
+      const make = (tag: string, sessionId?: string) => ({
+        tag,
+        data: sessionId ? { sessionId } : null,
+        close: vi.fn(),
+      });
+      const opened = make('vibetunnel-command-finished-a', 'a');
+      const openedBell = make('vibetunnel-bell-a', 'a');
+      const other = make('vibetunnel-command-finished-b', 'b');
+      const foreign = make('someone-else', 'a');
+      const alert = make('vibetunnel-system-alert');
+      // biome-ignore lint/suspicious/noExplicitAny: Required for test mocking
+      const testService = pushNotificationService as unknown as any;
+      testService.serviceWorkerRegistration = {
+        getNotifications: vi.fn().mockResolvedValue([opened, openedBell, other, foreign, alert]),
+      };
+
+      await pushNotificationService.clearSessionNotifications('a');
+
+      expect(opened.close).toHaveBeenCalled();
+      expect(openedBell.close).toHaveBeenCalled();
+      expect(other.close).not.toHaveBeenCalled();
+      expect(foreign.close).not.toHaveBeenCalled();
+      expect(alert.close).not.toHaveBeenCalled();
     });
   });
 });

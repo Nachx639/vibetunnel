@@ -871,4 +871,10 @@ export const es: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Oro',
   'theme.clay': 'Arcilla',
+
+  // Offline page (service worker)
+  'pwa.offlineTitle': 'No se puede conectar con el servidor',
+  'pwa.offlineBody': 'VibeTunnel se reconectará en cuanto se pueda volver a llegar al servidor.',
+  'pwa.offlineRetrying': 'Reintentando…',
+  'pwa.offlineRetryNow': 'Reintentar ahora',
 };

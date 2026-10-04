@@ -866,6 +866,12 @@ export const en = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Gold',
   'theme.clay': 'Clay',
+
+  // Offline page (service worker)
+  'pwa.offlineTitle': "Can't reach the server",
+  'pwa.offlineBody': 'VibeTunnel will reconnect as soon as the server is reachable again.',
+  'pwa.offlineRetrying': 'Retrying…',
+  'pwa.offlineRetryNow': 'Retry now',
 };
 
 export type MessageKey = keyof typeof en;

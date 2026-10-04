@@ -846,4 +846,10 @@ export const hi: Messages = {
   'theme.cyber': 'साइबर',
   'theme.gold': 'सुनहरा',
   'theme.clay': 'मिट्टी',
+
+  // Offline page (service worker)
+  'pwa.offlineTitle': 'सर्वर तक नहीं पहुँच पा रहे',
+  'pwa.offlineBody': 'जैसे ही सर्वर फिर से उपलब्ध होगा, VibeTunnel फिर से जुड़ जाएगा।',
+  'pwa.offlineRetrying': 'फिर से कोशिश की जा रही है…',
+  'pwa.offlineRetryNow': 'अभी फिर कोशिश करें',
 };

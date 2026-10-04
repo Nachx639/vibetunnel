@@ -837,4 +837,10 @@ export const zhCN: Messages = {
   'theme.cyber': '赛博',
   'theme.gold': '金色',
   'theme.clay': '陶土',
+
+  // Offline page (service worker)
+  'pwa.offlineTitle': '无法连接到服务器',
+  'pwa.offlineBody': '服务器恢复可访问后，VibeTunnel 会自动重新连接。',
+  'pwa.offlineRetrying': '正在重试…',
+  'pwa.offlineRetryNow': '立即重试',
 };

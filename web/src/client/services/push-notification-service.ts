@@ -11,6 +11,25 @@ import { authClient } from './auth-client';
 import { serverConfigService } from './server-config-service';
 import { serverEventService } from './server-event-service';
 
+/** How long the service worker may take to be ready, or to hand over the push subscription. */
+const SW_READY_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 // Re-export types for components
 export type { NotificationPreferences, PushSubscription };
 
@@ -29,6 +48,11 @@ export class PushNotificationService {
   private initializationPromise: Promise<void> | null = null;
   // biome-ignore lint/correctness/noUnusedPrivateClassMembers: Used for feature detection
   private pushNotificationsAvailable = false;
+  private resolveInitialized: () => void = () => {};
+  /** Settles once initialize() has finished, even when awaited before it was called. */
+  private readonly initializedPromise = new Promise<void>((resolve) => {
+    this.resolveInitialized = resolve;
+  });
 
   // biome-ignore lint/complexity/noUselessConstructor: This constructor documents the intentional design decision to not auto-initialize
   constructor() {
@@ -44,11 +68,13 @@ export class PushNotificationService {
       return this.initializationPromise;
     }
 
-    this.initializationPromise = this._initialize().catch((error) => {
-      logger.error('failed to initialize push notification service:', error);
-      // Don't throw here - just log the error
-      // Push notifications are optional functionality
-    });
+    this.initializationPromise = this._initialize()
+      .catch((error) => {
+        logger.error('failed to initialize push notification service:', error);
+        // Don't throw here - just log the error
+        // Push notifications are optional functionality
+      })
+      .finally(() => this.resolveInitialized());
 
     return this.initializationPromise;
   }
@@ -63,9 +89,15 @@ export class PushNotificationService {
         return;
       }
 
-      // Check if push messaging is supported
+      // Check if push messaging is supported. Without it (Safari outside the home-screen
+      // app, Chrome on iOS) the worker is still registered for its offline page.
       if (!('PushManager' in window)) {
         logger.warn('push messaging not supported');
+        if ((window as Window).isSecureContext) {
+          await navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error) => {
+            logger.warn('service worker registration failed', error);
+          });
+        }
         return;
       }
 
@@ -88,8 +120,13 @@ export class PushNotificationService {
 
       logger.log('service worker registered successfully');
 
-      // Wait for service worker to be ready
-      const registration = await navigator.serviceWorker.ready;
+      // Wait for service worker to be ready (bounded: it may never come, and the settings
+      // wait for this initialization)
+      const registration = await withTimeout(
+        navigator.serviceWorker.ready,
+        SW_READY_TIMEOUT_MS,
+        'the service worker never became ready'
+      );
 
       // Use the ready registration if our registration failed
       if (!this.serviceWorkerRegistration) {
@@ -97,7 +134,11 @@ export class PushNotificationService {
       }
 
       // Get existing subscription if any
-      this.pushSubscription = await this.serviceWorkerRegistration.pushManager.getSubscription();
+      this.pushSubscription = await withTimeout(
+        this.serviceWorkerRegistration.pushManager.getSubscription(),
+        SW_READY_TIMEOUT_MS,
+        'reading the push subscription timed out'
+      );
 
       logger.log('Existing push subscription found:', {
         hasSubscription: !!this.pushSubscription,
@@ -379,6 +420,15 @@ export class PushNotificationService {
   }
 
   /**
+   * Resolves once initialize() has run (existing subscription known). Unlike
+   * waitForInitialization() it also waits when initialize() has not been called yet, so a
+   * component that renders first does not mistake "not loaded yet" for "not subscribed".
+   */
+  whenInitialized(): Promise<void> {
+    return this.initializedPromise;
+  }
+
+  /**
    * Check if push notifications are supported
    */
   isSupported(): boolean {
@@ -535,6 +585,25 @@ export class PushNotificationService {
       logger.log('cleared all notifications');
     } catch (error) {
       logger.error('failed to clear notifications:', error);
+    }
+  }
+
+  /**
+   * Close the notifications about one session: opening it means they've been seen,
+   * so they shouldn't stay on the lock screen.
+   */
+  async clearSessionNotifications(sessionId: string): Promise<void> {
+    if (!this.serviceWorkerRegistration?.getNotifications) return;
+    try {
+      const notifications = await this.serviceWorkerRegistration.getNotifications();
+      for (const notification of notifications) {
+        const data = notification.data as { sessionId?: unknown } | null;
+        if (notification.tag?.startsWith('vibetunnel-') && data?.sessionId === sessionId) {
+          notification.close();
+        }
+      }
+    } catch (error) {
+      logger.debug('failed to clear session notifications:', error);
     }
   }
 

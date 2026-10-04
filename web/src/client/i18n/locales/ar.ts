@@ -845,4 +845,10 @@ export const ar: Messages = {
   'theme.cyber': 'سايبر',
   'theme.gold': 'ذهبي',
   'theme.clay': 'طيني',
+
+  // Offline page (service worker)
+  'pwa.offlineTitle': 'تعذّر الوصول إلى الخادم',
+  'pwa.offlineBody': 'سيعيد VibeTunnel الاتصال بمجرد أن يصبح الخادم متاحًا مجددًا.',
+  'pwa.offlineRetrying': 'جارٍ إعادة المحاولة…',
+  'pwa.offlineRetryNow': 'أعد المحاولة الآن',
 };

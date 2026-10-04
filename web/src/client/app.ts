@@ -16,6 +16,7 @@ import { BREAKPOINTS, SIDEBAR, TIMING, TRANSITIONS, Z_INDEX } from './utils/cons
 // Import logger
 import { createLogger } from './utils/logger.js';
 import { isIOS } from './utils/mobile-utils.js';
+import { installOfflinePage } from './utils/offline-page.js';
 import { type MediaQueryState, responsiveObserver } from './utils/responsive-utils.js';
 import { triggerTerminalResize } from './utils/terminal-utils.js';
 import { titleManager } from './utils/title-manager.js';
@@ -164,6 +165,10 @@ export class VibeTunnelApp extends LitElement {
       this.requestUpdate();
     }
 
+    if (changedProperties.has('selectedSessionId') || changedProperties.has('currentView')) {
+      this.clearViewedSessionNotifications();
+    }
+
     // Add/remove body class based on current view to control animations
     if (changedProperties.has('currentView')) {
       if (this.currentView === 'session') {
@@ -195,6 +200,7 @@ export class VibeTunnelApp extends LitElement {
     window.removeEventListener('keydown', this.handleKeyDown);
     // Clean up capture toggle listener
     document.removeEventListener('capture-toggled', this.handleCaptureToggled as EventListener);
+    document.removeEventListener('visibilitychange', this.clearViewedSessionNotifications);
     // Clean up auto refresh interval
     if (this.autoRefreshIntervalId !== null) {
       clearInterval(this.autoRefreshIntervalId);
@@ -577,19 +583,21 @@ export class VibeTunnelApp extends LitElement {
       await terminalSocketClient.initialize();
       serverEventService.initialize();
 
-      // Initialize push notification service always
-      // It handles its own permission checks and user preferences
-      logger.log('Initializing push notification service...');
-      await pushNotificationService.initialize();
+      // The service worker shows this page (in the user's language) when the server can't be
+      // reached. Only the Cache API: it never waits for push or the service worker.
+      installOfflinePage();
 
-      // Log the initialization status
-      const isSupported = pushNotificationService.isSupported();
-      const isSecure = window.isSecureContext;
-      logger.log('Push notification initialization complete:', {
-        isSupported,
-        isSecureContext: isSecure,
-        location: window.location.hostname,
-        protocol: window.location.protocol,
+      // Push notifications set themselves up in the background: they wait for the service
+      // worker (navigator.serviceWorker.ready, the push subscription), which can take long or
+      // never come, and the session list must not wait for them.
+      logger.log('Initializing push notification service...');
+      void pushNotificationService.initialize().then(() => {
+        logger.log('Push notification initialization complete:', {
+          isSupported: pushNotificationService.isSupported(),
+          isSecureContext: window.isSecureContext,
+          location: window.location.hostname,
+          protocol: window.location.protocol,
+        });
       });
 
       this.servicesInitialized = true;
@@ -1549,8 +1557,32 @@ export class VibeTunnelApp extends LitElement {
   }
 
   private setupNotificationHandlers() {
-    // Listen for notification settings events
+    // A tapped push notification (forwarded by the service worker to this open window)
+    // opens its session.
+    this.addEventListener('notification-action', ((e: CustomEvent) => {
+      const { action, data } = e.detail ?? {};
+      if (action === 'view-logs') {
+        window.location.href = '/logs';
+        return;
+      }
+      if (action !== 'view-session' || typeof data?.sessionId !== 'string') return;
+      void this.handleNavigateToSession(
+        new CustomEvent('navigate-to-session', { detail: { sessionId: data.sessionId } })
+      );
+    }) as EventListener);
+    document.addEventListener('visibilitychange', this.clearViewedSessionNotifications);
   }
+
+  /** The session on screen has been seen: take its notifications off the lock screen. */
+  private clearViewedSessionNotifications = () => {
+    if (
+      document.visibilityState === 'visible' &&
+      this.currentView === 'session' &&
+      this.selectedSessionId
+    ) {
+      void pushNotificationService.clearSessionNotifications(this.selectedSessionId);
+    }
+  };
 
   private handleOpenSettings = () => {
     this.showSettings = true;

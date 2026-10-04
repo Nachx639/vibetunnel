@@ -870,4 +870,10 @@ export const ptBR: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Ouro',
   'theme.clay': 'Argila',
+
+  // Offline page (service worker)
+  'pwa.offlineTitle': 'Não foi possível acessar o servidor',
+  'pwa.offlineBody': 'O VibeTunnel vai reconectar assim que o servidor estiver acessível de novo.',
+  'pwa.offlineRetrying': 'Tentando novamente…',
+  'pwa.offlineRetryNow': 'Tentar agora',
 };

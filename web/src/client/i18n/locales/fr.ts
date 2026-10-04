@@ -880,4 +880,10 @@ export const fr: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Or',
   'theme.clay': 'Argile',
+
+  // Offline page (service worker)
+  'pwa.offlineTitle': 'Impossible de joindre le serveur',
+  'pwa.offlineBody': 'VibeTunnel se reconnectera dès que le serveur sera de nouveau joignable.',
+  'pwa.offlineRetrying': 'Nouvelle tentative…',
+  'pwa.offlineRetryNow': 'Réessayer',
 };

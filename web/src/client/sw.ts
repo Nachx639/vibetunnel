@@ -4,7 +4,13 @@
 
 declare const self: ServiceWorkerGlobalScope;
 
-export {};
+import { handleNotificationClick } from './sw-notification-click.js';
+import {
+  isGuardedNavigation,
+  OFFLINE_CACHE,
+  OFFLINE_PAGE_URL,
+  respondToNavigation,
+} from './sw-offline.js';
 
 // Notification tag prefix for VibeTunnel notifications
 const NOTIFICATION_TAG_PREFIX = 'vibetunnel-';
@@ -98,8 +104,38 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
   console.log('[SW] Activating service worker');
 
   event.waitUntil(
-    // Take control of all pages
-    self.clients.claim()
+    Promise.all([
+      // Take control of all pages
+      self.clients.claim(),
+      // Page loads start on the network while the worker boots, so guarding them with a
+      // fetch handler doesn't slow every launch down.
+      self.registration.navigationPreload?.enable().catch(() => {}),
+    ])
+  );
+});
+
+// Failed page loads (server down or unreachable) get a retrying offline page instead of the
+// browser's error screen. Network first; nothing but that static page is ever cached.
+self.addEventListener('fetch', (event: FetchEvent) => {
+  if (!isGuardedNavigation(event.request, self.location.origin)) {
+    // Other navigations (an /api/fs/raw file opened in a tab) go to the network as usual,
+    // but through the preload already in flight so they aren't requested twice.
+    if (event.request.mode === 'navigate') {
+      event.respondWith(
+        (async () =>
+          ((await event.preloadResponse) as Response | undefined) ?? fetch(event.request))()
+      );
+    }
+    return;
+  }
+  event.respondWith(
+    respondToNavigation(
+      async () => ((await event.preloadResponse) as Response | undefined) ?? fetch(event.request),
+      async () => {
+        const cache = await caches.open(OFFLINE_CACHE);
+        return cache.match(OFFLINE_PAGE_URL);
+      }
+    )
   );
 });
 
@@ -132,7 +168,7 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
 
   const data = event.notification.data as NotificationData;
 
-  event.waitUntil(handleNotificationClick(event.action, data));
+  event.waitUntil(handleNotificationClick(event.action, data, self.clients, self.location.origin));
 });
 
 // Notification close event - track dismissals
@@ -241,68 +277,6 @@ function getVibrationPattern(notificationType: string): number[] {
       return [100]; // Default brief vibration
   }
 }
-
-async function handleNotificationClick(action: string, data: NotificationData): Promise<void> {
-  const clients = await self.clients.matchAll({
-    type: 'window',
-    includeUncontrolled: true,
-  });
-
-  // Try to focus existing window first
-  for (const client of clients) {
-    if (client.url.includes(self.location.origin)) {
-      try {
-        await client.focus();
-
-        // Send action to the client
-        client.postMessage({
-          type: 'notification-action',
-          action,
-          data,
-        });
-
-        return;
-      } catch (error) {
-        console.warn('[SW] Failed to focus client:', error);
-      }
-    }
-  }
-
-  // No existing window, open a new one
-  let url = self.location.origin;
-
-  switch (action) {
-    case 'view-session': {
-      if (
-        data.type === 'session-exit' ||
-        data.type === 'session-error' ||
-        data.type === 'session-start' ||
-        data.type === 'command-finished' ||
-        data.type === 'command-error'
-      ) {
-        url += `/session/${data.sessionId}`;
-      }
-      break;
-    }
-    case 'view-logs': {
-      url += '/logs';
-      break;
-    }
-    default:
-      // Just open the main page
-      break;
-  }
-
-  try {
-    await self.clients.openWindow(url);
-  } catch (error) {
-    console.error('[SW] Failed to open window:', error);
-  }
-}
-
-// No offline notification handling needed
-
-// No fetch event handler needed - we don't cache anything
 
 // Message handler for communication with main thread
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
