@@ -46,6 +46,7 @@ import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
 import { closeLogger, createLogger, initLogger, setDebugMode } from './utils/logger.js';
+import { staticFileOptions } from './utils/static-cache.js';
 import { VapidManager } from './utils/vapid-manager.js';
 import { getVersionInfo, printVersionBanner } from './version.js';
 import { controlUnixHandler } from './websocket/control-unix-handler.js';
@@ -895,30 +896,7 @@ export async function createApp(): Promise<AppInstance> {
   const publicPath = getPublicPath();
   const isDevelopment = !process.env.BUILD_DATE || process.env.NODE_ENV === 'development';
 
-  app.use(
-    express.static(publicPath, {
-      extensions: ['html'], // This allows /logs to resolve to /logs.html
-      maxAge: isDevelopment ? 0 : '1d',
-      // ETag/Last-Modified come from size+mtime, so a rebuild always changes them. With
-      // `no-cache` the browser revalidates on every load and gets a 304 instead of
-      // re-downloading the multi-MB bundle (dev mode used `no-store`).
-      etag: true,
-      lastModified: true,
-      setHeaders: (res, filePath) => {
-        if (isDevelopment) {
-          res.setHeader('Cache-Control', 'no-cache');
-        } else if (/\.(js|css|map|wasm|json)$/.test(filePath)) {
-          // Bundle file names carry no content hash, so they must be revalidated: a year-long
-          // `immutable` cache kept phones on the old client after an upgrade.
-          res.setHeader('Cache-Control', 'no-cache');
-        } else if (/\.(woff2?|ttf|eot|svg|png|jpg|jpeg|gif|ico)$/.test(filePath)) {
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        } else if (filePath.endsWith('.html')) {
-          res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
-        }
-      },
-    })
-  );
+  app.use(express.static(publicPath, staticFileOptions(isDevelopment)));
   logger.debug(
     `Serving static files from: ${publicPath} ${isDevelopment ? 'with revalidation on every request (dev mode)' : 'with caching headers'}`
   );
