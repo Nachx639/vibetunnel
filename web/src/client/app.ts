@@ -12,6 +12,7 @@ import { LocaleController, t, whenLocaleReady } from './i18n/index.js';
 import { showActionToast } from './utils/action-toast.js';
 import { announce, ensureLiveRegion } from './utils/announce.js';
 import { getAutoReloadOnUpdate, startVersionWatch, userIsTyping } from './utils/app-version.js';
+import { fetchAuthConfig } from './utils/auth-config.js';
 import { isBrowserShortcut } from './utils/browser-shortcuts.js';
 // Import utilities
 import { BREAKPOINTS, SIDEBAR, TIMING, TRANSITIONS, Z_INDEX } from './utils/constants.js';
@@ -481,11 +482,10 @@ export class VibeTunnelApp extends LitElement {
     // Check if no-auth is enabled first
     let noAuthEnabled = false;
     try {
-      const configResponse = await fetch('/api/auth/config');
-      if (configResponse.ok) {
-        const authConfig = await configResponse.json();
+      const authConfig = await fetchAuthConfig();
+      if (authConfig) {
         logger.log('🔧 Auth config:', authConfig);
-        noAuthEnabled = authConfig.noAuth;
+        noAuthEnabled = authConfig.noAuth === true;
 
         if (authConfig.noAuth) {
           logger.log('🔓 No auth required, bypassing authentication');
@@ -1435,9 +1435,8 @@ export class VibeTunnelApp extends LitElement {
     if (pathParts.length === 1) {
       // Check authentication first
       try {
-        const configResponse = await fetch('/api/auth/config');
-        if (configResponse.ok) {
-          const authConfig = await configResponse.json();
+        const authConfig = await fetchAuthConfig();
+        if (authConfig) {
           if (!authConfig.noAuth && !authClient.isAuthenticated()) {
             this.currentView = 'auth';
             this.selectedSessionId = null;

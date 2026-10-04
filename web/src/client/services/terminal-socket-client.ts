@@ -7,6 +7,7 @@ import {
   WsV3MessageType,
   WsV3SubscribeFlags,
 } from '../../shared/ws-v3.js';
+import { fetchAuthConfig } from '../utils/auth-config.js';
 import { createLogger } from '../utils/logger.js';
 import { TerminalRenderer } from '../utils/terminal-renderer.js';
 import { authClient } from './auth-client.js';
@@ -95,9 +96,9 @@ export class TerminalSocketClient {
 
   private async checkNoAuthMode(): Promise<void> {
     try {
-      const response = await fetch('/api/auth/config');
-      if (response.ok) {
-        const config = await response.json();
+      // Shares the app's own request at startup (utils/auth-config.ts).
+      const config = await fetchAuthConfig();
+      if (config) {
         this.noAuthMode = config.noAuth === true;
       }
     } catch (error) {
