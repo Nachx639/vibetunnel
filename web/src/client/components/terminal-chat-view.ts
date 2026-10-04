@@ -1044,10 +1044,6 @@ export class TerminalChatView extends LitElement {
                 <button
                   class="option-button"
                   @click=${() => this.handleOptionClick(option)}
-                  @touchend=${(e: TouchEvent) => {
-                    e.preventDefault();
-                    this.handleOptionClick(option);
-                  }}
                 >
                   <span class="option-number">${index + 1}</span>
                   <span class="option-text">${option.label}</span>

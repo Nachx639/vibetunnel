@@ -22,6 +22,7 @@ import type { Session } from '../../shared/types.js';
 import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import { detectMobile } from '../utils/mobile-utils.js';
+import { endsADrag } from '../utils/pointer-drag.js';
 import type { ClipboardManagerCallbacks } from './clipboard-manager.js';
 import type { CommandPaletteCallbacks } from './command-palette.js';
 import type { SlashCommandsCallbacks } from './slash-commands.js';
@@ -223,6 +224,8 @@ export class MobileActionBar extends LitElement {
     if (this.longPressTimer) {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;
+      // Unless the finger moved: iOS ends a scroll that started on the button here too.
+      if (endsADrag(event)) return;
       logger.debug(`Button tap: ${button.id} -> ${button.action}`);
       this.executeAction(button.action);
     } else {
