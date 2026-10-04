@@ -14,9 +14,14 @@ const MAX_COMPARED_LINES = 300;
 const CONTEXT = 2;
 /** Marks unchanged lines left out between two changes (or two edits of a MultiEdit). */
 export const DIFF_GAP = '…';
+/** Starts a line naming the file the next lines belong to (patches touching several files). */
+export const DIFF_FILE = '#';
 
 export interface ChatDiff {
-  /** Each line starts with '-' (removed), '+' (added) or ' ' (unchanged), or is DIFF_GAP. */
+  /**
+   * Each line starts with '-' (removed), '+' (added), ' ' (unchanged) or DIFF_FILE (a file
+   * name), or is DIFF_GAP.
+   */
   lines: string[];
   /** Lines left out past the first MAX_LINES. */
   more: number;
@@ -150,4 +155,27 @@ export function diffForToolUse(
     default:
       return undefined;
   }
+}
+
+/**
+ * The change a Codex apply_patch makes (its own format: `*** Update File: path`, `@@` hunks,
+ * then lines signed like a unified diff). Several files get a name line each.
+ */
+export function diffFromPatch(patch: string): ChatDiff | undefined {
+  const files = patch.match(/^\*\*\* (?:Add|Update|Delete) File: /gm)?.length ?? 0;
+  const lines: string[] = [];
+  let fileHasLines = false;
+  for (const raw of patch.split('\n')) {
+    const file = raw.match(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/);
+    if (file) {
+      if (files > 1) lines.push(`${DIFF_FILE}${file[1].trim()}`);
+      fileHasLines = false;
+    } else if (raw.startsWith('@@')) {
+      if (fileHasLines) lines.push(DIFF_GAP);
+    } else if (/^[-+ ]/.test(raw)) {
+      lines.push(raw);
+      fileHasLines = true;
+    }
+  }
+  return lines.some((line) => line[0] === '-' || line[0] === '+') ? capped(lines) : undefined;
 }

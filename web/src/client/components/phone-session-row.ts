@@ -111,7 +111,9 @@ const WRAPPER_FLAGS = /^-/;
  * The program a session runs: "claude" for ["zsh", "-lic", "claude --resume x"] or
  * ["/opt/homebrew/bin/gemini"], "zsh" for a plain shell.
  */
-export function sessionTool(session: Pick<Session, 'command'>): string {
+export function sessionTool(session: Pick<Session, 'command' | 'codexActive'>): string {
+  // `codex` typed inside a shell: the server spots its process in the session (agent chat).
+  if (session.codexActive) return 'codex';
   const argv = Array.isArray(session.command) ? session.command : [];
   const base = (word: string) => word.split('/').pop()?.toLowerCase() ?? '';
   const first = base(argv[0] ?? '');
@@ -465,6 +467,7 @@ export class PhoneSessionRow extends LitElement {
     return (
       this.session.claudeStatus?.title ||
       this.session.claudeTitle ||
+      this.session.codexTitle ||
       this.session.name ||
       this.session.command?.join(' ') ||
       ''

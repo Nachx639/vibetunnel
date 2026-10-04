@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readClaudeStatuses } from '../services/claude-chat';
+import { readCodexChat } from '../services/codex-chat';
+import { codexSessionRef } from '../services/codex-process';
 import { createSessionRoutes } from './sessions';
 
 vi.mock('../websocket/control-unix-handler', () => ({
@@ -13,6 +15,12 @@ vi.mock('../utils/git-info', () => ({ detectGitInfo: vi.fn(async () => ({})) }))
 vi.mock('../services/claude-chat', async (importActual) => ({
   ...(await importActual<typeof import('../services/claude-chat')>()),
   readClaudeStatuses: vi.fn(),
+}));
+
+vi.mock('../services/codex-process', () => ({ codexSessionRef: vi.fn() }));
+vi.mock('../services/codex-chat', async (importActual) => ({
+  ...(await importActual<typeof import('../services/codex-chat')>()),
+  readCodexChat: vi.fn(),
 }));
 
 type Handler = (req: Request, res: Response) => Promise<void>;
@@ -74,6 +82,34 @@ describe('GET /sessions agent status', () => {
     vi.mocked(readClaudeStatuses).mockResolvedValue(
       new Map([[42, { status: 'busy', title: 'Fix login', sessionId: 'abc-123' }]])
     );
+    vi.mocked(codexSessionRef).mockReset();
+    vi.mocked(codexSessionRef).mockResolvedValue(null);
+    vi.mocked(readCodexChat).mockReset();
+  });
+
+  it('looks for Codex only with agent chat on, and only where no Claude Code runs', async () => {
+    const ref = { id: 'proc:43:1', workingDir: '/w', startedAt: '2025-10-02T10:00:00.000Z' };
+    vi.mocked(codexSessionRef).mockImplementation(async (session) =>
+      session.id === 'shell' ? ref : null
+    );
+    vi.mocked(readCodexChat).mockReturnValue({
+      available: true,
+      agent: 'codex',
+      title: 'add a dark mode',
+      messages: [],
+    });
+
+    expect((await listRoute(false).list()).some((s) => s.codexActive)).toBe(false);
+    expect(codexSessionRef).not.toHaveBeenCalled();
+
+    const sessions = await listRoute(true).list();
+    expect(sessions.find((s) => s.id === 'shell')).toMatchObject({
+      codexActive: true,
+      codexTitle: 'add a dark mode',
+    });
+    expect(sessions.find((s) => s.id === 'claude')?.codexActive).toBeUndefined();
+    expect(codexSessionRef).toHaveBeenCalledTimes(1);
+    expect(readCodexChat).toHaveBeenCalledWith(ref);
   });
 
   it('reads no process, transcript or screen and writes nothing while agent chat is off', async () => {

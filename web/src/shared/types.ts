@@ -157,6 +157,12 @@ export interface Session extends SessionInfo {
    * (plain text, at most 120 characters). Only when the list asks for it (`?lastLine=1`).
    */
   lastLine?: string;
+
+  /** Running OpenAI Codex session: its first prompt, as the conversation title (agent chat). */
+  codexTitle?: string;
+
+  /** OpenAI Codex runs in this session (its command, or typed inside its shell; agent chat). */
+  codexActive?: boolean;
 }
 
 /**

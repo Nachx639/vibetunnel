@@ -854,6 +854,8 @@ export class VibeTunnelApp extends LitElement {
                 JSON.stringify(existingSession.claudeStatus?.activity) !==
                   JSON.stringify(newSession.claudeStatus?.activity) ||
                 existingSession.claudeTitle !== newSession.claudeTitle ||
+                existingSession.codexTitle !== newSession.codexTitle ||
+                existingSession.codexActive !== newSession.codexActive ||
                 // Shell rows: last output line (the server re-reads it at most every 2 s).
                 existingSession.lastLine !== newSession.lastLine ||
                 // Check if Git info has been added in the new data

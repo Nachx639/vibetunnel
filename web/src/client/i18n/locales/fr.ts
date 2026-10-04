@@ -1094,4 +1094,13 @@ export const fr: Messages = {
   'sessions.row.promptChanged': 'La question a changé — ouvrez la session pour répondre.',
   'screenMenu.sendFailed': 'Envoi impossible. Réessayez.',
   'screenMenu.changed': 'La question à l’écran a changé. Réessayez.',
+  // Phone chat: Codex sessions
+  'codex.chat.empty': 'Envoyez un message à Codex ci-dessous.',
+  'codex.chat.working': 'Codex travaille',
+  'codex.chat.finished': 'Codex a terminé',
+  'codex.chat.stop': 'Arrêter Codex',
+  'codex.slash.approvals': 'Choisir ce que Codex peut faire sans demander',
+  'codex.slash.review': 'Relire vos modifications en cours',
+  'codex.slash.diff': 'Afficher le diff git, fichiers non suivis inclus',
+  'codex.slash.init': 'Créer AGENTS.md',
 };

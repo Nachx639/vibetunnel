@@ -1056,4 +1056,13 @@ export const hi: Messages = {
   'sessions.row.promptChanged': 'सवाल बदल गया है — जवाब देने के लिए सत्र खोलें।',
   'screenMenu.sendFailed': 'भेजा नहीं जा सका। फिर से कोशिश करें।',
   'screenMenu.changed': 'स्क्रीन पर सवाल बदल गया है। फिर से कोशिश करें।',
+  // Phone chat: Codex sessions
+  'codex.chat.empty': 'नीचे Codex को संदेश भेजें।',
+  'codex.chat.working': 'Codex काम कर रहा है',
+  'codex.chat.finished': 'Codex ने काम पूरा किया',
+  'codex.chat.stop': 'Codex रोकें',
+  'codex.slash.approvals': 'चुनें कि Codex बिना पूछे क्या कर सकता है',
+  'codex.slash.review': 'अपने मौजूदा बदलावों की समीक्षा करें',
+  'codex.slash.diff': 'git diff दिखाएँ, अनट्रैक की गई फ़ाइलों सहित',
+  'codex.slash.init': 'AGENTS.md बनाएँ',
 };

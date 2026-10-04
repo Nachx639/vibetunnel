@@ -516,7 +516,12 @@ export class SessionHeader extends LitElement {
     const command = Array.isArray(session.command) ? session.command.join(' ') : '';
     // Claude's conversation title when the server reports one (agent chat on): the session
     // name is often just "claude (~/project)". Under it, what Claude is doing right now.
-    const title = session.claudeStatus?.title || session.claudeTitle || session.name || command;
+    const title =
+      session.claudeStatus?.title ||
+      session.claudeTitle ||
+      session.codexTitle ||
+      session.name ||
+      command;
     const state = rowState(session);
     const claude = session.claudeStatus;
     let detail: unknown = nothing;

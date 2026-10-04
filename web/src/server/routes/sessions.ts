@@ -19,6 +19,8 @@ import {
   type InitialInputOptions,
   typeWhenClaudeReady,
 } from '../services/claude-initial-input.js';
+import { readCodexChat } from '../services/codex-chat.js';
+import { codexSessionRef } from '../services/codex-process.js';
 import { menuKeyHash } from '../services/menu-key-hash.js';
 import type { RemoteRegistry } from '../services/remote-registry.js';
 import { createScreenMenu } from '../services/screen-menu.js';
@@ -389,6 +391,25 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     }
   }
 
+  /**
+   * OpenAI Codex on each running local session where no Claude Code runs (agent chat): its
+   * conversation title (the first prompt), like Claude's generated title.
+   */
+  async function addCodexTitles(sessions: Session[]): Promise<void> {
+    for (const session of sessions) {
+      if (session.status !== 'running' || session.claudeStatus) continue;
+      try {
+        const ref = await codexSessionRef(session);
+        if (!ref) continue;
+        session.codexActive = true;
+        const title = readCodexChat(ref).title;
+        if (title) session.codexTitle = title;
+      } catch (error) {
+        logger.debug(`[GET /sessions] Could not read Codex title of ${session.id}: ${error}`);
+      }
+    }
+  }
+
   // List all sessions (aggregate local + remote in HQ mode)
   router.get('/sessions', async (req, res) => {
     logger.debug('[GET /sessions] Listing all sessions');
@@ -441,6 +462,7 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       // Off, no process tree, transcript or screen is read for this.
       if (config.agentChatEnabled?.()) {
         await addClaudeStatuses(localSessionsWithSource as Session[]);
+        await addCodexTitles(localSessionsWithSource as Session[]);
       }
       // The compact phone list shows a shell's last line of output instead of a preview.
       if (req.query?.lastLine === '1') {

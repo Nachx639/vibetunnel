@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DIFF_GAP, diffForToolUse } from './edit-diff';
+import { DIFF_FILE, DIFF_GAP, diffForToolUse, diffFromPatch } from './edit-diff';
 
 const edit = (old_string: string, new_string: string) =>
   diffForToolUse('Edit', { file_path: '/x.ts', old_string, new_string });
@@ -64,5 +64,52 @@ describe('the change an Edit shows in the phone chat', () => {
       ],
     });
     expect(diff?.lines).toEqual(['-a', '+A', DIFF_GAP, '-b', '+B']);
+  });
+});
+
+describe('the change a Codex apply_patch shows', () => {
+  it('keeps its signed lines, a gap between hunks and no file line for a single file', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/app.ts',
+      '@@ function a()',
+      ' keep',
+      '-old',
+      '+new',
+      '@@ function b()',
+      '-x',
+      '+y',
+      '*** End Patch',
+    ].join('\n');
+    expect(diffFromPatch(patch)).toEqual({
+      lines: [' keep', '-old', '+new', DIFF_GAP, '-x', '+y'],
+      more: 0,
+    });
+  });
+
+  it('names each file when the patch touches several', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Add File: docs/new.md',
+      '+# Title',
+      '*** Update File: src/app.ts',
+      '@@',
+      '-a',
+      '+b',
+      '*** End Patch',
+    ].join('\n');
+    expect(diffFromPatch(patch)?.lines).toEqual([
+      `${DIFF_FILE}docs/new.md`,
+      '+# Title',
+      `${DIFF_FILE}src/app.ts`,
+      '-a',
+      '+b',
+    ]);
+  });
+
+  it('has nothing to show for a patch without changed lines', () => {
+    expect(
+      diffFromPatch('*** Begin Patch\n*** Delete File: old.ts\n*** End Patch')
+    ).toBeUndefined();
   });
 });

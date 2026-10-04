@@ -56,6 +56,7 @@ import './session-view/overlays-container.js';
 import './mobile-action-bar.js';
 import './claude-chat-view.js';
 import type { ClaudeChatView, SentChatMessage, SentChatMessageRef } from './claude-chat-view.js';
+import { sessionTool } from './phone-session-row.js';
 import type { Terminal } from './terminal.js';
 import type { TerminalChatView } from './terminal-chat-view.js';
 
@@ -1692,7 +1693,8 @@ export class SessionView extends LitElement {
             ? html`
           <terminal-chat-view
             composerOnly
-            .claudeSession=${Boolean(this.session?.claudeStatus) || (this.session?.command?.some((part) => /(^|\/)claude$/.test(part)) ?? false)}
+            .claudeSession=${Boolean(this.session?.claudeStatus) || (this.session ? sessionTool(this.session) === 'claude' : false)}
+            .agent=${this.session ? sessionTool(this.session) : undefined}
             .getScreenText=${() =>
               this.terminalLifecycleManager.getTerminal()?.getScreenText(60) ?? ''}
             .getScreenLayout=${() => this.screenLayout(60)}

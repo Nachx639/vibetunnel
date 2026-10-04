@@ -119,6 +119,23 @@ describe('TerminalChatView', () => {
     expect(subscribe).not.toHaveBeenCalled();
   });
 
+  it('suggests Codex slash commands in a Codex session', async () => {
+    component.composerOnly = true;
+    component.active = true;
+    component.agent = 'codex';
+    await component.updateComplete;
+    const input = component.shadowRoot?.querySelector<HTMLTextAreaElement>('#chat-input-field');
+    if (!input) throw new Error('composer not rendered');
+
+    input.value = '/';
+    input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    await component.updateComplete;
+    const options = [...(component.shadowRoot?.querySelectorAll('.slash-list strong') ?? [])].map(
+      (el) => el.textContent
+    );
+    expect(options).toEqual(['/new', '/compact', '/model', '/approvals', '/review', '/diff']);
+  });
+
   it('suggests Claude Code slash commands in the composer', async () => {
     component.composerOnly = true;
     component.active = true;
@@ -440,6 +457,11 @@ describe('TerminalChatView', () => {
       component.claudeSession = false;
       await component.updateComplete;
       expect(chips()).toHaveLength(0);
+
+      // Codex is a coding agent too: its sessions keep the prompts.
+      component.agent = 'codex';
+      await component.updateComplete;
+      expect(chips().length).toBeGreaterThan(0);
     });
 
     it('edits, reorders and keeps a custom list per device after a long press', async () => {

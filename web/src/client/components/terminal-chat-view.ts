@@ -55,6 +55,25 @@ const SLASH_COMMANDS: Array<[string, MessageKey]> = [
   ['/help', 'slash.help'],
 ];
 
+/** OpenAI Codex slash commands, offered instead when the session runs Codex. */
+const CODEX_SLASH_COMMANDS: Array<[string, MessageKey]> = [
+  ['/new', 'slash.clear'],
+  ['/compact', 'slash.compact'],
+  ['/model', 'slash.model'],
+  ['/approvals', 'codex.slash.approvals'],
+  ['/review', 'codex.slash.review'],
+  ['/diff', 'codex.slash.diff'],
+  ['/resume', 'slash.resume'],
+  ['/status', 'slash.status'],
+  ['/init', 'codex.slash.init'],
+  ['/mcp', 'slash.mcp'],
+];
+
+/** The slash commands to offer for the agent a session runs. */
+export function slashCommandsFor(agent: string | undefined): Array<[string, MessageKey]> {
+  return agent === 'codex' ? CODEX_SLASH_COMMANDS : SLASH_COMMANDS;
+}
+
 const DRAFT_KEY_PREFIX = 'vt-chat-draft:';
 
 function loadDraft(sessionId: string): string {
@@ -791,6 +810,8 @@ export class TerminalChatView extends LitElement {
   @property({ type: String }) sessionId = '';
   /** Whether the session runs Claude Code, when the parent knows; quick prompts hide only on false. */
   @property({ attribute: false }) claudeSession?: boolean;
+  /** The agent the session runs ("codex", "claude", a shell…), when the parent knows. */
+  @property({ attribute: false }) agent?: string;
   /**
    * The terminal's last rows. The phone composer reads them for a menu that typing cannot
    * answer (Claude Code's trust-folder dialog), whose options then replace the quick prompts.
@@ -1735,7 +1756,9 @@ export class TerminalChatView extends LitElement {
     const typed = value.trimStart();
     this.slashMatches =
       typed.startsWith('/') && !/\s/.test(typed)
-        ? SLASH_COMMANDS.filter(([command]) => command.startsWith(typed.toLowerCase())).slice(0, 6)
+        ? slashCommandsFor(this.agent)
+            .filter(([command]) => command.startsWith(typed.toLowerCase()))
+            .slice(0, 6)
         : [];
   }
 
@@ -1998,8 +2021,8 @@ export class TerminalChatView extends LitElement {
     if (!this.composerOnly || !this.composerEmpty || this.screenMenu || this.claudeWaiting) {
       return nothing;
     }
-    // Quick prompts are for Claude Code, not plain shells.
-    if (this.claudeSession === false) return nothing;
+    // Quick prompts are for the agents, not plain shells.
+    if (this.claudeSession === false && this.agent !== 'codex') return nothing;
     const prompts = this.customPrompts ?? defaultQuickPrompts();
     return html`<div
       class="quick-prompts"

@@ -1045,4 +1045,13 @@ export const zhCN: Messages = {
   'sessions.row.promptChanged': '问题已变化——请打开会话作答。',
   'screenMenu.sendFailed': '无法发送，请重试。',
   'screenMenu.changed': '屏幕上的问题已变化，请重试。',
+  // Phone chat: Codex sessions
+  'codex.chat.empty': '在下方给 Codex 发送消息。',
+  'codex.chat.working': 'Codex 正在工作',
+  'codex.chat.finished': 'Codex 已完成',
+  'codex.chat.stop': '停止 Codex',
+  'codex.slash.approvals': '选择 Codex 无需询问即可执行的操作',
+  'codex.slash.review': '审查当前的更改',
+  'codex.slash.diff': '显示 git diff（包括未跟踪的文件）',
+  'codex.slash.init': '创建 AGENTS.md',
 };

@@ -339,6 +339,87 @@ describe('ClaudeChatView', () => {
     expect(chip?.textContent).toContain('Plan mode');
   });
 
+  it('speaks of Codex and drops the Claude mode chip in a Codex session', async () => {
+    resetAnnouncerForTests();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ available: true, agent: 'codex', status: 'idle', messages: [] }),
+      }))
+    );
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's';
+    // A Claude-like status line on screen must not bring the mode chip into a Codex chat.
+    view.getScreenTail = () => '⏵⏵ bypass permissions on';
+    document.body.appendChild(view);
+    const internals = view as unknown as { apply(chat: unknown): void; loaded: boolean };
+    await vi.waitFor(() => expect(internals.loaded).toBe(true));
+    await view.updateComplete;
+    expect(view.shadowRoot?.textContent).toContain('Send Codex a message below.');
+    expect(view.shadowRoot?.querySelector('[data-testid="mode-chip"]')).toBeNull();
+
+    internals.apply({
+      available: true,
+      agent: 'codex',
+      status: 'busy',
+      activity: { kind: 'tool', tool: 'Bash', target: 'npm test' },
+      messages: [{ id: 'u', role: 'user', text: 'run the tests' }],
+    });
+    await view.updateComplete;
+    const activity = view.shadowRoot?.querySelector('[data-testid="chat-activity"]');
+    expect(activity?.textContent).toContain('Codex ·');
+    expect(view.shadowRoot?.querySelector('.stop')?.getAttribute('aria-label')).toBe('Stop Codex');
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(document.querySelector('[data-testid="a11y-live-region"]')?.textContent).toBe(
+      'Codex is working'
+    );
+    view.remove();
+  });
+
+  it("names each file of a patch that touches several, in the tool chip's diff", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ available: true, agent: 'codex', status: 'idle', messages: [] }),
+      }))
+    );
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's';
+    document.body.appendChild(view);
+    try {
+      const internals = view as unknown as {
+        apply(chat: unknown): void;
+        loaded: boolean;
+        toggleTool(id: string): void;
+      };
+      await vi.waitFor(() => expect(internals.loaded).toBe(true));
+      internals.apply({
+        available: true,
+        agent: 'codex',
+        status: 'idle',
+        messages: [
+          {
+            id: 't',
+            role: 'tool',
+            tool: 'Edit',
+            text: '2 files',
+            diff: ['#a.ts', '-x', '+y', '#b.ts', '+z'],
+          },
+        ],
+      });
+      internals.toggleTool('t');
+      await view.updateComplete;
+      const files = [...(view.shadowRoot?.querySelectorAll('.diff .file') ?? [])].map(
+        (el) => el.textContent
+      );
+      expect(files).toEqual(['a.ts', 'b.ts']);
+    } finally {
+      view.remove();
+    }
+  });
+
   it('shows an interruption in the page language', async () => {
     // The server words it in English; a chat in another language says it in its own.
     await setLocale('es');

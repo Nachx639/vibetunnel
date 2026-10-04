@@ -1082,4 +1082,13 @@ export const ptBR: Messages = {
   'sessions.row.promptChanged': 'A pergunta mudou — abra a sessão para responder.',
   'screenMenu.sendFailed': 'Não foi possível enviar. Tente de novo.',
   'screenMenu.changed': 'A pergunta na tela mudou. Tente de novo.',
+  // Phone chat: Codex sessions
+  'codex.chat.empty': 'Envie uma mensagem ao Codex abaixo.',
+  'codex.chat.working': 'O Codex está trabalhando',
+  'codex.chat.finished': 'O Codex terminou',
+  'codex.chat.stop': 'Parar o Codex',
+  'codex.slash.approvals': 'Escolher o que o Codex pode fazer sem perguntar',
+  'codex.slash.review': 'Revisar suas alterações atuais',
+  'codex.slash.diff': 'Mostrar o diff do git, incluindo arquivos não rastreados',
+  'codex.slash.init': 'Criar AGENTS.md',
 };

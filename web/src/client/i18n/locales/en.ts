@@ -1077,6 +1077,15 @@ export const en = {
   'sessions.row.promptChanged': 'The question changed — open the session to answer.',
   'screenMenu.sendFailed': 'Could not send it. Try again.',
   'screenMenu.changed': 'The question on screen changed. Try again.',
+  // Phone chat: Codex sessions
+  'codex.chat.empty': 'Send Codex a message below.',
+  'codex.chat.working': 'Codex is working',
+  'codex.chat.finished': 'Codex finished',
+  'codex.chat.stop': 'Stop Codex',
+  'codex.slash.approvals': 'Choose what Codex can do without asking',
+  'codex.slash.review': 'Review your current changes',
+  'codex.slash.diff': 'Show the git diff, including untracked files',
+  'codex.slash.init': 'Create AGENTS.md',
 };
 
 export type MessageKey = keyof typeof en;

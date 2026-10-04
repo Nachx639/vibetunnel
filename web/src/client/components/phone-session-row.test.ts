@@ -266,6 +266,8 @@ describe('PhoneSessionRow', () => {
     expect(sessionTool({ command: ['zsh', '-lic', 'claude --resume x'] })).toBe('claude');
     expect(sessionTool({ command: ['/opt/homebrew/bin/gemini'] })).toBe('gemini');
     expect(sessionTool({ command: ['zsh'] })).toBe('zsh');
+    // `codex` typed in a shell, as the server reports with agent chat on.
+    expect(sessionTool({ command: ['zsh'], codexActive: true })).toBe('codex');
   });
 
   it('keeps its time current without new session data, on one shared timer', async () => {

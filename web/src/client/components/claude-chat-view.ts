@@ -50,7 +50,7 @@ interface ChatMessage {
   detail?: string;
   result?: string;
   isError?: boolean;
-  /** Edit/MultiEdit/Write: signed lines ('-', '+', ' '), or "…" for lines left out. */
+  /** Edit/MultiEdit/Write: signed lines ('-', '+', ' '), '#' + a file name, or "…" (skipped). */
   diff?: string[];
   diffMore?: number;
 }
@@ -63,12 +63,37 @@ interface ChatResponse {
   activity?: ClaudeActivity;
   /** Busy only because background agents or tasks run: the reply is over. */
   waitingForBackground?: boolean;
+  /** Which agent the conversation is from; absent means Claude Code. */
+  agent?: ChatAgent;
   messages: ChatMessage[];
   /** Fingerprint of `messages`, sent back as `?have=`. */
   messagesVersion?: string;
   /** The list matches `?have=` and was left out: keep the one shown. */
   messagesUnchanged?: boolean;
 }
+
+type ChatAgent = 'claude' | 'codex';
+
+/** Each agent's wording in the chat view. */
+const AGENT_TEXT: Record<
+  ChatAgent,
+  { name: string; empty: MessageKey; working: MessageKey; finished: MessageKey; stop: MessageKey }
+> = {
+  claude: {
+    name: 'Claude',
+    empty: 'chat.empty',
+    working: 'chat.working',
+    finished: 'a11y.chat.finished',
+    stop: 'chat.stopClaude',
+  },
+  codex: {
+    name: 'Codex',
+    empty: 'codex.chat.empty',
+    working: 'codex.chat.working',
+    finished: 'codex.chat.finished',
+    stop: 'codex.chat.stop',
+  },
+};
 
 function escapeHtml(text: string): string {
   return text
@@ -1087,6 +1112,15 @@ export class ClaudeChatView extends LitElement {
     .diff .add {
       background: rgba(46, 160, 67, 0.18);
     }
+    .diff .file {
+      padding-left: 10px;
+      text-indent: 0;
+      font-weight: 600;
+      color: var(--chat-link);
+    }
+    .diff .file:not(:first-child) {
+      margin-top: 6px;
+    }
     .diff .ctx {
       opacity: 0.7;
     }
@@ -1344,6 +1378,8 @@ export class ClaudeChatView extends LitElement {
    * unset until told once, so a view mounted again says where it stands.
    */
   private askingShown: boolean | undefined;
+  /** The agent of the conversation shown (the server says; Claude Code when it doesn't). */
+  @state() private agent: ChatAgent = 'claude';
   private signature = '';
   /** The server's fingerprint of the messages shown (null: none yet, or an older server). */
   private messagesVersion: string | null = null;
@@ -1462,6 +1498,7 @@ export class ClaudeChatView extends LitElement {
       this.answerNote = '';
       this.answeredMenu = null;
       this.mode = null;
+      this.agent = 'claude';
       closeClaudeModePicker();
       this.conversationTitle = '';
       this.closeSearch();
@@ -1544,10 +1581,11 @@ export class ClaudeChatView extends LitElement {
     const before = this.spokenStatus;
     this.spokenStatus = status;
     if (before === null || before === status) return;
+    const text = AGENT_TEXT[this.agent];
     if (this.waitingFor) announce(t('chat.waiting', { reason: this.waitingFor }));
-    else if (this.busy) announce(t('chat.working'));
+    else if (this.busy) announce(t(text.working));
     else if (this.backgroundWait) announce(t('a11y.chat.replied'));
-    else if (before === 'busy' || before === 'background') announce(t('a11y.chat.finished'));
+    else if (before === 'busy' || before === 'background') announce(t(text.finished));
   }
 
   private pollGeneration = 0;
@@ -1649,20 +1687,23 @@ export class ClaudeChatView extends LitElement {
 
   /** Shows a poll's answer; returns whether anything on screen changed. */
   private apply(chat: ChatResponse): boolean {
-    const before = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${JSON.stringify(this.screenChoices)}|${JSON.stringify(this.activity)}`;
+    const before = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${this.agent}|${JSON.stringify(this.screenChoices)}|${JSON.stringify(this.activity)}`;
     this.unavailable = !chat.available;
     this.dispatchEvent(
       new CustomEvent('claude-chat-availability', { detail: chat.available, bubbles: true })
     );
+    this.agent = chat.agent === 'codex' ? chat.agent : 'claude';
     this.backgroundWait = chat.status === 'busy' && chat.waitingForBackground === true;
     this.busy = chat.status === 'busy' && !this.backgroundWait;
     this.activity = this.busy ? (chat.activity ?? null) : null;
     this.conversationTitle = chat.title ?? '';
     const screen = this.getScreenTail?.() ?? '';
-    // Claude Code's permission mode. Until the terminal's screen has loaded (a moment after
-    // opening) the mode last read for this session stands in: the chip turning up late would
-    // push the conversation up.
-    if (screen.trim()) {
+    // Claude Code's permission mode; Codex has no such status line. Until the terminal's screen
+    // has loaded (a moment after opening) the mode last read for this session stands in: the
+    // chip turning up late would push the conversation up.
+    if (this.agent !== 'claude') {
+      this.mode = null;
+    } else if (screen.trim()) {
       this.mode = parseClaudeMode(screen);
       rememberMode(this.sessionId, this.mode);
     } else {
@@ -1711,7 +1752,7 @@ export class ClaudeChatView extends LitElement {
     }
     const wasLoaded = this.loaded;
     this.loaded = true;
-    const after = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${JSON.stringify(this.screenChoices)}|${JSON.stringify(this.activity)}`;
+    const after = `${this.unavailable}|${this.busy}|${this.backgroundWait}|${this.waitingFor}|${this.conversationTitle}|${this.signature}|${this.mode}|${this.agent}|${JSON.stringify(this.screenChoices)}|${JSON.stringify(this.activity)}`;
     return !wasLoaded || after !== before;
   }
 
@@ -2352,7 +2393,9 @@ export class ClaudeChatView extends LitElement {
       ${message.diff.map((line) =>
         line === '…'
           ? html`<div class="dl gap">⋯</div>`
-          : html`<div class="dl ${line[0] === '-' ? 'del' : line[0] === '+' ? 'add' : 'ctx'}"><span class="sign">${line[0]}</span>${line.slice(1)}</div>`
+          : line[0] === '#'
+            ? html`<div class="dl file">${line.slice(1)}</div>`
+            : html`<div class="dl ${line[0] === '-' ? 'del' : line[0] === '+' ? 'add' : 'ctx'}"><span class="sign">${line[0]}</span>${line.slice(1)}</div>`
       )}
       ${message.diffMore ? html`<div class="dl gap">${t('chat.diffMore', { n: message.diffMore })}</div>` : nothing}
     </div>`;
@@ -2578,7 +2621,7 @@ export class ClaudeChatView extends LitElement {
             : this.messages.length === 0
               ? this.pendingSent.length
                 ? nothing
-                : html`<div class="empty">${t('chat.empty')}</div>`
+                : html`<div class="empty">${t(AGENT_TEXT[this.agent].empty)}</div>`
               : this.renderMessages()
         }
         ${this.renderAsking()}
@@ -2586,11 +2629,11 @@ export class ClaudeChatView extends LitElement {
         ${
           this.busy
             ? html`<div class="busy-row">
-                <div class="typing" role="img" aria-label=${t('chat.working')}><span></span><span></span><span></span></div>
+                <div class="typing" role="img" aria-label=${t(AGENT_TEXT[this.agent].working)}><span></span><span></span><span></span></div>
                 ${
                   this.activity
                     ? html`<span class="activity" data-testid="chat-activity"
-                        >Claude · <bdi>${formatActivity(this.activity)}</bdi>${
+                        >${AGENT_TEXT[this.agent].name} · <bdi>${formatActivity(this.activity)}</bdi>${
                           this.activity.since
                             ? html` · <claude-activity-elapsed since=${this.activity.since}></claude-activity-elapsed>`
                             : nothing
@@ -2598,7 +2641,7 @@ export class ClaudeChatView extends LitElement {
                       >`
                     : nothing
                 }
-                <button class="stop" @click=${this.stop} aria-label=${t('chat.stopClaude')}>■ ${t('chat.stop')}</button>
+                <button class="stop" @click=${this.stop} aria-label=${t(AGENT_TEXT[this.agent].stop)}>■ ${t('chat.stop')}</button>
               </div>`
             : this.backgroundWait
               ? html`<div class="background-row" role="status" data-testid="chat-background">

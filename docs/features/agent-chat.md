@@ -1,8 +1,8 @@
 # Agent chat on phones
 
-Off by default. When it is on, a phone in chat mode shows the Claude Code conversation running
-in the session as message bubbles, read from Claude Code's own transcript, with a native
-composer under the live terminal. When it is off, chat mode works as before.
+Off by default. When it is on, a phone in chat mode shows the agent conversation running in the
+session (Claude Code or OpenAI Codex) as message bubbles, read from the agent's own files, with
+a native composer under the live terminal. When it is off, chat mode works as before.
 
 ## Turning it on
 
@@ -31,6 +31,19 @@ authentication):
 The Claude dir is `CLAUDE_CONFIG_DIR`, or `~/.claude`. With the switch off the route answers
 403 and none of this runs. The phone sends back a fingerprint of the messages it has
 (`?have=`), and an unchanged list is left out of the answer.
+
+### Codex
+
+A session started with `codex`, or a shell where `codex` was typed (found in the session's
+process tree; its working directory comes from `lsof`, or `/proc` on Linux), is matched to the
+newest rollout Codex started in that directory after it began:
+`$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl` (`CODEX_HOME` defaults to `~/.codex`). Only
+files found by listing those date folders are read; nothing read from a file or from `ps`
+names a path. The same bounds apply as for Claude (last 4 MB first, 8 MB per read, 400
+messages, 20 rollouts cached). Codex sessions get Codex's slash commands and no permission-mode
+picker.
+The session list (agent chat on) also marks a running session as Codex (`codexActive`) and
+shows Codex's first prompt as its title (`codexTitle`), where no Claude Code runs.
 
 ## On the phone
 

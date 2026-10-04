@@ -1055,4 +1055,13 @@ export const ar: Messages = {
   'sessions.row.promptChanged': 'تغيّر السؤال — افتح الجلسة للإجابة.',
   'screenMenu.sendFailed': 'تعذّر الإرسال. حاول مرة أخرى.',
   'screenMenu.changed': 'تغيّر السؤال على الشاشة. حاول مرة أخرى.',
+  // Phone chat: Codex sessions
+  'codex.chat.empty': 'أرسل رسالة إلى Codex أدناه.',
+  'codex.chat.working': 'Codex يعمل',
+  'codex.chat.finished': 'انتهى Codex',
+  'codex.chat.stop': 'إيقاف Codex',
+  'codex.slash.approvals': 'اختر ما يمكن لـ Codex فعله دون أن يسأل',
+  'codex.slash.review': 'مراجعة تغييراتك الحالية',
+  'codex.slash.diff': 'عرض git diff بما في ذلك الملفات غير المتتبعة',
+  'codex.slash.init': 'إنشاء AGENTS.md',
 };

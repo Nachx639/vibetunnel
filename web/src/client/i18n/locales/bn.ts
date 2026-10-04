@@ -1058,4 +1058,13 @@ export const bn: Messages = {
   'sessions.row.promptChanged': 'প্রশ্ন বদলে গেছে — উত্তর দিতে সেশন খুলুন।',
   'screenMenu.sendFailed': 'পাঠানো গেল না। আবার চেষ্টা করুন।',
   'screenMenu.changed': 'স্ক্রিনের প্রশ্নটি বদলে গেছে। আবার চেষ্টা করুন।',
+  // Phone chat: Codex sessions
+  'codex.chat.empty': 'নিচে Codex-কে একটি বার্তা পাঠান।',
+  'codex.chat.working': 'Codex কাজ করছে',
+  'codex.chat.finished': 'Codex শেষ করেছে',
+  'codex.chat.stop': 'Codex থামান',
+  'codex.slash.approvals': 'Codex জিজ্ঞাসা না করে কী করতে পারবে তা বেছে নিন',
+  'codex.slash.review': 'আপনার বর্তমান পরিবর্তনগুলো পর্যালোচনা করুন',
+  'codex.slash.diff': 'git diff দেখান, ট্র্যাক না করা ফাইলসহ',
+  'codex.slash.init': 'AGENTS.md তৈরি করুন',
 };
