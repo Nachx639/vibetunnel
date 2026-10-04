@@ -2874,6 +2874,53 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   font: 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
 }
 
+/* Session switcher sheet (session-view/session-switcher-sheet.ts) */
+.psr-sheet-group button.vt-switch-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 15px;
+  color: var(--color-text);
+}
+.vt-switch-list {
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.vt-switch-list > button + button {
+  border-top: 1px solid var(--color-border-light);
+}
+.vt-switch-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vt-switch-title,
+.vt-switch-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vt-switch-title {
+  font-weight: 600;
+}
+.vt-switch-detail {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+.vt-switch-empty {
+  padding: 18px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--color-text-dim);
+}
+
 /* Color themes (utils/accent-themes.ts): accent everywhere, tinted backgrounds in dark mode */
 [data-accent="ocean"] {
   --color-primary: #3B82F6;

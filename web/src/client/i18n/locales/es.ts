@@ -912,4 +912,8 @@ export const es: Messages = {
   'newChat.other': 'Otra carpeta…',
   'newChat.failed': 'No se pudo abrir la sesión',
   'header.more': 'Más',
+  // Session switcher
+  'switcher.title': 'Cambiar de sesión',
+  'switcher.empty': 'No hay otras sesiones abiertas',
+  'switcher.renameCurrent': 'Renombrar esta sesión',
 };

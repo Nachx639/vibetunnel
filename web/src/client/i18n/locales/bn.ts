@@ -887,4 +887,8 @@ export const bn: Messages = {
   'newChat.other': 'অন্য ফোল্ডার…',
   'newChat.failed': 'সেশন শুরু করা যায়নি',
   'header.more': 'আরও',
+  // Session switcher
+  'switcher.title': 'সেশন বদলান',
+  'switcher.empty': 'আর কোনো সেশন চলছে না',
+  'switcher.renameCurrent': 'এই সেশনের নাম বদলান',
 };

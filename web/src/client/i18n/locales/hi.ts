@@ -885,4 +885,8 @@ export const hi: Messages = {
   'newChat.other': 'दूसरा फ़ोल्डर…',
   'newChat.failed': 'सत्र शुरू नहीं हो सका',
   'header.more': 'और',
+  // Session switcher
+  'switcher.title': 'सत्र बदलें',
+  'switcher.empty': 'कोई अन्य सत्र नहीं चल रहा',
+  'switcher.renameCurrent': 'इस सत्र का नाम बदलें',
 };

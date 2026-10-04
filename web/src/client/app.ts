@@ -2087,6 +2087,7 @@ export class VibeTunnelApp extends LitElement {
                   html`
                     <session-view
                       .session=${selectedSession}
+                      .sessions=${this.sessions}
                       .showBackButton=${false}
                       .showSidebarToggle=${true}
                       .sidebarCollapsed=${this.sidebarCollapsed}
@@ -2099,6 +2100,7 @@ export class VibeTunnelApp extends LitElement {
                       @open-settings=${this.handleOpenSettings}
                       @capture-toggled=${this.handleCaptureToggled}
                       @session-killed=${this.handleSessionKilled}
+                      @navigate-to-session=${this.handleNavigateToSession}
                     ></session-view>
                   `
                 )}

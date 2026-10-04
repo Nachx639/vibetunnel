@@ -922,4 +922,8 @@ export const fr: Messages = {
   'newChat.other': 'Autre dossier…',
   'newChat.failed': 'Impossible de lancer la session',
   'header.more': 'Plus',
+  // Session switcher
+  'switcher.title': 'Changer de session',
+  'switcher.empty': 'Aucune autre session en cours',
+  'switcher.renameCurrent': 'Renommer cette session',
 };

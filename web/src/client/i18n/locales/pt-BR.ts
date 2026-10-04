@@ -910,4 +910,8 @@ export const ptBR: Messages = {
   'newChat.other': 'Outra pasta…',
   'newChat.failed': 'Não foi possível abrir a sessão',
   'header.more': 'Mais',
+  // Session switcher
+  'switcher.title': 'Trocar de sessão',
+  'switcher.empty': 'Nenhuma outra sessão em execução',
+  'switcher.renameCurrent': 'Renomear esta sessão',
 };

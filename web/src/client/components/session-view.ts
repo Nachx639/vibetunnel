@@ -73,6 +73,8 @@ export class SessionView extends LitElement {
   protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) session: Session | null = null;
+  /** Every session (the app's list): the compact phone layout's session switcher. */
+  @property({ type: Array }) sessions: Session[] = [];
   @property({ type: Boolean }) showBackButton = true;
   @property({ type: Boolean }) showSidebarToggle = false;
   @property({ type: Boolean }) sidebarCollapsed = false;
@@ -1408,6 +1410,7 @@ export class SessionView extends LitElement {
         <div class="session-header-area">
           <session-header
             .session=${this.session}
+            .sessions=${this.sessions}
             .showBackButton=${this.showBackButton}
             .showSidebarToggle=${this.showSidebarToggle}
             .sidebarCollapsed=${this.sidebarCollapsed}

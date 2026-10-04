@@ -16,6 +16,8 @@ import '../git-status-badge.js';
 import { authClient } from '../../services/auth-client.js';
 import { isAIAssistantSession, sendAIPrompt } from '../../utils/ai-sessions.js';
 import { createLogger } from '../../utils/logger.js';
+import { usesCompactPhoneUi } from '../../utils/phone-ui.js';
+import { closeSessionSwitcher, openSessionSwitcher } from './session-switcher-sheet.js';
 import './compact-menu.js';
 import '../theme-toggle-icon.js';
 import './image-upload-menu.js';
@@ -33,6 +35,8 @@ export class SessionHeader extends LitElement {
   protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) session: Session | null = null;
+  /** Every session, as the app polls them: the compact phone layout's session switcher. */
+  @property({ type: Array }) sessions: Session[] = [];
   @property({ type: Boolean }) showBackButton = true;
   @property({ type: Boolean }) showSidebarToggle = false;
   @property({ type: Boolean }) sidebarCollapsed = false;
@@ -78,6 +82,7 @@ export class SessionHeader extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    closeSessionSwitcher();
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
     }
@@ -276,6 +281,10 @@ export class SessionHeader extends LitElement {
             data-testid="session-title-container"
           >
             <div class="text-bright font-medium text-xs sm:text-sm min-w-0 overflow-hidden">
+              ${
+                this.isMobile && usesCompactPhoneUi()
+                  ? this.renderPhoneTitle(this.session)
+                  : html`
               <div class="flex items-center gap-1 min-w-0 overflow-hidden" @mouseenter=${this.handleMouseEnter} @mouseleave=${this.handleMouseLeave}>
                 <inline-edit
                   class="min-w-0 overflow-hidden block max-w-xs sm:max-w-md"
@@ -333,6 +342,8 @@ export class SessionHeader extends LitElement {
                     : ''
                 }
               </div>
+              `
+              }
             </div>
             <div
               class="text-xs opacity-75 mt-0.5 hidden sm:flex items-center gap-2 min-w-0 overflow-hidden"
@@ -492,6 +503,55 @@ export class SessionHeader extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Compact phone layout: the title is a button that opens the session switcher (the other
+   * running sessions, and Rename for this one); the inline editor's pencil is too small to hit.
+   */
+  private renderPhoneTitle(session: Session) {
+    const command = Array.isArray(session.command) ? session.command.join(' ') : '';
+    const title = session.name || command;
+    return html`
+      <button
+        type="button"
+        class="flex items-center gap-1 w-full min-w-0 min-h-11 overflow-hidden leading-tight text-left bg-transparent border-0 p-0"
+        data-testid="header-phone-title"
+        aria-haspopup="dialog"
+        aria-label=${`${title} — ${t('switcher.title')}`}
+        @click=${() => this.openSwitcher(session)}
+      >
+        <span class="block min-w-0 truncate text-sm font-semibold text-text" title=${title}
+          ><bdi>${title}</bdi></span
+        >
+        <svg class="flex-shrink-0 opacity-60" width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/>
+        </svg>
+      </button>
+    `;
+  }
+
+  private openSwitcher(session: Session) {
+    openSessionSwitcher({
+      current: session,
+      sessions: this.sessions.length ? this.sessions : [session],
+      onSelect: (target) =>
+        this.dispatchEvent(
+          new CustomEvent('navigate-to-session', {
+            detail: { sessionId: target.id },
+            bubbles: true,
+            composed: true,
+          })
+        ),
+      onRename:
+        session.status === 'exited'
+          ? undefined
+          : () => {
+              const current = session.name || session.command?.join(' ') || '';
+              const name = window.prompt(t('sessions.row.renamePrompt'), current)?.trim();
+              if (name && name !== current) this.handleRename(name);
+            },
+    });
   }
 
   private handleRename(newName: string) {

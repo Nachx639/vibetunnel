@@ -906,6 +906,10 @@ export const en = {
   'newChat.other': 'Other folder…',
   'newChat.failed': 'Could not start the session',
   'header.more': 'More',
+  // Session switcher
+  'switcher.title': 'Switch session',
+  'switcher.empty': 'No other sessions running',
+  'switcher.renameCurrent': 'Rename this session',
 };
 
 export type MessageKey = keyof typeof en;

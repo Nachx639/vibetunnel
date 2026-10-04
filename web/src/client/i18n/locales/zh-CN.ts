@@ -876,4 +876,8 @@ export const zhCN: Messages = {
   'newChat.other': '其他文件夹…',
   'newChat.failed': '无法启动会话',
   'header.more': '更多',
+  // Session switcher
+  'switcher.title': '切换会话',
+  'switcher.empty': '没有其他正在运行的会话',
+  'switcher.renameCurrent': '重命名此会话',
 };

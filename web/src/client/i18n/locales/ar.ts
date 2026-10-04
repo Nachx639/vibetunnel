@@ -884,4 +884,8 @@ export const ar: Messages = {
   'newChat.other': 'مجلد آخر…',
   'newChat.failed': 'تعذّر بدء الجلسة',
   'header.more': 'المزيد',
+  // Session switcher
+  'switcher.title': 'تبديل الجلسة',
+  'switcher.empty': 'لا توجد جلسات أخرى قيد التشغيل',
+  'switcher.renameCurrent': 'إعادة تسمية هذه الجلسة',
 };
