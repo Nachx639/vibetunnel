@@ -95,6 +95,8 @@ export interface SessionInfo {
    * Sessions with attachedViaVT=true are spawned from within an existing VibeTunnel session.
    */
   attachedViaVT?: boolean;
+  /** The user muted this session's notifications. */
+  muted?: boolean;
 }
 
 /**

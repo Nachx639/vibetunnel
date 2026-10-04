@@ -896,4 +896,8 @@ export const hi: Messages = {
   'switcher.quickLabel': 'सत्र जल्दी बदलें',
   'switcher.quickPlaceholder': 'सत्र बदलें… (फ़िल्टर करने के लिए लिखें)',
   'switcher.noMatches': 'कोई सत्र मेल नहीं खाता',
+  'organize.mute': 'सूचनाएँ म्यूट करें',
+  'organize.unmute': 'सूचनाएँ अनम्यूट करें',
+  'organize.muted': 'सूचनाएँ म्यूट हैं',
+  'organize.muteFailed': 'इस सत्र की सूचनाएँ नहीं बदल सके। फिर से कोशिश करें।',
 };

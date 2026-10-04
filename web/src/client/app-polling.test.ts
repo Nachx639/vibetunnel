@@ -47,6 +47,23 @@ describe('session list polling', () => {
     vi.restoreAllMocks();
   });
 
+  it('sees a session being muted on another device', async () => {
+    const row = (muted?: boolean) => ({
+      id: 's1',
+      name: 's1',
+      status: 'running',
+      workingDir: '/home/user/project',
+      ...(muted ? { muted } : {}),
+    });
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify([row()])));
+    await app.loadSessions();
+    const shown = app.sessions;
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify([row(true)])));
+    await app.loadSessions();
+    expect(app.sessions).not.toBe(shown);
+    expect((app.sessions[0] as { muted?: boolean }).muted).toBe(true);
+  });
+
   it('stops polling while the page is hidden and refreshes at once on return', async () => {
     app.startAutoRefresh();
     await vi.advanceTimersByTimeAsync(5_000);

@@ -923,4 +923,9 @@ export const es: Messages = {
   'switcher.quickLabel': 'Cambio rápido de sesión',
   'switcher.quickPlaceholder': 'Cambiar de sesión… (escribe para filtrar)',
   'switcher.noMatches': 'Ninguna sesión coincide',
+  'organize.mute': 'Silenciar notificaciones',
+  'organize.unmute': 'Reactivar notificaciones',
+  'organize.muted': 'Notificaciones silenciadas',
+  'organize.muteFailed':
+    'No se pudieron cambiar las notificaciones de esta sesión. Inténtalo de nuevo.',
 };

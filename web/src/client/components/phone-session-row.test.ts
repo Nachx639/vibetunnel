@@ -172,6 +172,36 @@ describe('PhoneSessionRow', () => {
     pin().click();
     expect(toggle.mock.calls[1][0].detail).toEqual({ sessionId: 's1', pinned: false });
   });
+  it('mutes a session on the server from the action sheet and marks the row', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const row = await renderRow(session());
+    const muted = vi.fn();
+    row.addEventListener('session-muted', muted);
+    expect(row.querySelector('.psr-flag')).toBeNull();
+    vi.useFakeTimers();
+    (row.querySelector('.psr-menu') as HTMLButtonElement).click();
+    vi.advanceTimersByTime(600);
+    const mute = document.body.querySelector('[data-testid="psr-mute"]') as HTMLButtonElement;
+    expect(mute.textContent?.trim()).toBe('Mute notifications');
+    mute.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch' }));
+    mute.click();
+    // Past the ghost-click guard, so the next test's taps aren't swallowed.
+    vi.advanceTimersByTime(1000);
+    vi.useRealTimers();
+    await vi.waitFor(() => expect(muted).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/sessions/s1/mute');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ muted: true });
+    await row.updateComplete;
+    expect(row.querySelector('.psr-flag')?.textContent).toBe('🔕');
+    expect(row.querySelector('[role="button"]')?.getAttribute('aria-label')).toContain(
+      'Notifications muted'
+    );
+    vi.unstubAllGlobals();
+  });
 
   it("a sheet action's trailing click doesn't open the row that was under the sheet", async () => {
     const row = await renderRow(session());

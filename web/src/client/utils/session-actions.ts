@@ -127,3 +127,23 @@ export async function cleanupAllExitedSessions(
     };
   }
 }
+
+/** Mutes or unmutes a session's push notifications (kept on the server, for every device). */
+export async function setSessionMuted(
+  sessionId: string,
+  muted: boolean,
+  authClient: AuthClient | undefined
+): Promise<SessionActionResult> {
+  try {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/mute`, {
+      method: HttpMethod.POST,
+      headers: { 'Content-Type': 'application/json', ...authClient?.getAuthHeader() },
+      body: JSON.stringify({ muted }),
+    });
+    if (!response.ok) throw new Error(`mute failed: ${response.status}`);
+    return { success: true };
+  } catch (error) {
+    logger.error('Failed to change session mute:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}

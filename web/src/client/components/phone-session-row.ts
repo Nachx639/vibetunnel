@@ -15,6 +15,7 @@
  * @fires session-renamed - When the session was renamed (detail: { sessionId, newName })
  * @fires session-rename-error - When renaming failed (detail: { sessionId, error })
  * @fires session-pin-toggle - Pin/Unpin from the action sheet (detail: { sessionId, pinned })
+ * @fires session-muted - Notifications muted/unmuted on the server (detail: { sessionId, muted })
  */
 
 import { html, LitElement, nothing, render } from 'lit';
@@ -26,7 +27,7 @@ import { sessionActionService } from '../services/session-action-service.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
 import { endsADrag } from '../utils/pointer-drag.js';
-import { renameSession } from '../utils/session-actions.js';
+import { renameSession, setSessionMuted } from '../utils/session-actions.js';
 import { focusSheet, holdSheetFocus } from '../utils/sheet-a11y.js';
 
 const LONG_PRESS_MS = 550;
@@ -414,6 +415,17 @@ export class PhoneSessionRow extends LitElement {
             >
               ${t(this.pinned ? 'organize.unpin' : 'organize.pin')}
             </button>
+            ${
+              exited
+                ? nothing
+                : html`<button
+                    data-testid="psr-mute"
+                    @pointerup=${touchAction(() => void this.toggleMute())}
+                    @click=${touchAction(() => void this.toggleMute())}
+                  >
+                    ${t(this.session.muted ? 'organize.unmute' : 'organize.mute')}
+                  </button>`
+            }
             <button
               class="destructive"
               @click=${
@@ -440,6 +452,27 @@ export class PhoneSessionRow extends LitElement {
     this.dispatchEvent(
       new CustomEvent('session-pin-toggle', {
         detail: { sessionId: this.session.id, pinned: !this.pinned },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  /** Muting lives on the server: it has to stop the pushes sent while the app is closed. */
+  private async toggleMute() {
+    const session = this.session;
+    const muted = !session.muted;
+    const result = await setSessionMuted(session.id, muted, this.authClient);
+    if (!result.success) {
+      window.alert(t('organize.muteFailed'));
+      return;
+    }
+    // Shown right away; the next poll brings the same value from the server.
+    session.muted = muted;
+    this.requestUpdate();
+    this.dispatchEvent(
+      new CustomEvent('session-muted', {
+        detail: { sessionId: session.id, muted },
         bubbles: true,
         composed: true,
       })
@@ -510,6 +543,7 @@ export class PhoneSessionRow extends LitElement {
       this.session.status === 'exited' ? t('a11y.row.exited') : '',
       time,
       this.pinned ? t('organize.pinned') : '',
+      this.session.muted ? t('organize.muted') : '',
       formatPathForDisplay(this.session.workingDir),
     ]
       .map((part) => part?.trim())
@@ -615,6 +649,11 @@ export class PhoneSessionRow extends LitElement {
               ${
                 this.pinned
                   ? html`<span class="psr-flag" role="img" aria-label=${t('organize.pinned')}>📌</span>`
+                  : nothing
+              }
+              ${
+                session.muted
+                  ? html`<span class="psr-flag" role="img" aria-label=${t('organize.muted')}>🔕</span>`
                   : nothing
               }
               <span class="psr-time"><vt-row-time at=${timeIso ?? ''}></vt-row-time></span>

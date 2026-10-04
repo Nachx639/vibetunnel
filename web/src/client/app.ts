@@ -782,6 +782,7 @@ export class VibeTunnelApp extends LitElement {
                 existingSession.name !== newSession.name ||
                 existingSession.workingDir !== newSession.workingDir ||
                 existingSession.exitCode !== newSession.exitCode ||
+                existingSession.muted !== newSession.muted ||
                 // Check if Git info has been added in the new data
                 (!existingSession.gitRepoPath && newSession.gitRepoPath) ||
                 // Don't check Git counts here - they are updated by git-status-badge component

@@ -1094,6 +1094,24 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     }
   });
 
+  // Mute or unmute push notifications for one session
+  router.post('/sessions/:sessionId/mute', (req, res) => {
+    const { sessionId } = req.params;
+    const muted = req.body?.muted;
+    if (typeof muted !== 'boolean') {
+      return res.status(400).json({ error: 'muted must be a boolean' });
+    }
+    try {
+      if (!ptyManager.setSessionMuted(sessionId, muted)) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+      res.json({ success: true, muted });
+    } catch (error) {
+      logger.error('error updating session mute:', error);
+      res.status(500).json({ error: 'Failed to update session mute' });
+    }
+  });
+
   // Reset terminal size (for external terminals)
   router.post('/sessions/:sessionId/reset-size', async (req, res) => {
     const { sessionId } = req.params;

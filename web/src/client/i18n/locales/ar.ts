@@ -895,4 +895,8 @@ export const ar: Messages = {
   'switcher.quickLabel': 'تبديل سريع للجلسة',
   'switcher.quickPlaceholder': 'تبديل الجلسة… (اكتب للتصفية)',
   'switcher.noMatches': 'لا توجد جلسات مطابقة',
+  'organize.mute': 'كتم الإشعارات',
+  'organize.unmute': 'إلغاء كتم الإشعارات',
+  'organize.muted': 'الإشعارات مكتومة',
+  'organize.muteFailed': 'تعذّر تغيير إشعارات هذه الجلسة. حاول مرة أخرى.',
 };

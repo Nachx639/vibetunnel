@@ -898,4 +898,8 @@ export const bn: Messages = {
   'switcher.quickLabel': 'দ্রুত সেশন বদলান',
   'switcher.quickPlaceholder': 'সেশন বদলান… (ফিল্টার করতে লিখুন)',
   'switcher.noMatches': 'কোনো সেশন মেলেনি',
+  'organize.mute': 'নোটিফিকেশন মিউট করুন',
+  'organize.unmute': 'নোটিফিকেশন চালু করুন',
+  'organize.muted': 'নোটিফিকেশন মিউট করা',
+  'organize.muteFailed': 'এই সেশনের নোটিফিকেশন বদলানো গেল না। আবার চেষ্টা করুন।',
 };

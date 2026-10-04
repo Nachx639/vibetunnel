@@ -1190,4 +1190,65 @@ describe('sessions routes', () => {
       expect(mockPtyManager.createSession).not.toHaveBeenCalled();
     });
   });
+  describe('POST /sessions/:sessionId/mute', () => {
+    function muteHandler(ptyManager: unknown) {
+      const router = createSessionRoutes({
+        ptyManager,
+        terminalManager: mockTerminalManager,
+        remoteRegistry: null,
+        isHQMode: false,
+      } as unknown as Parameters<typeof createSessionRoutes>[0]);
+      const layer = (
+        router as unknown as {
+          stack: Array<{
+            route?: {
+              path: string;
+              methods: { post?: boolean };
+              stack: Array<{ handle: (req: Request, res: Response) => unknown }>;
+            };
+          }>;
+        }
+      ).stack.find((r) => r.route?.path === '/sessions/:sessionId/mute' && r.route.methods.post);
+      expect(layer).toBeTruthy();
+      return layer?.route?.stack[0].handle as (req: Request, res: Response) => unknown;
+    }
+
+    function mockRes() {
+      return { json: vi.fn(), status: vi.fn().mockReturnThis() } as unknown as Response & {
+        json: ReturnType<typeof vi.fn>;
+        status: ReturnType<typeof vi.fn>;
+      };
+    }
+
+    it('stores the mute flag on the session', async () => {
+      const setSessionMuted = vi.fn(() => true);
+      const handle = muteHandler({ ...mockPtyManager, setSessionMuted });
+      const res = mockRes();
+      await handle(
+        { params: { sessionId: 's1' }, body: { muted: true } } as unknown as Request,
+        res
+      );
+      expect(setSessionMuted).toHaveBeenCalledWith('s1', true);
+      expect(res.json).toHaveBeenCalledWith({ success: true, muted: true });
+    });
+
+    it('rejects a non-boolean value and unknown sessions', async () => {
+      const setSessionMuted = vi.fn(() => false);
+      const handle = muteHandler({ ...mockPtyManager, setSessionMuted });
+      const bad = mockRes();
+      await handle(
+        { params: { sessionId: 's1' }, body: { muted: 'yes' } } as unknown as Request,
+        bad
+      );
+      expect(bad.status).toHaveBeenCalledWith(400);
+      expect(setSessionMuted).not.toHaveBeenCalled();
+
+      const missing = mockRes();
+      await handle(
+        { params: { sessionId: 'gone' }, body: { muted: false } } as unknown as Request,
+        missing
+      );
+      expect(missing.status).toHaveBeenCalledWith(404);
+    });
+  });
 });

@@ -1131,7 +1131,7 @@ export class SessionList extends LitElement {
         .authClient=${this.authClient}
         .selected=${session.id === this.selectedSessionId}
         .pinned=${this.pinnedIds.has(session.id)}
-        .stamp=${`${session.status}|${session.name}|${session.lastModified}`}
+        .stamp=${`${session.status}|${session.name}|${session.muted ? 1 : 0}|${session.lastModified}`}
         @session-select=${this.handleSessionSelect}
         @session-killed=${this.handleSessionKilled}
         @session-kill-error=${this.handleSessionKillError}

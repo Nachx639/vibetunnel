@@ -933,4 +933,8 @@ export const fr: Messages = {
   'switcher.quickLabel': 'Changement rapide de session',
   'switcher.quickPlaceholder': 'Changer de session… (tapez pour filtrer)',
   'switcher.noMatches': 'Aucune session ne correspond',
+  'organize.mute': 'Couper les notifications',
+  'organize.unmute': 'Réactiver les notifications',
+  'organize.muted': 'Notifications coupées',
+  'organize.muteFailed': 'Impossible de modifier les notifications de cette session. Réessayez.',
 };

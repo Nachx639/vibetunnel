@@ -65,6 +65,7 @@ export class PushNotificationService {
   private vapidManager: VapidManager;
   private subscriptions = new Map<string, PushSubscription>();
   private initialized = false;
+  private isSessionMuted: (sessionId: string) => boolean = () => false;
   private readonly subscriptionsFile: string;
 
   constructor(vapidManager: VapidManager) {
@@ -136,10 +137,20 @@ export class PushNotificationService {
     return Array.from(this.subscriptions.values()).filter((sub) => sub.isActive);
   }
 
+  /** Notifications about a session the user muted are dropped, whoever sends them. */
+  setMuteFilter(isSessionMuted: (sessionId: string) => boolean): void {
+    this.isSessionMuted = isSessionMuted;
+  }
+
   /**
    * Send notification to all subscriptions
    */
   async sendNotification(payload: NotificationPayload): Promise<SendNotificationResult> {
+    const sessionId = payload.data?.sessionId;
+    if (typeof sessionId === 'string' && this.isSessionMuted(sessionId)) {
+      return { success: true, sent: 0, failed: 0, errors: [] };
+    }
+
     if (!this.vapidManager.isEnabled()) {
       throw new Error('VAPID not properly configured');
     }

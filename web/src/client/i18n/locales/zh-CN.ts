@@ -887,4 +887,8 @@ export const zhCN: Messages = {
   'switcher.quickLabel': '快速切换会话',
   'switcher.quickPlaceholder': '切换会话…（输入以筛选）',
   'switcher.noMatches': '没有匹配的会话',
+  'organize.mute': '静音通知',
+  'organize.unmute': '取消静音',
+  'organize.muted': '通知已静音',
+  'organize.muteFailed': '无法更改此会话的通知，请重试。',
 };

@@ -658,6 +658,7 @@ export async function createApp(): Promise<AppInstance> {
       // Initialize push notification service
       pushNotificationService = new PushNotificationService(vapidManager);
       await pushNotificationService.initialize();
+      pushNotificationService.setMuteFilter((sessionId) => ptyManager.isSessionMuted(sessionId));
 
       logger.log(chalk.green('Push notification services initialized'));
     } catch (error) {

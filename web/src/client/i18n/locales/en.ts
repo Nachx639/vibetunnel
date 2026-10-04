@@ -917,6 +917,10 @@ export const en = {
   'switcher.quickLabel': 'Quick switch session',
   'switcher.quickPlaceholder': 'Switch session… (type to filter)',
   'switcher.noMatches': 'No matching sessions',
+  'organize.mute': 'Mute notifications',
+  'organize.unmute': 'Unmute notifications',
+  'organize.muted': 'Notifications muted',
+  'organize.muteFailed': "Couldn't change notifications for this session. Try again.",
 };
 
 export type MessageKey = keyof typeof en;

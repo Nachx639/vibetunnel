@@ -921,4 +921,8 @@ export const ptBR: Messages = {
   'switcher.quickLabel': 'Troca rápida de sessão',
   'switcher.quickPlaceholder': 'Trocar de sessão… (digite para filtrar)',
   'switcher.noMatches': 'Nenhuma sessão corresponde',
+  'organize.mute': 'Silenciar notificações',
+  'organize.unmute': 'Reativar notificações',
+  'organize.muted': 'Notificações silenciadas',
+  'organize.muteFailed': 'Não foi possível alterar as notificações desta sessão. Tente de novo.',
 };

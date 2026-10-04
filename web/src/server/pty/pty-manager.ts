@@ -1302,6 +1302,25 @@ export class PtyManager extends EventEmitter {
     }
   }
 
+  /** Mute or unmute notifications for a session. Returns false if the session is unknown. */
+  setSessionMuted(sessionId: string, muted: boolean): boolean {
+    const info = this.sessionManager.loadSessionInfo(sessionId);
+    if (!info) return false;
+    if (muted) info.muted = true;
+    else delete info.muted;
+    this.sessionManager.saveSessionInfo(sessionId, info);
+    const memorySession = this.sessions.get(sessionId);
+    if (memorySession?.sessionInfo) {
+      if (muted) memorySession.sessionInfo.muted = true;
+      else delete memorySession.sessionInfo.muted;
+    }
+    return true;
+  }
+
+  isSessionMuted(sessionId: string): boolean {
+    return this.sessionManager.loadSessionInfo(sessionId)?.muted === true;
+  }
+
   /**
    * Update session name
    */
