@@ -1055,4 +1055,32 @@ export const ar: Messages = {
   'sessions.row.promptChanged': 'تغيّر السؤال — افتح الجلسة للإجابة.',
   'screenMenu.sendFailed': 'تعذّر الإرسال. حاول مرة أخرى.',
   'screenMenu.changed': 'تغيّر السؤال على الشاشة. حاول مرة أخرى.',
+  // Shielded sessions
+  'shield.badge': 'محمية',
+  'shield.info': 'محمية: تستمر في العمل عند إعادة تشغيل VibeTunnel',
+  'shield.shield': 'حماية',
+  'shield.confirmClaude': 'حماية «{name}»؟ سيُعاد تشغيل Claude في جلسة محمية ويتابع هذه المحادثة.',
+  'shield.confirmOther':
+    'حماية «{name}»؟ لا يمكن نقل عملية قيد التشغيل: ستُفتح جلسة محمية جديدة في المجلد نفسه وتبقى هذه الجلسة مفتوحة.',
+  'shield.newToggle': 'محمية (تبقى بعد إعادة التشغيل)',
+  'shield.failed': 'تعذّرت حماية الجلسة: {error}',
+  'shield.restored': 'استُعيدت بعد إعادة التشغيل',
+  'shield.settingLabel': 'حماية الجلسات الجديدة',
+  'shield.settingDescription': 'تستمر حتى لو أُعيد تشغيل VibeTunnel أو تحديثه',
+  'shield.settingSaveFailed': 'تعذّر الحفظ: حماية الجلسات الجديدة',
+  'shieldBanner.countOne': 'محادثة Claude واحدة غير محمية ({n})',
+  'shieldBanner.countMany': '{n} محادثات Claude غير محمية',
+  'shieldBanner.title': 'حماية المحادثات',
+  'shieldBanner.explain':
+    'ستنقطع إذا أُعيد تشغيل VibeTunnel أو تحديثه. بعد الحماية تستمر كل محادثة وتبقى.',
+  'shieldBanner.busy': 'قيد العمل — لن تُلمس',
+  'shieldBanner.confirmOne': 'احمِها',
+  'shieldBanner.confirmMany': 'احمِ {n}',
+  'shieldBanner.working': 'جارٍ الحماية…',
+  'shield.restoreLabel': 'بعد إعادة تشغيل الحاسوب',
+  'shield.restoreDescription':
+    'ما يحدث للجلسات المحمية التي كانت لا تزال تعمل. لا يُحتفظ أبدًا بخيار تجاوز الأذونات.',
+  'shield.restoreOff': 'اعتبارها منتهية',
+  'shield.restoreAgents': 'استئناف محادثات Claude',
+  'shield.restoreAll': 'استئناف Claude وإعادة تشغيل الباقي',
 };

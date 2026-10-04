@@ -13,6 +13,7 @@ import { authClient } from '../../services/auth-client.js';
 import { sessionActionService } from '../../services/session-action-service.js';
 import { createLogger } from '../../utils/logger.js';
 import { renameSession } from '../../utils/session-actions.js';
+import { canShield, shieldConfirmText, shieldSession } from '../../utils/shield.js';
 import { titleManager } from '../../utils/title-manager.js';
 
 const logger = createLogger('session-actions-handler');
@@ -70,6 +71,35 @@ export class SessionActionsHandler {
       this.callbacks.dispatchEvent(
         new CustomEvent('error', {
           detail: t('toast.renameFailed', { error: String(result.error) }),
+          bubbles: true,
+          composed: true,
+        })
+      );
+    }
+  }
+
+  /** Shield: open the shielded version of this session and switch to it. */
+  async handleShieldSession(): Promise<void> {
+    if (!this.callbacks) return;
+    const session = this.callbacks.getSession();
+    if (!session || !canShield(session)) return;
+    const name =
+      session.claudeTitle ||
+      session.claudeStatus?.title ||
+      session.name ||
+      session.command.join(' ');
+    if (!window.confirm(shieldConfirmText(session, name))) return;
+    try {
+      const result = await shieldSession(session.id, authClient.getAuthHeader());
+      this.callbacks.dispatchEvent(
+        new CustomEvent('session-created', { detail: result, bubbles: true, composed: true })
+      );
+    } catch (error) {
+      this.callbacks.dispatchEvent(
+        new CustomEvent('error', {
+          detail: t('shield.failed', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
           bubbles: true,
           composed: true,
         })

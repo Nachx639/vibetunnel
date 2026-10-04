@@ -17,6 +17,7 @@ import {
   syncThemeColorMeta,
 } from '../../utils/accent-themes.js';
 import { Z_INDEX } from '../../utils/constants.js';
+import { canShield } from '../../utils/shield.js';
 import type { Theme } from '../theme-toggle-icon.js';
 
 @customElement('compact-menu')
@@ -44,6 +45,7 @@ export class CompactMenu extends LitElement {
   protected readonly i18n = new LocaleController(this);
   @property({ type: Function }) onTerminateSession?: () => void;
   @property({ type: Function }) onClearSession?: () => void;
+  @property({ type: Function }) onShieldSession?: () => void;
   @property({ type: Boolean }) hasGitRepo = false;
   @property({ type: String }) viewMode: 'terminal' | 'worktree' = 'terminal';
   @property({ type: Function }) onToggleViewMode?: () => void;
@@ -410,7 +412,30 @@ export class CompactMenu extends LitElement {
           this.session
             ? html`
           <div class="border-t border-border my-1"></div>
-          
+
+          ${
+            this.session.shielded && this.session.status === 'running'
+              ? html`<div
+                  class="px-4 py-2 text-xs font-mono text-text-muted flex items-center gap-3"
+                  data-testid="compact-shield-info"
+                >
+                  <span aria-hidden="true">🛡</span>${t('shield.info')}
+                </div>`
+              : this.onShieldSession && canShield(this.session)
+                ? html`
+            <button
+              class="w-full text-left px-4 py-3 text-sm font-mono text-primary hover:bg-surface-hover flex items-center gap-3 ${this.focusedIndex === menuItemIndex++ ? 'bg-surface-hover' : ''}"
+              @click=${() => this.handleAction(this.onShieldSession)}
+              data-testid="compact-shield-session"
+              tabindex="${this.showMenu ? '0' : '-1'}"
+            >
+              <span aria-hidden="true" style="width: 16px; text-align: center">🛡</span>
+              ${t('shield.shield')}
+            </button>
+          `
+                : nothing
+          }
+
           <!-- Session Actions -->
           ${
             this.session.status === 'running'

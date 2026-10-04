@@ -21,6 +21,12 @@ export interface ServerConfig {
   notificationPreferences?: NotificationPreferences;
   /** Phone chat view of agent conversations (config.json `agentChat`). */
   agentChat?: boolean;
+  /** New web/phone sessions are shielded (config.json `shieldNewSessions`, off when missing). */
+  shieldNewSessions?: boolean;
+  /** After a reboot: 'off' (nothing runs), 'agents' (Claude resumes), 'all'. */
+  shieldRestore?: 'off' | 'agents' | 'all';
+  /** tmux is installed on the server, so sessions can be shielded at all. */
+  shieldAvailable?: boolean;
 }
 
 export class ServerConfigService {

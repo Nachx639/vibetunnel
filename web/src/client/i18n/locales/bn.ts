@@ -1058,4 +1058,33 @@ export const bn: Messages = {
   'sessions.row.promptChanged': 'প্রশ্ন বদলে গেছে — উত্তর দিতে সেশন খুলুন।',
   'screenMenu.sendFailed': 'পাঠানো গেল না। আবার চেষ্টা করুন।',
   'screenMenu.changed': 'স্ক্রিনের প্রশ্নটি বদলে গেছে। আবার চেষ্টা করুন।',
+  // Shielded sessions
+  'shield.badge': 'সুরক্ষিত',
+  'shield.info': 'সুরক্ষিত: VibeTunnel রিস্টার্ট হলেও চলতে থাকে',
+  'shield.shield': 'সুরক্ষিত করুন',
+  'shield.confirmClaude':
+    '“{name}” সুরক্ষিত করবেন? Claude একটি সুরক্ষিত সেশনে আবার চালু হয়ে এই কথোপকথন চালিয়ে যাবে।',
+  'shield.confirmOther':
+    '“{name}” সুরক্ষিত করবেন? চলমান প্রসেস সরানো যায় না: একই ফোল্ডারে একটি নতুন সুরক্ষিত সেশন খুলবে এবং এটি খোলা থাকবে।',
+  'shield.newToggle': 'সুরক্ষিত (রিস্টার্টের পরেও থাকে)',
+  'shield.failed': 'সেশন সুরক্ষিত করা যায়নি: {error}',
+  'shield.restored': 'রিস্টার্টের পরে পুনরুদ্ধার করা হয়েছে',
+  'shield.settingLabel': 'নতুন সেশন সুরক্ষিত করুন',
+  'shield.settingDescription': 'VibeTunnel রিস্টার্ট বা আপডেট হলেও চলতে থাকে',
+  'shield.settingSaveFailed': 'সংরক্ষণ করা যায়নি: নতুন সেশন সুরক্ষা',
+  'shieldBanner.countOne': 'Claude-এর {n}টি কথোপকথন সুরক্ষিত নয়',
+  'shieldBanner.countMany': 'Claude-এর {n}টি কথোপকথন সুরক্ষিত নয়',
+  'shieldBanner.title': 'কথোপকথন সুরক্ষিত করুন',
+  'shieldBanner.explain':
+    'VibeTunnel রিস্টার্ট বা আপডেট হলে এগুলো থেমে যাবে। সুরক্ষিত হলে প্রতিটি চলতে থাকে।',
+  'shieldBanner.busy': 'কাজ চলছে — ছোঁয়া হবে না',
+  'shieldBanner.confirmOne': 'এটি সুরক্ষিত করুন',
+  'shieldBanner.confirmMany': '{n}টি সুরক্ষিত করুন',
+  'shieldBanner.working': 'সুরক্ষিত করা হচ্ছে…',
+  'shield.restoreLabel': 'কম্পিউটার রিস্টার্টের পরে',
+  'shield.restoreDescription':
+    'যে সুরক্ষিত সেশনগুলো চলছিল সেগুলোর কী হবে। অনুমতি এড়ানোর বিকল্প কখনও রাখা হয় না।',
+  'shield.restoreOff': 'সমাপ্ত হিসেবে চিহ্নিত করুন',
+  'shield.restoreAgents': 'Claude কথোপকথন আবার শুরু করুন',
+  'shield.restoreAll': 'Claude আবার শুরু করুন, বাকিগুলো নতুন করে চালান',
 };

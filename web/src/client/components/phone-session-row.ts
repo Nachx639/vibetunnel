@@ -31,6 +31,7 @@ import { formatPathForDisplay } from '../utils/path-utils.js';
 import { endsADrag } from '../utils/pointer-drag.js';
 import { renameSession } from '../utils/session-actions.js';
 import { focusSheet, holdSheetFocus } from '../utils/sheet-a11y.js';
+import { canShield, shieldConfirmText, shieldSession } from '../utils/shield.js';
 
 const LONG_PRESS_MS = 550;
 /** Width of one swipe action button. */
@@ -172,6 +173,8 @@ export class PhoneSessionRow extends LitElement {
   @property({ type: Boolean }) selected = false;
   /** Pinned to the top of the list on this device (session-list owns the set). */
   @property({ type: Boolean }) pinned = false;
+  /** tmux is installed on the server: the sheet offers to shield the session. */
+  @property({ type: Boolean }) shieldAvailable = false;
   /**
    * Changes whenever anything shown changes. The app may keep the same Session object
    * across polls, which alone would not re-render this row.
@@ -355,7 +358,7 @@ export class PhoneSessionRow extends LitElement {
    * `confirmKill` swaps the actions for a "Kill “name”?" step: killing a running session ends
    * its process, so it never happens on a single, possibly stray, tap.
    */
-  private renderSheet(confirmKill = false) {
+  private renderSheet(confirmKill = false, confirmShield = false) {
     if (!this.sheetHost) return;
     const exited = this.session.status === 'exited';
     // The click finishing the tap that opened the sheet lands on whatever is now under the
@@ -383,6 +386,48 @@ export class PhoneSessionRow extends LitElement {
         fn();
       },
     });
+    // A step inside the sheet (to a confirm question): same touch handling, the sheet stays.
+    const stepAction = (fn: () => void) => ({
+      handleEvent: (e: Event) => {
+        if (Date.now() - this.sheetOpenedAt < 500) return;
+        if (e.type === 'pointerup') {
+          if ((e as PointerEvent).pointerType === 'mouse') return;
+          if (endsADrag(e as PointerEvent)) return;
+          this.sheetActionAt = Date.now();
+          swallowNextClick();
+        } else if (Date.now() - this.sheetActionAt < 700) {
+          return;
+        }
+        // The confirm button takes this one's place: a double tap mustn't confirm.
+        this.sheetOpenedAt = Date.now();
+        fn();
+      },
+    });
+    if (confirmShield && canShield(this.session)) {
+      render(
+        html`
+          <div class="psr-sheet-backdrop" @click=${this.handleBackdropClick}></div>
+          <div class="psr-sheet open" role="alertdialog" aria-modal="true" aria-label=${this.displayTitle()}>
+            <div class="psr-sheet-group">
+              <div class="psr-sheet-title question">
+                <bdi>${shieldConfirmText(this.session, this.displayTitle())}</bdi>
+              </div>
+              <button
+                data-testid="psr-shield-confirm"
+                @pointerup=${touchAction(() => void this.shield())}
+                @click=${touchAction(() => void this.shield())}
+              >
+                🛡 ${t('shield.shield')}
+              </button>
+            </div>
+            <button class="psr-sheet-cancel" @click=${this.handleBackdropClick}>${t('common.cancel')}</button>
+          </div>
+        `,
+        this.sheetHost
+      );
+      focusSheet(this.sheetHost.querySelector<HTMLElement>('.psr-sheet'));
+      return;
+    }
     if (confirmKill && !exited) {
       render(
         html`
@@ -410,7 +455,14 @@ export class PhoneSessionRow extends LitElement {
         <div class="psr-sheet-backdrop" @click=${this.handleBackdropClick}></div>
         <div class="psr-sheet" role="dialog" aria-modal="true" aria-label=${this.displayTitle()}>
           <div class="psr-sheet-group">
-            <div class="psr-sheet-title"><bdi>${this.displayTitle()}</bdi></div>
+            <div class="psr-sheet-title">
+              <bdi>${this.displayTitle()}</bdi>
+              ${
+                this.session.shielded && !exited
+                  ? html`<div data-testid="psr-shield-info" style="margin-top: 4px">🛡 ${t('shield.info')}</div>`
+                  : nothing
+              }
+            </div>
             <button @click=${action(() => this.openSession())}>${t('sessions.row.open')}</button>
             ${
               exited
@@ -429,6 +481,17 @@ export class PhoneSessionRow extends LitElement {
             >
               ${t(this.pinned ? 'organize.unpin' : 'organize.pin')}
             </button>
+            ${
+              canShield(this.session) && this.shieldAvailable
+                ? html`<button
+                    data-testid="psr-shield"
+                    @pointerup=${stepAction(() => this.renderSheet(false, true))}
+                    @click=${stepAction(() => this.renderSheet(false, true))}
+                  >
+                    🛡 ${t('shield.shield')}
+                  </button>`
+                : nothing
+            }
             <button
               class="destructive"
               @click=${
@@ -449,6 +512,34 @@ export class PhoneSessionRow extends LitElement {
       `,
       this.sheetHost
     );
+  }
+
+  /** Shield: open the shielded version of this session (see utils/shield.ts). */
+  private async shield() {
+    try {
+      const result = await shieldSession(this.session.id, this.authClient?.getAuthHeader());
+      this.dispatchEvent(
+        new CustomEvent('session-created', { detail: result, bubbles: true, composed: true })
+      );
+    } catch (error) {
+      this.dispatchEvent(
+        new CustomEvent('error', {
+          detail: t('shield.failed', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+          bubbles: true,
+          composed: true,
+        })
+      );
+    }
+  }
+
+  /** A shielded session recreated after a restart in the last day (still running). */
+  private recentlyRestored(): boolean {
+    const { restoredAt, status } = this.session;
+    if (!restoredAt || status !== 'running') return false;
+    const age = Date.now() - Date.parse(restoredAt);
+    return age >= 0 && age < 24 * 60 * 60 * 1000;
   }
 
   private togglePin() {
@@ -698,6 +789,8 @@ export class PhoneSessionRow extends LitElement {
       status,
       time,
       this.pinned ? t('organize.pinned') : '',
+      this.session.shielded ? t('shield.badge') : '',
+      this.recentlyRestored() ? t('shield.restored') : '',
       preview,
       state === 'waiting' ? '' : this.lastLine(),
     ]
@@ -804,6 +897,30 @@ export class PhoneSessionRow extends LitElement {
               ${
                 this.pinned
                   ? html`<span class="psr-flag" role="img" aria-label=${t('organize.pinned')}>📌</span>`
+                  : nothing
+              }
+              ${
+                session.shielded
+                  ? html`<span
+                      class="psr-flag"
+                      data-testid="psr-shield-badge"
+                      role="img"
+                      aria-label=${t('shield.badge')}
+                      title=${t('shield.info')}
+                      >🛡</span
+                    >`
+                  : nothing
+              }
+              ${
+                this.recentlyRestored()
+                  ? html`<span
+                      class="psr-flag"
+                      data-testid="psr-restored-badge"
+                      role="img"
+                      aria-label=${t('shield.restored')}
+                      title=${t('shield.restored')}
+                      >↻</span
+                    >`
                   : nothing
               }
               <span class="psr-time"><vt-row-time at=${timeIso ?? ''}></vt-row-time></span>

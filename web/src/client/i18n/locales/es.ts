@@ -1083,4 +1083,33 @@ export const es: Messages = {
   'sessions.row.promptChanged': 'La pregunta ha cambiado: abre la sesión para responder.',
   'screenMenu.sendFailed': 'No se pudo enviar. Vuelve a intentarlo.',
   'screenMenu.changed': 'La pregunta en pantalla ha cambiado. Vuelve a intentarlo.',
+  // Shielded sessions
+  'shield.badge': 'Blindada',
+  'shield.info': 'Blindada: sigue en marcha aunque VibeTunnel se reinicie',
+  'shield.shield': 'Blindar',
+  'shield.confirmClaude':
+    '¿Blindar «{name}»? Claude se reiniciará en una sesión blindada y seguirá con esta conversación.',
+  'shield.confirmOther':
+    '¿Blindar «{name}»? Un proceso en marcha no se puede trasladar: se abrirá una sesión blindada nueva en la misma carpeta y esta seguirá abierta.',
+  'shield.newToggle': 'Blindada (sobrevive a reinicios)',
+  'shield.failed': 'No se ha podido blindar la sesión: {error}',
+  'shield.restored': 'Restaurada tras un reinicio',
+  'shield.settingLabel': 'Blindar sesiones nuevas',
+  'shield.settingDescription': 'Siguen vivas aunque VibeTunnel se reinicie o se actualice',
+  'shield.settingSaveFailed': 'No se ha podido guardar: blindar sesiones nuevas',
+  'shieldBanner.countOne': '{n} conversación de Claude sin blindar',
+  'shieldBanner.countMany': '{n} conversaciones de Claude sin blindar',
+  'shieldBanner.title': 'Blindar conversaciones',
+  'shieldBanner.explain':
+    'Se cortarían si VibeTunnel se reinicia o se actualiza. Blindadas, cada una sigue con la misma conversación y sobrevive.',
+  'shieldBanner.busy': 'trabajando — no se toca',
+  'shieldBanner.confirmOne': 'Blindarla',
+  'shieldBanner.confirmMany': 'Blindar {n}',
+  'shieldBanner.working': 'Blindando…',
+  'shield.restoreLabel': 'Tras reiniciar el ordenador',
+  'shield.restoreDescription':
+    'Qué pasa con las sesiones blindadas que seguían en marcha. Una opción que omite permisos nunca se mantiene.',
+  'shield.restoreOff': 'Darlas por terminadas',
+  'shield.restoreAgents': 'Reanudar las conversaciones de Claude',
+  'shield.restoreAll': 'Reanudar Claude y volver a iniciar el resto',
 };

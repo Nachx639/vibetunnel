@@ -1,4 +1,4 @@
-import { html, LitElement, type PropertyValues } from 'lit';
+import { html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/config.js';
@@ -51,6 +51,10 @@ export class Settings extends LitElement {
   @state() private phoneUi: PhoneUi = getPhoneUi();
   @state() private quickSwitcher = isQuickSwitcherEnabled();
   @state() private accent = getAccent();
+  /** New web/phone sessions are shielded (server config, off unless turned on). */
+  @state() private shieldNewSessions = false;
+  @state() private shieldRestore: 'off' | 'agents' | 'all' = 'off';
+  @state() private shieldAvailable = false;
 
   private permissionChangeUnsubscribe?: () => void;
   private subscriptionChangeUnsubscribe?: () => void;
@@ -185,6 +189,9 @@ export class Settings extends LitElement {
           const serverConfig = await this.serverConfigService.loadConfig(this.visible);
           // Always use server's repository base path
           this.repositoryBasePath = serverConfig.repositoryBasePath || DEFAULT_REPOSITORY_BASE_PATH;
+          this.shieldNewSessions = serverConfig.shieldNewSessions === true;
+          this.shieldRestore = serverConfig.shieldRestore ?? 'off';
+          this.shieldAvailable = serverConfig.shieldAvailable === true;
           logger.debug('Loaded repository base path:', this.repositoryBasePath);
           // Force update to ensure UI reflects the loaded value
           this.requestUpdate();
@@ -809,6 +816,82 @@ export class Settings extends LitElement {
     `;
   }
 
+  private async handleShieldNewSessionsToggle() {
+    if (!this.serverConfigService) return;
+    const next = !this.shieldNewSessions;
+    this.shieldNewSessions = next;
+    try {
+      await this.serverConfigService.updateConfig({ shieldNewSessions: next });
+    } catch (error) {
+      logger.error('Failed to update shielding of new sessions:', error);
+      this.shieldNewSessions = !next;
+      this.dispatchEvent(new CustomEvent('error', { detail: t('shield.settingSaveFailed') }));
+    }
+  }
+
+  private async handleShieldRestoreChange(e: Event) {
+    if (!this.serverConfigService) return;
+    const value = (e.target as HTMLSelectElement).value as 'off' | 'agents' | 'all';
+    const previous = this.shieldRestore;
+    this.shieldRestore = value;
+    try {
+      await this.serverConfigService.updateConfig({ shieldRestore: value });
+    } catch (error) {
+      logger.error('Failed to update the restore of shielded sessions:', error);
+      this.shieldRestore = previous;
+      this.dispatchEvent(new CustomEvent('error', { detail: t('shield.settingSaveFailed') }));
+    }
+  }
+
+  /** "Shield new sessions" and what a restart restores: only offered when tmux is there. */
+  private renderShieldSettings() {
+    if (!this.shieldAvailable) return nothing;
+    const on = this.shieldNewSessions;
+    return html`
+      <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-shield-new">
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="text-primary font-medium">🛡 ${t('shield.settingLabel')}</label>
+            <p class="text-muted text-xs mt-1">${t('shield.settingDescription')}</p>
+          </div>
+          <button
+            role="switch"
+            aria-checked=${on ? 'true' : 'false'}
+            aria-label=${t('shield.settingLabel')}
+            data-testid="settings-shield-new-toggle"
+            @click=${this.handleShieldNewSessionsToggle}
+            class="relative flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              on ? 'bg-primary' : 'bg-border'
+            }"
+          >
+            <span
+              class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+                on ? 'translate-x-5' : 'translate-x-0.5'
+              }"
+            ></span>
+          </button>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4">
+          <div class="min-w-0">
+            <label class="text-primary font-medium" for="shield-restore">${t('shield.restoreLabel')}</label>
+            <p class="text-muted text-xs mt-1">${t('shield.restoreDescription')}</p>
+          </div>
+          <select
+            id="shield-restore"
+            data-testid="settings-shield-restore"
+            class="input-field text-sm py-2 flex-shrink-0"
+            .value=${this.shieldRestore}
+            @change=${this.handleShieldRestoreChange}
+          >
+            <option value="off">${t('shield.restoreOff')}</option>
+            <option value="agents">${t('shield.restoreAgents')}</option>
+            <option value="all">${t('shield.restoreAll')}</option>
+          </select>
+        </div>
+      </div>
+    `;
+  }
+
   private renderAppSettings() {
     return html`
       <div class="space-y-4">
@@ -817,6 +900,8 @@ export class Settings extends LitElement {
         ${this.renderAppearance()}
 
         ${this.renderPhoneLayout()}
+
+        ${this.renderShieldSettings()}
 
         <!-- Language -->
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">

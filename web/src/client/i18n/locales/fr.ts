@@ -1094,4 +1094,33 @@ export const fr: Messages = {
   'sessions.row.promptChanged': 'La question a changé — ouvrez la session pour répondre.',
   'screenMenu.sendFailed': 'Envoi impossible. Réessayez.',
   'screenMenu.changed': 'La question à l’écran a changé. Réessayez.',
+  // Shielded sessions
+  'shield.badge': 'Blindée',
+  'shield.info': 'Blindée : continue de tourner quand VibeTunnel redémarre',
+  'shield.shield': 'Blinder',
+  'shield.confirmClaude':
+    'Blinder « {name} » ? Claude redémarre dans une session blindée et poursuit cette conversation.',
+  'shield.confirmOther':
+    'Blinder « {name} » ? Un processus en cours ne peut pas être déplacé : une nouvelle session blindée s’ouvre dans le même dossier et celle-ci reste ouverte.',
+  'shield.newToggle': 'Blindée (survit aux redémarrages)',
+  'shield.failed': 'Impossible de blinder la session : {error}',
+  'shield.restored': 'Restaurée après un redémarrage',
+  'shield.settingLabel': 'Protéger les nouvelles sessions',
+  'shield.settingDescription': 'Elles continuent si VibeTunnel redémarre ou se met à jour',
+  'shield.settingSaveFailed': 'Impossible d’enregistrer : protéger les nouvelles sessions',
+  'shieldBanner.countOne': '{n} conversation Claude non protégée',
+  'shieldBanner.countMany': '{n} conversations Claude non protégées',
+  'shieldBanner.title': 'Protéger les conversations',
+  'shieldBanner.explain':
+    'Elles s’arrêteraient si VibeTunnel redémarre ou se met à jour. Protégées, chacune continue la même conversation et survit.',
+  'shieldBanner.busy': 'occupée — on n’y touche pas',
+  'shieldBanner.confirmOne': 'La protéger',
+  'shieldBanner.confirmMany': 'Protéger {n}',
+  'shieldBanner.working': 'Protection…',
+  'shield.restoreLabel': 'Après un redémarrage de l’ordinateur',
+  'shield.restoreDescription':
+    'Ce que deviennent les sessions blindées encore en cours. Une option qui contourne les permissions n’est jamais reprise.',
+  'shield.restoreOff': 'Les marquer comme terminées',
+  'shield.restoreAgents': 'Reprendre les conversations Claude',
+  'shield.restoreAll': 'Reprendre Claude, relancer le reste',
 };

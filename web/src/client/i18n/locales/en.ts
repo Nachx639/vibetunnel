@@ -1077,6 +1077,35 @@ export const en = {
   'sessions.row.promptChanged': 'The question changed — open the session to answer.',
   'screenMenu.sendFailed': 'Could not send it. Try again.',
   'screenMenu.changed': 'The question on screen changed. Try again.',
+  // Shielded sessions
+  'shield.badge': 'Shielded',
+  'shield.info': 'Shielded: keeps running when VibeTunnel restarts',
+  'shield.shield': 'Shield',
+  'shield.confirmClaude':
+    'Shield “{name}”? Claude restarts in a shielded session and continues this conversation.',
+  'shield.confirmOther':
+    'Shield “{name}”? A running process can’t be moved, so a new shielded session opens in the same folder and this one stays open.',
+  'shield.newToggle': 'Shielded (survives restarts)',
+  'shield.failed': 'Couldn’t shield the session: {error}',
+  'shield.restored': 'Restored after a restart',
+  'shield.settingLabel': 'Shield new sessions',
+  'shield.settingDescription': 'They keep running when VibeTunnel restarts or updates',
+  'shield.settingSaveFailed': 'Couldn’t save: shield new sessions',
+  'shieldBanner.countOne': '{n} Claude conversation isn’t shielded',
+  'shieldBanner.countMany': '{n} Claude conversations aren’t shielded',
+  'shieldBanner.title': 'Shield conversations',
+  'shieldBanner.explain':
+    'They would end if VibeTunnel restarts or updates. Shielded, each one continues the same conversation and survives.',
+  'shieldBanner.busy': 'busy — left alone',
+  'shieldBanner.confirmOne': 'Shield it',
+  'shieldBanner.confirmMany': 'Shield {n}',
+  'shieldBanner.working': 'Shielding…',
+  'shield.restoreLabel': 'After a restart of the computer',
+  'shield.restoreDescription':
+    'What happens to shielded sessions that were still running. A permission-bypass flag is never carried over.',
+  'shield.restoreOff': 'Mark them as finished',
+  'shield.restoreAgents': 'Resume Claude conversations',
+  'shield.restoreAll': 'Resume Claude, start the rest again',
 };
 
 export type MessageKey = keyof typeof en;

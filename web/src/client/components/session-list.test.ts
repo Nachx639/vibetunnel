@@ -712,6 +712,36 @@ describe('SessionList', () => {
       });
     });
 
+    it('offers a Shielded switch only with tmux, and sends shielded only once chosen', async () => {
+      element.sessions = [createMockSession({ id: 'a', workingDir: '/work/app' })];
+      await element.updateComplete;
+      const list = element as unknown as {
+        openFolderSheet: (entry: { command: string }) => void;
+        shieldAvailable: boolean;
+      };
+      const toggle = () =>
+        document.body.querySelector('[data-testid="new-session-shield-toggle"]') as HTMLElement;
+      list.openFolderSheet({ command: 'zsh' });
+      expect(toggle()).toBeNull();
+      document.body.querySelector('.psr-sheet-cancel')?.dispatchEvent(new Event('click'));
+
+      list.shieldAvailable = true;
+      list.openFolderSheet({ command: 'zsh' });
+      // The server's setting decides until this device chooses: off by default.
+      expect(toggle().getAttribute('aria-checked')).toBe('false');
+      const later = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000);
+      toggle().click();
+      expect(toggle().getAttribute('aria-checked')).toBe('true');
+      expect(store.get('vt-phone-new-shielded')).toBe('1');
+      const post = vi.fn(async () => new Response(JSON.stringify({ sessionId: 'new-1' })));
+      vi.mocked(global.fetch).mockImplementation(post);
+      (document.body.querySelector('.psr-sheet-group button.folder') as HTMLElement).click();
+      later.mockRestore();
+      await vi.waitFor(() => expect(post).toHaveBeenCalled());
+      const [, init] = post.mock.calls[0] as unknown as [string, RequestInit];
+      expect(JSON.parse(String(init.body))).toMatchObject({ shielded: true });
+    });
+
     it('puts the last tool first and keeps folders after their sessions are cleared', async () => {
       const list = element as unknown as {
         openToolSheet: () => void;

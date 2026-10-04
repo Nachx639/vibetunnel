@@ -1056,4 +1056,33 @@ export const hi: Messages = {
   'sessions.row.promptChanged': 'सवाल बदल गया है — जवाब देने के लिए सत्र खोलें।',
   'screenMenu.sendFailed': 'भेजा नहीं जा सका। फिर से कोशिश करें।',
   'screenMenu.changed': 'स्क्रीन पर सवाल बदल गया है। फिर से कोशिश करें।',
+  // Shielded sessions
+  'shield.badge': 'सुरक्षित',
+  'shield.info': 'सुरक्षित: VibeTunnel रीस्टार्ट होने पर भी चलता रहता है',
+  'shield.shield': 'सुरक्षित करें',
+  'shield.confirmClaude':
+    '“{name}” सुरक्षित करें? Claude एक सुरक्षित सत्र में फिर से शुरू होगा और यही बातचीत जारी रखेगा।',
+  'shield.confirmOther':
+    '“{name}” सुरक्षित करें? चल रही प्रक्रिया को हटाया नहीं जा सकता: उसी फ़ोल्डर में एक नया सुरक्षित सत्र खुलेगा और यह सत्र खुला रहेगा।',
+  'shield.newToggle': 'सुरक्षित (रीस्टार्ट के बाद भी बचा रहे)',
+  'shield.failed': 'सत्र सुरक्षित नहीं हो सका: {error}',
+  'shield.restored': 'रीस्टार्ट के बाद पुनर्स्थापित',
+  'shield.settingLabel': 'नए सत्र सुरक्षित करें',
+  'shield.settingDescription': 'VibeTunnel रीस्टार्ट या अपडेट होने पर भी चलते रहते हैं',
+  'shield.settingSaveFailed': 'सहेजा नहीं जा सका: नए सत्र सुरक्षित करें',
+  'shieldBanner.countOne': 'Claude की {n} बातचीत सुरक्षित नहीं',
+  'shieldBanner.countMany': 'Claude की {n} बातचीत सुरक्षित नहीं',
+  'shieldBanner.title': 'बातचीत सुरक्षित करें',
+  'shieldBanner.explain':
+    'VibeTunnel रीस्टार्ट या अपडेट होने पर ये रुक जाएँगी। सुरक्षित होकर हर बातचीत जारी रहती है।',
+  'shieldBanner.busy': 'काम चल रहा है — छुआ नहीं जाएगा',
+  'shieldBanner.confirmOne': 'इसे सुरक्षित करें',
+  'shieldBanner.confirmMany': '{n} सुरक्षित करें',
+  'shieldBanner.working': 'सुरक्षित किया जा रहा है…',
+  'shield.restoreLabel': 'कंप्यूटर रीस्टार्ट होने के बाद',
+  'shield.restoreDescription':
+    'जो सुरक्षित सत्र चल रहे थे उनका क्या हो। अनुमतियाँ छोड़ने वाला विकल्प कभी नहीं रखा जाता।',
+  'shield.restoreOff': 'उन्हें समाप्त मानें',
+  'shield.restoreAgents': 'Claude बातचीत फिर से शुरू करें',
+  'shield.restoreAll': 'Claude फिर से शुरू करें, बाकी को दोबारा चलाएँ',
 };

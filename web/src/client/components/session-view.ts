@@ -1541,6 +1541,7 @@ export class SessionView extends LitElement {
             .macAppConnected=${uiState.macAppConnected}
             .onTerminateSession=${() => this.sessionActionsHandler.handleTerminateSession()}
             .onClearSession=${() => this.sessionActionsHandler.handleClearSession()}
+            .onShieldSession=${() => void this.sessionActionsHandler.handleShieldSession()}
             .onToggleViewMode=${() => this.sessionActionsHandler.handleToggleViewMode()}
             .chatMode=${uiState.chatMode}
             .onToggleChatMode=${() => this.handleToggleChatMode()}

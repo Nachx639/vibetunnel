@@ -1082,4 +1082,33 @@ export const ptBR: Messages = {
   'sessions.row.promptChanged': 'A pergunta mudou — abra a sessão para responder.',
   'screenMenu.sendFailed': 'Não foi possível enviar. Tente de novo.',
   'screenMenu.changed': 'A pergunta na tela mudou. Tente de novo.',
+  // Shielded sessions
+  'shield.badge': 'Blindada',
+  'shield.info': 'Blindada: continua rodando quando o VibeTunnel reinicia',
+  'shield.shield': 'Blindar',
+  'shield.confirmClaude':
+    'Blindar “{name}”? O Claude reinicia em uma sessão blindada e continua esta conversa.',
+  'shield.confirmOther':
+    'Blindar “{name}”? Um processo em execução não pode ser movido: uma nova sessão blindada abre na mesma pasta e esta continua aberta.',
+  'shield.newToggle': 'Blindada (sobrevive a reinícios)',
+  'shield.failed': 'Não foi possível blindar a sessão: {error}',
+  'shield.restored': 'Restaurada após uma reinicialização',
+  'shield.settingLabel': 'Blindar sessões novas',
+  'shield.settingDescription': 'Continuam ativas mesmo se o VibeTunnel reiniciar ou atualizar',
+  'shield.settingSaveFailed': 'Não foi possível salvar: blindar sessões novas',
+  'shieldBanner.countOne': '{n} conversa do Claude sem blindagem',
+  'shieldBanner.countMany': '{n} conversas do Claude sem blindagem',
+  'shieldBanner.title': 'Blindar conversas',
+  'shieldBanner.explain':
+    'Seriam cortadas se o VibeTunnel reiniciar ou atualizar. Blindadas, cada uma continua a mesma conversa e sobrevive.',
+  'shieldBanner.busy': 'ocupada — não é tocada',
+  'shieldBanner.confirmOne': 'Blindá-la',
+  'shieldBanner.confirmMany': 'Blindar {n}',
+  'shieldBanner.working': 'Blindando…',
+  'shield.restoreLabel': 'Depois de reiniciar o computador',
+  'shield.restoreDescription':
+    'O que acontece com as sessões blindadas que ainda estavam rodando. Uma opção que ignora permissões nunca é mantida.',
+  'shield.restoreOff': 'Marcá-las como encerradas',
+  'shield.restoreAgents': 'Retomar as conversas do Claude',
+  'shield.restoreAll': 'Retomar o Claude e iniciar o resto de novo',
 };

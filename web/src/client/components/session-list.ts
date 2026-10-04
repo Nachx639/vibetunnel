@@ -25,6 +25,7 @@ import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import type { Worktree } from '../services/git-service.js';
 import './phone-session-row.js';
+import './shield-banner.js';
 import './session-card.js';
 import './inline-edit.js';
 import './session-list/compact-session-card.js';
@@ -117,6 +118,7 @@ export class SessionList extends LitElement {
     super.connectedCallback();
     window.addEventListener('resize', this.placeFab);
     window.addEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
+    this.loadShieldDefault();
     // Make the component focusable
     this.tabIndex = 0;
     // Add keyboard listener only to this component
@@ -1131,6 +1133,7 @@ export class SessionList extends LitElement {
         .authClient=${this.authClient}
         .selected=${session.id === this.selectedSessionId}
         .pinned=${this.pinnedIds.has(session.id)}
+        .shieldAvailable=${this.shieldAvailable}
         .stamp=${`${session.status}|${session.name}|${session.lastModified}`}
         @session-select=${this.handleSessionSelect}
         @session-killed=${this.handleSessionKilled}
@@ -1159,6 +1162,15 @@ export class SessionList extends LitElement {
     const row = (session: Session) => this.renderPhoneRow(session);
     return html`
       ${this.compactMode ? '' : this.renderNewChatButton()}
+      ${
+        this.compactMode
+          ? ''
+          : html`<shield-banner
+              .sessions=${this.sessions}
+              .authClient=${this.authClient}
+              @refresh=${() => this.dispatchEvent(new CustomEvent('refresh'))}
+            ></shield-banner>`
+      }
       ${
         searchable
           ? html`<div class="phone-search">
@@ -1369,10 +1381,31 @@ export class SessionList extends LitElement {
     };
   }
 
+  /**
+   * The new-session sheet's "Shielded" switch: this device's explicit choice, or null to follow
+   * the server's "shield new sessions" setting (off unless turned on).
+   */
+  private newShieldedChoice: boolean | null = readNewShieldedChoice();
+  private shieldDefault = false;
+  @state() private shieldAvailable = false;
+  private get newShielded(): boolean {
+    return this.newShieldedChoice ?? this.shieldDefault;
+  }
+  private loadShieldDefault() {
+    void serverConfigService
+      .loadConfig()
+      .then((config) => {
+        this.shieldDefault = config.shieldNewSessions === true;
+        this.shieldAvailable = config.shieldAvailable === true;
+      })
+      .catch(() => {});
+  }
+
   /** Action sheet in <body> (the phone sidebar's transform would trap position:fixed). */
   private showSheet(
     title: string,
-    buttons: Array<{ label: string; mono?: boolean; run: () => void }>
+    buttons: Array<{ label: string; mono?: boolean; run: () => void }>,
+    options: { shieldToggle?: boolean } = {}
   ) {
     this.closeSheet();
     // Closing a previous sheet (tool -> folder) already handed focus back to its opener.
@@ -1381,12 +1414,39 @@ export class SessionList extends LitElement {
     this.sheetHost = host;
     this.sheetOpenedAt = Date.now();
     document.body.appendChild(host);
-    render(
-      html`
+    const shieldToggle = options.shieldToggle && this.shieldAvailable;
+    const draw = () =>
+      render(
+        html`
         <div class="psr-sheet-backdrop" @click=${this.closeSheet}></div>
-        <div class="psr-sheet" role="dialog" aria-modal="true" aria-label=${title}>
+        <div class="psr-sheet ${host.querySelector('.psr-sheet.open') ? 'open' : ''}" role="dialog" aria-modal="true" aria-label=${title}>
           <div class="psr-sheet-group">
             <div class="psr-sheet-title">${title}</div>
+            ${
+              shieldToggle
+                ? html`<button
+                    role="switch"
+                    aria-checked=${this.newShielded ? 'true' : 'false'}
+                    data-testid="new-session-shield-toggle"
+                    style="display: flex; align-items: center; justify-content: space-between; gap: 12px"
+                    @pointerup=${this.sheetAction(toggleShield)}
+                    @click=${this.sheetAction(toggleShield)}
+                  >
+                    <span>🛡 ${t('shield.newToggle')}</span>
+                    <span
+                      aria-hidden="true"
+                      style="flex: none; width: 42px; height: 26px; border-radius: 13px; position: relative;
+                        background: ${this.newShielded ? 'var(--color-primary)' : 'var(--color-bg-tertiary)'};
+                        transition: background 0.15s"
+                    >
+                      <span
+                        style="position: absolute; top: 3px; left: ${this.newShielded ? '19px' : '3px'}; width: 20px;
+                          height: 20px; border-radius: 50%; background: white; transition: left 0.15s"
+                      ></span>
+                    </span>
+                  </button>`
+                : nothing
+            }
             ${buttons.map(
               (button) => html`<button
                 class=${button.mono ? 'folder' : ''}
@@ -1406,8 +1466,14 @@ export class SessionList extends LitElement {
           <button class="psr-sheet-cancel" @click=${this.closeSheet}>${t('common.cancel')}</button>
         </div>
       `,
-      host
-    );
+        host
+      );
+    const toggleShield = () => {
+      this.newShieldedChoice = !this.newShielded;
+      writeNewShielded(this.newShieldedChoice);
+      draw();
+    };
+    draw();
     this.releaseSheetFocus = holdSheetFocus(
       host.querySelector<HTMLElement>('.psr-sheet'),
       this.closeSheet,
@@ -1442,14 +1508,18 @@ export class SessionList extends LitElement {
   };
 
   private openFolderSheet(entry: QuickStartCommand) {
-    this.showSheet(t('newChat.where', { tool: this.quickStartLabel(entry) }), [
-      ...this.recentFolders().map((folder) => ({
-        label: formatPathForDisplay(folder),
-        mono: true,
-        run: () => void this.startSession(entry, folder),
-      })),
-      { label: t('newChat.other'), run: () => this.openCreateDialog() },
-    ]);
+    this.showSheet(
+      t('newChat.where', { tool: this.quickStartLabel(entry) }),
+      [
+        ...this.recentFolders().map((folder) => ({
+          label: formatPathForDisplay(folder),
+          mono: true,
+          run: () => void this.startSession(entry, folder),
+        })),
+        { label: t('newChat.other'), run: () => this.openCreateDialog() },
+      ],
+      { shieldToggle: true }
+    );
   }
 
   /** The same request as the create dialog, with the quick start's exact command. */
@@ -1473,6 +1543,8 @@ export class SessionList extends LitElement {
           spawn_terminal: false,
           cols: 120,
           rows: 30,
+          // Only an explicit choice on this device is sent; otherwise the server's setting decides.
+          ...(this.newShieldedChoice !== null ? { shielded: this.newShieldedChoice } : {}),
         }),
       });
       const result = await response.json();
@@ -1666,5 +1738,25 @@ export class SessionList extends LitElement {
         </div>
       </div>
     `;
+  }
+}
+
+/** This device's choice for the phone's new-session "Shielded" switch ('1' or '0'). */
+const NEW_SHIELDED_KEY = 'vt-phone-new-shielded';
+
+function readNewShieldedChoice(): boolean | null {
+  try {
+    const stored = localStorage.getItem(NEW_SHIELDED_KEY);
+    return stored === '1' ? true : stored === '0' ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeNewShielded(value: boolean) {
+  try {
+    localStorage.setItem(NEW_SHIELDED_KEY, value ? '1' : '0');
+  } catch {
+    // Blocked storage: the choice lasts until the page reloads.
   }
 }

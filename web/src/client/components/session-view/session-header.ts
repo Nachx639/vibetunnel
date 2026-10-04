@@ -64,6 +64,7 @@ export class SessionHeader extends LitElement {
   @property({ type: Boolean }) macAppConnected = false;
   @property({ type: Function }) onTerminateSession?: () => void;
   @property({ type: Function }) onClearSession?: () => void;
+  @property({ type: Function }) onShieldSession?: () => void;
   @property({ type: Boolean }) hasGitRepo = false;
   @property({ type: String }) viewMode: 'terminal' | 'worktree' = 'terminal';
   @property({ type: Function }) onToggleViewMode?: () => void;
@@ -289,6 +290,18 @@ export class SessionHeader extends LitElement {
                   ? this.renderPhoneTitle(this.session)
                   : html`
               <div class="flex items-center gap-1 min-w-0 overflow-hidden" @mouseenter=${this.handleMouseEnter} @mouseleave=${this.handleMouseLeave}>
+                ${
+                  this.session.shielded
+                    ? html`<span
+                          class="flex-shrink-0"
+                          data-testid="header-shield-badge"
+                          role="img"
+                          aria-label=${t('shield.badge')}
+                          title=${t('shield.info')}
+                          >🛡</span
+                        >`
+                    : nothing
+                }
                 <inline-edit
                   class="min-w-0 overflow-hidden block max-w-xs sm:max-w-md"
                   .value=${
@@ -418,6 +431,7 @@ export class SessionHeader extends LitElement {
                   .macAppConnected=${this.macAppConnected}
                   .onTerminateSession=${this.onTerminateSession}
                   .onClearSession=${this.onClearSession}
+                  .onShieldSession=${this.onShieldSession}
                   .hasGitRepo=${this.hasGitRepo}
                   .viewMode=${this.viewMode}
                   .onToggleViewMode=${() => this.dispatchEvent(new CustomEvent('toggle-view-mode'))}
@@ -550,7 +564,17 @@ export class SessionHeader extends LitElement {
       >
         <span class="flex flex-col min-w-0">
           <span class="block min-w-0 truncate text-sm font-semibold text-text" title=${title}
-            ><bdi>${title}</bdi></span
+            >${
+              session.shielded
+                ? html`<span
+                    data-testid="header-shield-badge"
+                    role="img"
+                    aria-label=${t('shield.badge')}
+                    title=${t('shield.info')}
+                    >🛡 </span
+                  >`
+                : nothing
+            }<bdi>${title}</bdi></span
           >
           ${detail === nothing ? nothing : html`<span class="block min-w-0 truncate text-xs">${detail}</span>`}
         </span>
