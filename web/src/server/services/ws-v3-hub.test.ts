@@ -500,6 +500,42 @@ describe('WsV3Hub', () => {
     expect(unsubscribeStdout).toHaveBeenCalled();
   });
 
+  it('keeps the stdout stream, without a second replay, when only the other flags change', async () => {
+    const ws = new FakeWebSocket();
+    hub.handleClientConnection(ws as unknown as WebSocket, {} as unknown as WebSocketRequestV3);
+    const subscribe = (flags: number) =>
+      sendBinaryFrame(
+        ws,
+        encodeWsV3Frame({
+          type: WsV3MessageType.SUBSCRIBE,
+          sessionId: 's1',
+          payload: encodeWsV3SubscribePayload({ flags }),
+        })
+      );
+
+    subscribe(WsV3SubscribeFlags.Stdout | WsV3SubscribeFlags.Events);
+    await flush();
+    // Another view of the session (a preview's snapshots) joins: this used to replay the
+    // whole history (up to 16 MB) again to the terminal that already showed it.
+    subscribe(WsV3SubscribeFlags.Stdout | WsV3SubscribeFlags.Events | WsV3SubscribeFlags.Snapshots);
+    await flush();
+
+    expect(castOutputHub.subscribe).toHaveBeenCalledOnce();
+    expect(castUnsubscribe).not.toHaveBeenCalled();
+    expect(terminalManager.subscribeToBufferChanges).toHaveBeenCalledOnce();
+
+    // The stream still follows the flags: the end of the replay is an event.
+    castListener?.({ kind: 'replay-end' });
+    const frame = decodeLastFrame(ws);
+    expect(frame.type).toBe(WsV3MessageType.EVENT);
+    expect(JSON.parse(new TextDecoder().decode(frame.payload))).toEqual({ kind: 'replay-end' });
+
+    // Without stdout it is a new subscription again.
+    subscribe(WsV3SubscribeFlags.Snapshots);
+    await flush();
+    expect(castUnsubscribe).toHaveBeenCalledOnce();
+  });
+
   it('streams git-status updates as EVENT frames when enabled', async () => {
     ptyManager.getSession.mockReturnValue({
       gitRepoPath: '/repo',
@@ -594,6 +630,64 @@ describe('WsV3Hub history replay through a real CastOutputHub', () => {
     );
     expect(ws.terminate).not.toHaveBeenCalled();
     expect(stdoutBytes).toBeGreaterThan(MAX_CLIENT_BUFFERED_BYTES);
+    realHub.dispose();
+  });
+
+  it('marks where the history replay ends, before live output', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-v3-replay-end-'));
+    const stdoutPath = path.join(tmpDir, 'stdout');
+    const lines = [
+      JSON.stringify({ version: 2, width: 80, height: 24 }),
+      JSON.stringify([0.1, 'o', 'one\r\n']),
+      JSON.stringify([0.2, 'o', 'two\r\n']),
+    ];
+    fs.writeFileSync(stdoutPath, `${lines.join('\n')}\n`);
+    const sessionManager = {
+      getSessionPaths: () => ({ stdoutPath }),
+      loadSessionInfo: () => ({}),
+      saveSessionInfo: vi.fn(),
+    } as unknown as SessionManager;
+    const realHub = new WsV3Hub({
+      ptyManager: { getSession: () => null } as unknown as PtyManager,
+      terminalManager: {} as unknown as TerminalManager,
+      castOutputHub: new CastOutputHub(sessionManager),
+      gitStatusHub: {} as unknown as GitStatusHub,
+      sessionMonitor: null,
+      remoteRegistry: null,
+      isHQMode: false,
+    });
+    const ws = new FakeWebSocket();
+    realHub.handleClientConnection(ws as unknown as WebSocket, {} as unknown as WebSocketRequestV3);
+    sendBinaryFrame(
+      ws,
+      encodeWsV3Frame({
+        type: WsV3MessageType.SUBSCRIBE,
+        sessionId: 's1',
+        payload: encodeWsV3SubscribePayload({
+          flags: WsV3SubscribeFlags.Stdout | WsV3SubscribeFlags.Events,
+        }),
+      })
+    );
+
+    const decoder = new TextDecoder();
+    const stream = () =>
+      ws.sent
+        .map((raw) => decodeWsV3Frame(raw))
+        .filter((frame) => frame && frame.type !== WsV3MessageType.WELCOME)
+        .map((frame) => {
+          const text = decoder.decode(frame?.payload);
+          return frame?.type === WsV3MessageType.EVENT ? JSON.parse(text).kind : text;
+        });
+    await vi.waitFor(() => expect(stream()).toContain('replay-end'), { timeout: 5_000 });
+    expect(stream()).toEqual(['header', 'one\r\n', 'two\r\n', 'replay-end']);
+    // The header tells the client that this server marks the end of the replay.
+    const header = ws.sent
+      .map((raw) => decodeWsV3Frame(raw))
+      .find((frame) => frame?.type === WsV3MessageType.EVENT);
+    expect(JSON.parse(decoder.decode(header?.payload))).toMatchObject({
+      kind: 'header',
+      replayEnd: true,
+    });
     realHub.dispose();
   });
 });

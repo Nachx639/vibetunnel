@@ -260,6 +260,18 @@ export class WsV3Hub {
     if (!state) return;
 
     const existing = state.subs.get(sessionId);
+    if (existing?.unsubscribeStdout && flags & WsV3SubscribeFlags.Stdout) {
+      // Still streaming stdout: only the snapshots and events change. Resubscribing replayed
+      // the whole history (up to 16 MB) again to a terminal that already shows it, whenever
+      // another view of the same session subscribed or left.
+      existing.unsubscribeSnapshots?.();
+      existing.unsubscribeGit?.();
+      existing.unsubscribeSnapshots = undefined;
+      existing.unsubscribeGit = undefined;
+      existing.flags = flags;
+      await this.attachSnapshotsAndEvents(ws, state, sessionId, existing);
+      return;
+    }
     if (existing) {
       // Update flags (unsubscribe/resubscribe as needed)
       this.unsubscribe(ws, sessionId);
@@ -338,7 +350,7 @@ export class WsV3Hub {
           );
         } else if (event.kind === 'resize') {
           // optional: send resize as event (clients may ignore to avoid loops)
-          if (flags & WsV3SubscribeFlags.Events) {
+          if (sub.flags & WsV3SubscribeFlags.Events) {
             this.safeSend(
               ws,
               encodeWsV3Frame({
@@ -350,15 +362,29 @@ export class WsV3Hub {
               })
             );
           }
-        } else if (event.kind === 'header') {
-          if (flags & WsV3SubscribeFlags.Events) {
+        } else if (event.kind === 'replay-end') {
+          if (sub.flags & WsV3SubscribeFlags.Events) {
             this.safeSend(
               ws,
               encodeWsV3Frame({
                 type: WsV3MessageType.EVENT,
                 sessionId,
+                payload: utf8Encoder.encode(JSON.stringify({ kind: 'replay-end' })),
+              }),
+              true
+            );
+          }
+        } else if (event.kind === 'header') {
+          if (sub.flags & WsV3SubscribeFlags.Events) {
+            this.safeSend(
+              ws,
+              encodeWsV3Frame({
+                type: WsV3MessageType.EVENT,
+                sessionId,
+                // replayEnd: a replay-end event follows the history, so a client may hold
+                // its paint until then (older servers send none).
                 payload: utf8Encoder.encode(
-                  JSON.stringify({ kind: 'header', header: event.header })
+                  JSON.stringify({ kind: 'header', header: event.header, replayEnd: true })
                 ),
               })
             );
@@ -369,6 +395,16 @@ export class WsV3Hub {
       sub.unsubscribeStdout = this.config.castOutputHub.subscribe(sessionId, stdoutListener);
     }
 
+    await this.attachSnapshotsAndEvents(ws, state, sessionId, sub);
+  }
+
+  private async attachSnapshotsAndEvents(
+    ws: WebSocket,
+    state: ClientState,
+    sessionId: string,
+    sub: ClientSessionSub
+  ) {
+    const flags = sub.flags;
     if (flags & WsV3SubscribeFlags.Snapshots) {
       sub.unsubscribeSnapshots = await this.config.terminalManager.subscribeToBufferChanges(
         sessionId,

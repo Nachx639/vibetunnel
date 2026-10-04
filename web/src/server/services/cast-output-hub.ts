@@ -60,7 +60,13 @@ export type CastOutputHubEvent =
   | { kind: 'output'; data: string; historical: boolean }
   | { kind: 'resize'; dimensions: string; historical: boolean }
   | { kind: 'exit'; exitCode: number }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; message: string }
+  /**
+   * The history replay ends here, live events follow. A client can hold its terminal's
+   * paint until it comes: painting up to 16 MB of replay as it arrived scrolled the whole
+   * history past from the top on every open.
+   */
+  | { kind: 'replay-end' };
 
 export type CastOutputHubListener = (event: CastOutputHubEvent) => void;
 
@@ -159,6 +165,7 @@ export class CastOutputHub {
           if (replay !== replays) return;
           const queued = pending ?? [];
           pending = null;
+          replayListener({ kind: 'replay-end' });
           for (const event of queued) replayListener(event);
         };
         // After a reset the saved clear offset points into the old content: scan for one.
