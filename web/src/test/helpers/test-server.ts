@@ -8,11 +8,18 @@ import express from 'express';
 import { PtyManager } from '../../server/pty/pty-manager.js';
 import { createConfigRoutes } from '../../server/routes/config.js';
 import { createGitRoutes } from '../../server/routes/git.js';
-import type { SessionRoutesConfig } from '../../server/routes/sessions.js';
 import { createSessionRoutes } from '../../server/routes/sessions.js';
 import { createWorktreeRoutes } from '../../server/routes/worktrees.js';
+import type { ConfigService } from '../../server/services/config-service.js';
 import { RemoteRegistry } from '../../server/services/remote-registry.js';
 import { TerminalManager } from '../../server/services/terminal-manager.js';
+import {
+  DEFAULT_CONFIG,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  type VibeTunnelConfig,
+} from '../../types/config.js';
+
+type SessionRoutesConfig = Parameters<typeof createSessionRoutes>[0];
 
 export interface TestServerOptions {
   controlPath?: string;
@@ -52,7 +59,8 @@ export async function createTestServer(options: TestServerOptions = {}): Promise
 
   // Initialize services
   const ptyManager = new PtyManager(controlPath);
-  const terminalManager = new TerminalManager();
+  // Reads the session output where the PtyManager writes it.
+  const terminalManager = new TerminalManager(ptyManager.getSessionManager().getControlPath());
   const remoteRegistry = isHQMode ? new RemoteRegistry() : null;
 
   // Create Express app
@@ -78,11 +86,23 @@ export async function createTestServer(options: TestServerOptions = {}): Promise
     app.use('/api', createGitRoutes());
   }
   if (includeRoutes.config) {
-    const configService = {
-      getConfig: async () => ({}),
-      updateConfig: async () => ({}),
+    // The routes only read and replace the config: keep it in memory, away from ~/.vibetunnel.
+    let current: VibeTunnelConfig = DEFAULT_CONFIG;
+    const configService: Pick<
+      ConfigService,
+      'getConfig' | 'updateConfig' | 'getNotificationPreferences'
+    > = {
+      getConfig: () => current,
+      updateConfig: (config) => {
+        current = config;
+      },
+      getNotificationPreferences: () =>
+        current.preferences?.notifications ?? DEFAULT_NOTIFICATION_PREFERENCES,
     };
-    app.use('/api', createConfigRoutes(configService));
+    app.use(
+      '/api',
+      createConfigRoutes({ configService: configService as unknown as ConfigService })
+    );
   }
 
   // Cleanup function
@@ -102,7 +122,7 @@ export async function createTestServer(options: TestServerOptions = {}): Promise
 
     // Stop services
     if (remoteRegistry) {
-      remoteRegistry.stop();
+      remoteRegistry.destroy();
     }
   };
 

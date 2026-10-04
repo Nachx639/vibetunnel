@@ -6,21 +6,27 @@ vi.mock('child_process', () => ({
   spawn: vi.fn(),
 }));
 
-import { spawn } from 'child_process';
+import { type ChildProcess, spawn } from 'child_process';
 
 const mockSpawn = vi.mocked(spawn);
 
+type Listener = (...args: unknown[]) => void;
+
 // Helper to create mock process
-const createMockProcess = (stdout: string, exitCode: number = 0, shouldError = false) => {
+const createMockProcess = (
+  stdout: string,
+  exitCode: number = 0,
+  shouldError = false
+): ChildProcess => {
   const mockProcess = {
     stdout: {
-      on: vi.fn((event, callback) => {
+      on: vi.fn((event: string, callback: Listener) => {
         if (event === 'data' && !shouldError) {
           callback(Buffer.from(stdout));
         }
       }),
     },
-    on: vi.fn((event, callback) => {
+    on: vi.fn((event: string, callback: Listener) => {
       if (event === 'close') {
         setTimeout(() => callback(exitCode), 0);
       } else if (event === 'error' && shouldError) {
@@ -29,7 +35,8 @@ const createMockProcess = (stdout: string, exitCode: number = 0, shouldError = f
     }),
     kill: vi.fn(),
   };
-  return mockProcess;
+  // Partial fake: FishHandler only listens to stdout data, close and error, and kills on timeout.
+  return mockProcess as unknown as ChildProcess;
 };
 
 describe('FishHandler', () => {

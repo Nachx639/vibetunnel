@@ -3,6 +3,7 @@ import type {
   ControlMessage,
   TerminalSpawnResponse,
 } from '../../server/websocket/control-protocol.js';
+import { TitleMode } from '../../shared/types.js';
 
 // Mock the control unix handler
 vi.mock('../../server/websocket/control-unix-handler.js', () => ({
@@ -237,7 +238,7 @@ describe('requestTerminalSpawn', () => {
     it('should include titleMode when provided', async () => {
       const paramsWithTitleMode = {
         ...testParams,
-        titleMode: 'command' as const,
+        titleMode: TitleMode.STATIC,
       };
 
       const mockResponse: ControlMessage = {
@@ -297,7 +298,7 @@ describe('requestTerminalSpawn', () => {
         type: 'response',
         category: 'terminal',
         action: 'spawn',
-        payload: base64Payload as Record<string, unknown>, // This would be wrong - payload should be object
+        payload: base64Payload, // This would be wrong - payload should be object
         sessionId: testParams.sessionId,
       };
 

@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'child_process';
+import { type ChildProcess, execFile, spawn } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import request from 'supertest';
@@ -8,13 +8,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const execFileAsync = promisify(execFile);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-interface ServerProcess {
-  pid?: number;
-  kill: (signal?: string) => void;
-}
-
 describe.skip('Follow Mode End-to-End Tests', () => {
-  let serverProcess: ServerProcess | null;
+  let serverProcess: ChildProcess | null;
   let testRepoPath: string;
   let worktreePath: string;
   let serverPort: number;
@@ -109,7 +104,7 @@ describe.skip('Follow Mode End-to-End Tests', () => {
       const serverEnv = { ...process.env };
       delete serverEnv.VIBETUNNEL_SEA;
 
-      serverProcess = spawn('pnpm', ['exec', 'tsx', 'src/server/server.ts'], {
+      const child = spawn('pnpm', ['exec', 'tsx', 'src/server/server.ts'], {
         cwd: process.cwd(),
         env: {
           ...serverEnv,
@@ -120,16 +115,17 @@ describe.skip('Follow Mode End-to-End Tests', () => {
         },
         stdio: ['pipe', 'pipe', 'pipe'],
       });
+      serverProcess = child;
 
       let started = false;
       const timeout = setTimeout(() => {
         if (!started) {
-          serverProcess.kill();
+          child.kill();
           reject(new Error('Server failed to start in time'));
         }
       }, 10000);
 
-      serverProcess.stdout.on('data', (data: Buffer) => {
+      child.stdout.on('data', (data: Buffer) => {
         const output = data.toString();
         console.log('[Server]', output.trim());
         if (output.includes('VibeTunnel Server running') && !started) {
@@ -139,12 +135,12 @@ describe.skip('Follow Mode End-to-End Tests', () => {
         }
       });
 
-      serverProcess.stderr.on('data', (data: Buffer) => {
+      child.stderr.on('data', (data: Buffer) => {
         const errorOutput = data.toString();
         console.error('[Server Error]', errorOutput.trim());
       });
 
-      serverProcess.on('error', (error: Error) => {
+      child.on('error', (error: Error) => {
         clearTimeout(timeout);
         reject(error);
       });

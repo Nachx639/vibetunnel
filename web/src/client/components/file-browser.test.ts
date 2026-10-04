@@ -16,6 +16,15 @@ vi.mock('../services/auth-client');
 // Import component type
 import type { FileBrowser } from './file-browser';
 
+// Private state and methods the tests drive directly.
+type FileBrowserInternals = {
+  currentPath: string;
+  currentFullPath: string;
+  loadDirectory(dirPath: string): Promise<void>;
+  handleSelect(): void;
+};
+const internals = (el: FileBrowser) => el as unknown as FileBrowserInternals;
+
 describe('FileBrowser', () => {
   let element: FileBrowser;
   let fetchMock: ReturnType<typeof setupFetchMock>;
@@ -67,8 +76,8 @@ describe('FileBrowser', () => {
 
       // Manually set the internal state to simulate a directory with relative path
       // This simulates the state after navigating to a directory that returned relative paths
-      element.currentPath = '../..';
-      element.currentFullPath = '/Users/steipete/Desktop';
+      internals(element).currentPath = '../..';
+      internals(element).currentFullPath = '/Users/steipete/Desktop';
 
       // Now make it visible (this would normally trigger a load, but we'll skip that)
       element.visible = true;
@@ -80,8 +89,7 @@ describe('FileBrowser', () => {
       });
 
       // Call handleSelect directly (simulating a click on select button)
-      // biome-ignore lint/suspicious/noExplicitAny: Need to access private method for testing
-      (element as any).handleSelect();
+      internals(element).handleSelect();
 
       // Wait for event
       const event = await eventPromise;
@@ -111,8 +119,8 @@ describe('FileBrowser', () => {
       await waitForAsync();
 
       // Now manually override to simulate old server response without fullPath
-      element.currentPath = '/home/user/projects';
-      element.currentFullPath = '';
+      internals(element).currentPath = '/home/user/projects';
+      internals(element).currentFullPath = '';
 
       // Listen for directory-selected event
       const eventPromise = new Promise<CustomEvent>((resolve) => {
@@ -120,8 +128,7 @@ describe('FileBrowser', () => {
       });
 
       // Call handleSelect directly
-      // biome-ignore lint/suspicious/noExplicitAny: Need to access private method for testing
-      (element as any).handleSelect();
+      internals(element).handleSelect();
 
       // Wait for event
       const event = await eventPromise;
@@ -149,8 +156,8 @@ describe('FileBrowser', () => {
       await waitForAsync();
 
       // Now clear the paths to test empty path behavior
-      element.currentPath = '';
-      element.currentFullPath = '';
+      internals(element).currentPath = '';
+      internals(element).currentFullPath = '';
 
       // Listen for directory-selected event
       let eventFired = false;
@@ -159,8 +166,7 @@ describe('FileBrowser', () => {
       });
 
       // Call handleSelect directly
-      // biome-ignore lint/suspicious/noExplicitAny: Need to access private method for testing
-      (element as any).handleSelect();
+      internals(element).handleSelect();
 
       // Wait a bit to ensure no event is fired
       await waitForAsync(50);
@@ -172,8 +178,8 @@ describe('FileBrowser', () => {
       // Setup component in browse mode
       element.mode = 'browse';
       element.visible = true;
-      element.currentPath = '/some/path';
-      element.currentFullPath = '/Users/test/some/path';
+      internals(element).currentPath = '/some/path';
+      internals(element).currentFullPath = '/Users/test/some/path';
       await element.updateComplete;
 
       // Listen for directory-selected event
@@ -183,8 +189,7 @@ describe('FileBrowser', () => {
       });
 
       // Call handleSelect directly
-      // biome-ignore lint/suspicious/noExplicitAny: Need to access private method for testing
-      (element as any).handleSelect();
+      internals(element).handleSelect();
 
       await waitForAsync(50);
 
@@ -241,13 +246,13 @@ describe('FileBrowser', () => {
       );
 
       // Simulate navigation to Desktop
-      await element.loadDirectory('Desktop');
+      await internals(element).loadDirectory('Desktop');
       await waitForAsync();
 
       // After loading, currentPath will be set to fullPath (due to line 179 in file-browser.ts)
       // and currentFullPath will also be set to fullPath
-      expect(element.currentPath).toBe('/Users/steipete/Desktop');
-      expect(element.currentFullPath).toBe('/Users/steipete/Desktop');
+      expect(internals(element).currentPath).toBe('/Users/steipete/Desktop');
+      expect(internals(element).currentFullPath).toBe('/Users/steipete/Desktop');
 
       // Listen for directory-selected event
       const eventPromise = new Promise<CustomEvent>((resolve) => {
@@ -255,8 +260,7 @@ describe('FileBrowser', () => {
       });
 
       // Select this directory
-      // biome-ignore lint/suspicious/noExplicitAny: Need to access private method for testing
-      (element as any).handleSelect();
+      internals(element).handleSelect();
       const event = await eventPromise;
 
       // Should get absolute path
@@ -267,14 +271,14 @@ describe('FileBrowser', () => {
       element.mode = 'select';
 
       // Start at a deep directory
-      element.currentPath = '.';
-      element.currentFullPath = '/Users/steipete/Projects/vibetunnel/web';
+      internals(element).currentPath = '.';
+      internals(element).currentFullPath = '/Users/steipete/Projects/vibetunnel/web';
       element.visible = true;
       await element.updateComplete;
 
       // Simulate state after navigating up multiple levels
-      element.currentPath = '../../..';
-      element.currentFullPath = '/Users/steipete';
+      internals(element).currentPath = '../../..';
+      internals(element).currentFullPath = '/Users/steipete';
 
       // Listen for event
       const eventPromise = new Promise<CustomEvent>((resolve) => {
@@ -282,8 +286,7 @@ describe('FileBrowser', () => {
       });
 
       // Select directory
-      // biome-ignore lint/suspicious/noExplicitAny: Need to access private method for testing
-      (element as any).handleSelect();
+      internals(element).handleSelect();
       const event = await eventPromise;
 
       // Should return absolute path, not relative

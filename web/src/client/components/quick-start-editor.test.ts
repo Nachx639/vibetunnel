@@ -1,9 +1,16 @@
 // @vitest-environment happy-dom
 import { expect, fixture, html } from '@open-wc/testing';
-import { vi } from 'vitest';
+import { type Mock, vi } from 'vitest';
 import { DEFAULT_QUICK_START_COMMANDS, type QuickStartCommand } from '../../types/config.js';
 import './quick-start-editor.js';
 import type { QuickStartEditor } from './quick-start-editor.js';
+
+// Private state the tests read and set directly.
+type QuickStartEditorInternals = {
+  editableCommands: QuickStartCommand[];
+  draggedIndex: number | null;
+};
+const internals = (el: QuickStartEditor) => el as unknown as QuickStartEditorInternals;
 
 describe('QuickStartEditor', () => {
   let element: QuickStartEditor;
@@ -119,7 +126,7 @@ describe('QuickStartEditor', () => {
       commandInput.dispatchEvent(new Event('input'));
       await element.updateComplete;
 
-      expect(element.editableCommands[0].command).to.equal('bash');
+      expect(internals(element).editableCommands[0].command).to.equal('bash');
     });
 
     it('should update name value on input', async () => {
@@ -130,7 +137,7 @@ describe('QuickStartEditor', () => {
       nameInput.dispatchEvent(new Event('input'));
       await element.updateComplete;
 
-      expect(element.editableCommands[0].name).to.equal('🚀 bash');
+      expect(internals(element).editableCommands[0].name).to.equal('🚀 bash');
     });
 
     it('should set name to undefined when cleared', async () => {
@@ -141,7 +148,7 @@ describe('QuickStartEditor', () => {
       nameInput.dispatchEvent(new Event('input'));
       await element.updateComplete;
 
-      expect(element.editableCommands[0].name).to.be.undefined;
+      expect(internals(element).editableCommands[0].name).to.be.undefined;
     });
   });
 
@@ -169,7 +176,7 @@ describe('QuickStartEditor', () => {
   });
 
   describe('Saving changes', () => {
-    let changedListener: ReturnType<typeof vi.fn>;
+    let changedListener: Mock<(event: Event) => void>;
 
     beforeEach(async () => {
       changedListener = vi.fn();
@@ -294,24 +301,24 @@ describe('QuickStartEditor', () => {
       });
 
       draggableElement.dispatchEvent(dragStartEvent);
-      expect(element.draggedIndex).to.equal(0);
+      expect(internals(element).draggedIndex).to.equal(0);
     });
 
     it('should handle drag end', () => {
-      element.draggedIndex = 0;
+      internals(element).draggedIndex = 0;
       const draggableElement = element.querySelector('[draggable="true"]') as HTMLElement;
       draggableElement.classList.add('opacity-50');
 
       const dragEndEvent = new DragEvent('dragend');
       draggableElement.dispatchEvent(dragEndEvent);
 
-      expect(element.draggedIndex).to.be.null;
+      expect(internals(element).draggedIndex).to.be.null;
       expect(draggableElement.classList.contains('opacity-50')).to.be.false;
     });
 
     it('should reorder items on drop', async () => {
       // Simulate dragging item at index 0 to index 2
-      element.draggedIndex = 0;
+      internals(element).draggedIndex = 0;
 
       const dropTarget = element.querySelectorAll('[draggable="true"]')[2] as HTMLElement;
       const dropEvent = new DragEvent('drop', {

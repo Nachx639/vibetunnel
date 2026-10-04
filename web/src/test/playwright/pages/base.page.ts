@@ -143,7 +143,7 @@ export class BasePage {
   }
 
   async getText(selector: string): Promise<string> {
-    return this.page.textContent(selector) || '';
+    return (await this.page.textContent(selector)) ?? '';
   }
 
   async dismissErrors() {

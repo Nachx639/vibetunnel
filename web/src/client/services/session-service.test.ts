@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { HttpMethod, TitleMode } from '../../shared/types';
 import type { AuthClient } from './auth-client';
 import { type SessionCreateData, SessionService } from './session-service';
@@ -9,7 +9,7 @@ import { type SessionCreateData, SessionService } from './session-service';
 describe('SessionService', () => {
   let service: SessionService;
   let mockAuthClient: AuthClient;
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: Mock;
 
   beforeEach(() => {
     // Mock fetch
@@ -315,7 +315,7 @@ describe('SessionService', () => {
           spawn_terminal: true,
           cols: 100,
           rows: 40,
-          titleMode: TitleMode.FIXED,
+          titleMode: TitleMode.STATIC,
           gitRepoPath: '/home/user/project',
           gitBranch: 'main',
         };

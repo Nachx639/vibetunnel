@@ -4,23 +4,16 @@
  */
 
 import { fixture, html } from '@open-wc/testing';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { waitForAsync } from '@/test/utils/component-helpers';
 import { createMockSession } from '@/test/utils/lit-test-utils';
 import type { FilePicker } from './file-picker.js';
-import type { UIState } from './session-view/ui-state-manager.js';
+import type { UIStateManager } from './session-view/ui-state-manager.js';
 import type { SessionView } from './session-view.js';
 
-// Test interface for SessionView with access to private managers
-interface SessionViewTestInterface extends SessionView {
-  uiStateManager: {
-    getState: () => UIState;
-    setIsDragOver: (value: boolean) => void;
-    setShowFileBrowser: (value: boolean) => void;
-    setShowImagePicker: (value: boolean) => void;
-  };
-  uploadFile?: (file: File) => Promise<void>;
-}
+// SessionView's private manager that these tests read and drive directly
+type SessionViewInternals = { uiStateManager: UIStateManager };
+const internals = (view: SessionView) => view as unknown as SessionViewInternals;
 
 // Mock auth client
 vi.mock('../services/auth-client.js', () => ({
@@ -80,7 +73,7 @@ vi.mock('./session-view/session-action-manager.js', () => ({
 
 describe('SessionView Drag & Drop and Paste', () => {
   let element: SessionView;
-  let mockFilePicker: Partial<FilePicker>;
+  let mockFilePicker: { uploadFile: Mock<FilePicker['uploadFile']> };
 
   beforeAll(async () => {
     // Import components to register custom elements
@@ -138,7 +131,6 @@ describe('SessionView Drag & Drop and Paste', () => {
     const mockSession = createMockSession({
       id: 'test-session',
       status: 'running',
-      title: 'Test Session',
     });
 
     // Create element without session first
@@ -187,7 +179,6 @@ describe('SessionView Drag & Drop and Paste', () => {
       element.dispatchEvent(dragEvent);
       await element.updateComplete;
 
-      const _testElement = element as SessionViewTestInterface;
       // Access the manager using bracket notation for private property
       // biome-ignore lint/complexity/useLiteralKeys: accessing private property for testing
       // biome-ignore lint/suspicious/noExplicitAny: need to access private property
@@ -321,7 +312,7 @@ describe('SessionView Drag & Drop and Paste', () => {
           if (prop === 'currentTarget') {
             return element;
           }
-          return (target as Record<string | symbol, unknown>)[prop];
+          return Reflect.get(target, prop);
         },
       };
 
@@ -358,7 +349,7 @@ describe('SessionView Drag & Drop and Paste', () => {
         configurable: true,
       });
 
-      const testElement = element as SessionViewTestInterface;
+      const testElement = internals(element);
       testElement.uiStateManager.setIsDragOver(true);
       element.dispatchEvent(dropEvent);
       await element.updateComplete;

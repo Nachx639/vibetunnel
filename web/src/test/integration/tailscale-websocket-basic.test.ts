@@ -93,17 +93,14 @@ describe('Tailscale WebSocket Authentication Basic Tests', () => {
 
     it('should reject WebSocket without token', () => {
       // Simulate WebSocket authentication check without token
-      mockAuthService.verifyToken = vi.fn().mockReturnValue({
-        valid: false,
-        error: 'No token provided',
-      });
+      // verifyToken answers { valid } with no reason (AuthService has no error field).
+      mockAuthService.verifyToken = vi.fn().mockReturnValue({ valid: false });
 
       const authResult = mockAuthService.verifyToken(
         undefined as unknown as Parameters<typeof mockAuthService.verifyToken>[0]
       );
 
       expect(authResult.valid).toBe(false);
-      expect(authResult.error).toBe('No token provided');
     });
 
     it('should handle token generation for new Tailscale sessions', () => {

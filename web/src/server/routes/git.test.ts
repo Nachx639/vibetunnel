@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { createGitRoutes } from './git';
 
 // Mock functions (must be declared before vi.mock calls due to hoisting)
@@ -60,12 +60,21 @@ vi.mock('../websocket/control-unix-handler', () => ({
   },
 }));
 
+type RouteLayer = ReturnType<typeof createGitRoutes>['stack'][number];
+/** Express keeps a route's verbs in route.methods; @types/express leaves the field out. */
+type RouteWithMethods = NonNullable<RouteLayer['route']> & {
+  methods: Partial<Record<string, boolean>>;
+};
+const routeMethods = (layer: RouteLayer) => (layer.route as RouteWithMethods | undefined)?.methods;
+/** Express passes next to every handler; these routes never call it. */
+const next = vi.fn();
+
 describe('git routes', () => {
   let router: ReturnType<typeof createGitRoutes>;
   let mockReq: Partial<Request>;
   let mockRes: Partial<Response>;
-  let mockJson: ReturnType<typeof vi.fn>;
-  let mockStatus: ReturnType<typeof vi.fn>;
+  let mockJson: Mock;
+  let mockStatus: Mock;
 
   beforeEach(() => {
     router = createGitRoutes();
@@ -104,13 +113,13 @@ describe('git routes', () => {
 
       const routeStack = router.stack;
       const repoInfoRoute = routeStack.find(
-        (layer) => layer.route?.path === '/git/repository-info' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/git/repository-info' && routeMethods(layer)?.get
       );
 
       expect(repoInfoRoute).toBeDefined();
 
       if (repoInfoRoute?.route?.stack?.[0]) {
-        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockJson).toHaveBeenCalledWith({
@@ -148,11 +157,11 @@ describe('git routes', () => {
 
       const routeStack = router.stack;
       const repoInfoRoute = routeStack.find(
-        (layer) => layer.route?.path === '/git/repository-info' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/git/repository-info' && routeMethods(layer)?.get
       );
 
       if (repoInfoRoute?.route?.stack?.[0]) {
-        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockJson).toHaveBeenCalledWith({
@@ -190,11 +199,11 @@ describe('git routes', () => {
 
       const routeStack = router.stack;
       const repoInfoRoute = routeStack.find(
-        (layer) => layer.route?.path === '/git/repository-info' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/git/repository-info' && routeMethods(layer)?.get
       );
 
       if (repoInfoRoute?.route?.stack?.[0]) {
-        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockJson).toHaveBeenCalledWith({
@@ -221,11 +230,11 @@ describe('git routes', () => {
 
       const routeStack = router.stack;
       const repoInfoRoute = routeStack.find(
-        (layer) => layer.route?.path === '/git/repository-info' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/git/repository-info' && routeMethods(layer)?.get
       );
 
       if (repoInfoRoute?.route?.stack?.[0]) {
-        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockStatus).toHaveBeenCalledWith(400);
@@ -245,11 +254,11 @@ describe('git routes', () => {
 
       const routeStack = router.stack;
       const repoInfoRoute = routeStack.find(
-        (layer) => layer.route?.path === '/git/repository-info' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/git/repository-info' && routeMethods(layer)?.get
       );
 
       if (repoInfoRoute?.route?.stack?.[0]) {
-        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await repoInfoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockJson).toHaveBeenCalledWith({
@@ -302,11 +311,11 @@ describe('git routes', () => {
 
       const routeStack = router.stack;
       const basicRepoRoute = routeStack.find(
-        (layer) => layer.route?.path === '/git/repo-info' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/git/repo-info' && routeMethods(layer)?.get
       );
 
       if (basicRepoRoute?.route?.stack?.[0]) {
-        await basicRepoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await basicRepoRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockJson).toHaveBeenCalledWith({
@@ -326,11 +335,11 @@ describe('git routes', () => {
 
       const routeStack = router.stack;
       const remoteRoute = routeStack.find(
-        (layer) => layer.route?.path === '/git/remote' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/git/remote' && routeMethods(layer)?.get
       );
 
       if (remoteRoute?.route?.stack?.[0]) {
-        await remoteRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await remoteRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockJson).toHaveBeenCalledWith({

@@ -45,7 +45,7 @@ describe('Terminal', () => {
     await element.updateComplete;
 
     // Wait for terminal container to be available
-    await waitForElement(element, '#terminal-container');
+    await waitForElement(element);
 
     // Allow terminal initialization to complete
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -152,13 +152,14 @@ describe('Terminal', () => {
         ): void;
       };
 
+      // MockTerminal's default line has no cells (getCell returns null); this one has text.
       mockTerminal.buffer.active.getLine.mockReturnValue({
         translateToString: vi.fn(() => 'Ctrl+R'),
         length: 6,
         getCell: vi.fn((column: number) => ({
           getChars: () => 'Ctrl+R'[column] ?? '',
         })),
-      });
+      } as unknown as ReturnType<MockTerminal['buffer']['active']['getLine']>);
 
       const inputHandler = vi.fn();
       element.addEventListener('terminal-input', inputHandler);
@@ -175,7 +176,7 @@ describe('Terminal', () => {
       `);
 
       await customElement.updateComplete;
-      await waitForElement(customElement, '#terminal-container');
+      await waitForElement(customElement);
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       // In test environment, attribute to property conversion may not work correctly
@@ -211,7 +212,7 @@ describe('Terminal', () => {
       document.body.appendChild(pendingElement);
 
       await pendingElement.updateComplete;
-      await waitForElement(pendingElement, '#terminal-container');
+      await waitForElement(pendingElement);
       await waitForCondition(() => pendingElement.getAttribute('data-ready') === 'true', {
         message: 'terminal not ready',
       });
@@ -698,15 +699,16 @@ describe('Terminal', () => {
     });
 
     it('should preserve the viewed scrollback position when output arrives', () => {
-      if (!mockTerminal) return;
+      const terminal = mockTerminal;
+      if (!terminal) return;
 
-      mockTerminal.buffer.active.length = 100;
+      terminal.buffer.active.length = 100;
       element.scrollToPosition(20);
       expect(element.getScrollPosition()).toBe(20);
 
-      mockTerminal.write.mockImplementationOnce(() => {
-        mockTerminal.buffer.active.length = 101;
-        mockTerminal.simulateScroll(0);
+      terminal.write.mockImplementationOnce(() => {
+        terminal.buffer.active.length = 101;
+        terminal.simulateScroll(0);
       });
 
       element.write('new output');
@@ -717,11 +719,12 @@ describe('Terminal', () => {
     });
 
     it('should keep initial replay dumps at the bottom', () => {
-      if (!mockTerminal) return;
+      const terminal = mockTerminal;
+      if (!terminal) return;
 
-      mockTerminal.write.mockImplementationOnce(() => {
-        mockTerminal.buffer.active.length = 100;
-        mockTerminal.simulateScroll(0);
+      terminal.write.mockImplementationOnce(() => {
+        terminal.buffer.active.length = 100;
+        terminal.simulateScroll(0);
       });
 
       element.write('initial replay', false);
@@ -731,13 +734,14 @@ describe('Terminal', () => {
     });
 
     it('should preserve scrollback across a burst of output writes', () => {
-      if (!mockTerminal) return;
+      const terminal = mockTerminal;
+      if (!terminal) return;
 
-      mockTerminal.buffer.active.length = 100;
+      terminal.buffer.active.length = 100;
       element.scrollToPosition(20);
-      mockTerminal.write.mockImplementation(() => {
-        mockTerminal.buffer.active.length += 1;
-        mockTerminal.simulateScroll(0);
+      terminal.write.mockImplementation(() => {
+        terminal.buffer.active.length += 1;
+        terminal.simulateScroll(0);
       });
 
       element.write('first');

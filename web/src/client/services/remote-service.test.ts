@@ -1,13 +1,13 @@
 /**
  * @vitest-environment happy-dom
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import type { AuthClient } from './auth-client';
 import { RemoteService } from './remote-service';
 
 describe('RemoteService', () => {
   let service: RemoteService;
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: Mock;
 
   beforeEach(() => {
     fetchMock = vi.fn();

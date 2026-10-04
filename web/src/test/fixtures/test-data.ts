@@ -2,9 +2,7 @@
  * Common test data fixtures for unit tests
  */
 
-import type { SessionEntryWithId, SessionWithId } from '../../server/types';
-
-export const mockSessions: SessionWithId[] = [
+export const mockSessions = [
   {
     id: 'session-1',
     cmdline: ['bash', '-l'],
@@ -49,7 +47,7 @@ export const mockSessions: SessionWithId[] = [
   },
 ];
 
-export const mockSessionEntries: SessionEntryWithId[] = mockSessions.map((session) => ({
+export const mockSessionEntries = mockSessions.map((session) => ({
   ...session,
   source: 'local' as const,
 }));

@@ -20,8 +20,11 @@ vi.mock('../utils/logger.js', () => ({
 
 import { TailscaleServeServiceImpl } from './tailscale-serve-service.js';
 
-function fakeProcess(): ChildProcess {
-  const process = new EventEmitter() as EventEmitter & Partial<ChildProcess>;
+/** A spawned child the tests drive; ChildProcess types `killed` as readonly, the fake sets it. */
+type FakeChild = ChildProcess & { killed: boolean };
+
+function fakeProcess(): FakeChild {
+  const process = new EventEmitter() as EventEmitter & Partial<FakeChild>;
   process.stdout = new EventEmitter() as ChildProcess['stdout'];
   process.stderr = new EventEmitter() as ChildProcess['stderr'];
   process.killed = false;
@@ -29,7 +32,7 @@ function fakeProcess(): ChildProcess {
     process.killed = true;
     return true;
   });
-  return process as ChildProcess;
+  return process as FakeChild;
 }
 
 describe('TailscaleServeService startup', () => {

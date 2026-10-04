@@ -33,7 +33,6 @@ describe('WebSocket v3 Tests', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         command: ['bash', '-c', 'echo "hello v3"; sleep 2; echo "bye v3"; sleep 1000'],
-        workingDir: server.testDir,
         name: 'WebSocket v3 Test Session',
         cols: 80,
         rows: 24,

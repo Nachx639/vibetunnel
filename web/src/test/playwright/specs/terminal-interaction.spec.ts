@@ -114,7 +114,7 @@ test.describe('Terminal Interaction', () => {
       await executeAndVerifyCommand(page, 'echo "After interrupt"', 'After interrupt');
     } catch (error) {
       // Terminal interaction might not work properly in CI
-      if (error.message?.includes('Timeout')) {
+      if (error instanceof Error && error.message.includes('Timeout')) {
         test.skip(true, 'Terminal interaction timeout in CI environment');
       }
       throw error;

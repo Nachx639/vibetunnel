@@ -138,7 +138,7 @@ describe('Git Hooks', () => {
       );
 
       expect(chainedHookCall).toBeDefined();
-      expect(chainedHookCall[1]).toContain(
+      expect(chainedHookCall?.[1]).toContain(
         'exec "/home/user/project/.git/hooks/post-commit.vtbak" "$@"'
       );
     });

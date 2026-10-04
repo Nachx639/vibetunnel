@@ -22,6 +22,11 @@ vi.mock('../services/auth-client');
 // Import component type
 import type { AuthLogin } from './auth-login';
 
+type AuthResponse = Awaited<ReturnType<AuthClient['authenticate']>>;
+// createAuthResult's options type is looser than AuthResponse (authMethod: string, success optional).
+const authResult = (options: Parameters<typeof createAuthResult>[0]) =>
+  createAuthResult(options) as AuthResponse;
+
 describe('AuthLogin', () => {
   let element: AuthLogin;
   let fetchMock: ReturnType<typeof setupFetchMock>;
@@ -174,8 +179,8 @@ describe('AuthLogin', () => {
     });
 
     it('should handle successful password login', async () => {
-      mockAuthClient.authenticateWithPassword.mockResolvedValue(
-        createAuthResult({
+      vi.mocked(mockAuthClient.authenticateWithPassword).mockResolvedValue(
+        authResult({
           success: true,
           userId: 'testuser',
           authMethod: 'password',
@@ -212,8 +217,8 @@ describe('AuthLogin', () => {
     });
 
     it('should handle password login failure', async () => {
-      mockAuthClient.authenticateWithPassword.mockResolvedValue(
-        createAuthResult({
+      vi.mocked(mockAuthClient.authenticateWithPassword).mockResolvedValue(
+        authResult({
           success: false,
           error: 'Invalid password',
         })
@@ -232,7 +237,7 @@ describe('AuthLogin', () => {
     });
 
     it('should disable form while loading', async () => {
-      mockAuthClient.authenticateWithPassword.mockImplementation(
+      vi.mocked(mockAuthClient.authenticateWithPassword).mockImplementation(
         () => new Promise((resolve) => setTimeout(resolve, 50))
       );
 
@@ -283,8 +288,8 @@ describe('AuthLogin', () => {
     });
 
     it('should handle successful SSH key auth', async () => {
-      mockAuthClient.authenticate.mockResolvedValue(
-        createAuthResult({
+      vi.mocked(mockAuthClient.authenticate).mockResolvedValue(
+        authResult({
           success: true,
           userId: 'testuser',
           authMethod: 'ssh-key',
@@ -312,8 +317,8 @@ describe('AuthLogin', () => {
     });
 
     it('should handle SSH key auth failure', async () => {
-      mockAuthClient.authenticate.mockResolvedValue(
-        createAuthResult({
+      vi.mocked(mockAuthClient.authenticate).mockResolvedValue(
+        authResult({
           success: false,
           error: 'SSH key not authorized',
         })
@@ -358,7 +363,7 @@ describe('AuthLogin', () => {
 
   describe('error handling', () => {
     it('should handle user info loading error', async () => {
-      mockAuthClient.getCurrentSystemUser.mockRejectedValue(new Error('Network error'));
+      vi.mocked(mockAuthClient.getCurrentSystemUser).mockRejectedValue(new Error('Network error'));
 
       const errorElement = await fixture<AuthLogin>(html`
         <auth-login .authClient=${mockAuthClient}></auth-login>

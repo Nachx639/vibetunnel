@@ -1,6 +1,6 @@
 import { appendFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import type { File, Reporter, Task } from 'vitest';
+import type { Reporter, TestCase } from 'vitest/node';
 
 const LOG_FILE = join(process.cwd(), 'test-memory.log');
 
@@ -77,58 +77,61 @@ export default class MemoryReporter implements Reporter {
     logToFile(`Initial memory: ${JSON.stringify(initialMemory, null, 2)}\n`);
   }
 
-  onTaskUpdate(packs: Task[]) {
-    for (const task of packs) {
-      if (task.type === 'test' && task.result?.state) {
-        const memory = getMemoryUsage();
-        const duration = task.result.duration || 0;
-        const state = task.result.state;
-        const fileName = (task.file as File)?.name || 'unknown';
+  // Vitest 4 reports each test through these hooks; it no longer calls onTaskUpdate/onFinished.
+  onTestCaseReady(testCase: TestCase) {
+    this.logTest(testCase, 'run', 0);
+  }
 
-        // Update current test info
-        if (state === 'run') {
-          this.currentTest = task.name;
-          this.currentFile = fileName;
-        }
+  onTestCaseResult(testCase: TestCase) {
+    this.logTest(testCase, testCase.result().state, testCase.diagnostic()?.duration ?? 0);
+  }
 
-        const logEntry = {
-          timestamp: new Date().toISOString(),
-          test: task.name,
-          file: fileName,
-          state,
-          duration: `${duration}ms`,
-          memory,
-        };
+  private logTest(testCase: TestCase, state: string, duration: number) {
+    const memory = getMemoryUsage();
+    const fileName = testCase.module.relativeModuleId;
 
-        // Immediately write to file with sync IO
-        logToFile(JSON.stringify(logEntry, null, 2));
+    // Update current test info
+    if (state === 'run') {
+      this.currentTest = testCase.name;
+      this.currentFile = fileName;
+    }
 
-        // Log to console for immediate visibility
-        if (state === 'run') {
-          console.log(`🏃 Running: ${task.name}`);
-          console.log(`   Memory: heap=${memory.heapUsed}, rss=${memory.rss}`);
-        } else if (state === 'pass') {
-          console.log(`✅ Passed: ${task.name} (${duration}ms)`);
-          // Check for high memory usage
-          const heapMB = Number.parseFloat(memory.heapUsed);
-          if (heapMB > 1000) {
-            console.log(`   ⚠️  High memory usage: ${memory.heapUsed}`);
-          }
-        } else if (state === 'fail') {
-          console.log(`❌ Failed: ${task.name}`);
-        }
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      test: testCase.name,
+      file: fileName,
+      state,
+      duration: `${duration}ms`,
+      memory,
+    };
 
-        // Force garbage collection if available
-        if (global.gc) {
-          global.gc();
-          const afterGC = getMemoryUsage();
-          logToFile(`After GC: ${JSON.stringify(afterGC, null, 2)}`);
-        }
+    // Immediately write to file with sync IO
+    logToFile(JSON.stringify(logEntry, null, 2));
+
+    // Log to console for immediate visibility
+    if (state === 'run') {
+      console.log(`🏃 Running: ${testCase.name}`);
+      console.log(`   Memory: heap=${memory.heapUsed}, rss=${memory.rss}`);
+    } else if (state === 'passed') {
+      console.log(`✅ Passed: ${testCase.name} (${duration}ms)`);
+      // Check for high memory usage
+      const heapMB = Number.parseFloat(memory.heapUsed);
+      if (heapMB > 1000) {
+        console.log(`   ⚠️  High memory usage: ${memory.heapUsed}`);
       }
+    } else if (state === 'failed') {
+      console.log(`❌ Failed: ${testCase.name}`);
+    }
+
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+      const afterGC = getMemoryUsage();
+      logToFile(`After GC: ${JSON.stringify(afterGC, null, 2)}`);
     }
   }
 
-  onFinished() {
+  onTestRunEnd() {
     const finalMemory = getMemoryUsage();
     const duration = Date.now() - this.startTime;
 

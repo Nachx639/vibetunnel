@@ -63,15 +63,12 @@ export class MockTerminal {
     return { dispose: vi.fn() };
   });
 
-  onTitleChange = vi.fn((callback: (title: string) => void) => {
-    this._onTitleChangeCallback = callback;
-    return { dispose: vi.fn() };
-  });
+  // Nothing fires title or key events in the mock, so their listeners are not kept.
+  onTitleChange = vi.fn((_callback: (title: string) => void) => ({ dispose: vi.fn() }));
 
-  onKey = vi.fn((callback: (event: { key: string; domEvent: KeyboardEvent }) => void) => {
-    this._onKeyCallback = callback;
-    return { dispose: vi.fn() };
-  });
+  onKey = vi.fn((_callback: (event: { key: string; domEvent: KeyboardEvent }) => void) => ({
+    dispose: vi.fn(),
+  }));
 
   private _onDataCallback?: (data: string) => void;
   private _onResizeCallback?: (size: { cols: number; rows: number }) => void;
@@ -226,7 +223,7 @@ export class MockSearchAddon {
 export function createTerminalWebSocket() {
   return {
     url: '',
-    readyState: WebSocket.CONNECTING,
+    readyState: WebSocket.CONNECTING as number,
     send: vi.fn(),
     close: vi.fn(),
     addEventListener: vi.fn(),

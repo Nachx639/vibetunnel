@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PtyManager } from '../../server/pty/pty-manager.js';
+import type { SessionCreationResult } from '../../server/pty/types.js';
 
 // Hoist mock declarations
 const { mockExecFileAsync, mockLogger } = vi.hoisted(() => {
@@ -34,9 +35,13 @@ vi.mock('../../server/utils/logger.js', () => ({
 // Import after mocks are set up
 import { ZellijManager } from '../../server/services/zellij-manager.js';
 
-// Mock PtyManager
+// Mock PtyManager: ZellijManager only reads the new session's id
+type CreateSessionFake = (
+  ...args: Parameters<PtyManager['createSession']>
+) => Promise<Pick<SessionCreationResult, 'sessionId'>>;
+const mockCreateSession = vi.fn<CreateSessionFake>();
 const mockPtyManager = {
-  createSession: vi.fn(),
+  createSession: mockCreateSession,
 } as unknown as PtyManager;
 
 describe('ZellijManager', () => {
@@ -162,7 +167,7 @@ describe('ZellijManager', () => {
   describe('attachToZellij', () => {
     it('should create a PTY session for zellij attach with -c flag', async () => {
       const mockSession = { sessionId: 'vt-123' };
-      mockPtyManager.createSession.mockResolvedValue(mockSession);
+      mockCreateSession.mockResolvedValue(mockSession);
       mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' }); // No sessions exist
 
       const sessionId = await zellijManager.attachToZellij('main');
@@ -181,7 +186,7 @@ describe('ZellijManager', () => {
 
     it('should add layout for new session', async () => {
       const mockSession = { sessionId: 'vt-456' };
-      mockPtyManager.createSession.mockResolvedValue(mockSession);
+      mockCreateSession.mockResolvedValue(mockSession);
       mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' }); // No sessions exist
 
       const sessionId = await zellijManager.attachToZellij('dev', { layout: 'compact' });
@@ -195,7 +200,7 @@ describe('ZellijManager', () => {
 
     it('should not add layout for existing session', async () => {
       const mockSession = { sessionId: 'vt-789' };
-      mockPtyManager.createSession.mockResolvedValue(mockSession);
+      mockCreateSession.mockResolvedValue(mockSession);
       mockExecFileAsync.mockImplementation((cmd, args) => {
         if (cmd === 'zellij' && args[0] === 'list-sessions') {
           return Promise.resolve({ stdout: 'dev [Created 10m ago]', stderr: '' });
@@ -280,7 +285,7 @@ describe('ZellijManager', () => {
     it('should strip ANSI escape codes', () => {
       const input = '\x1b[32;1mGreen Bold Text\x1b[0m Normal \x1b[31mRed\x1b[0m';
       const result = (
-        zellijManager as ZellijManager & { stripAnsiCodes: (input: string) => string }
+        zellijManager as unknown as { stripAnsiCodes: (input: string) => string }
       ).stripAnsiCodes(input);
 
       expect(result).toBe('Green Bold Text Normal Red');

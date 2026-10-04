@@ -1,7 +1,7 @@
 import type { Express } from 'express';
 import express from 'express';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { PtyManager } from '../../server/pty/pty-manager.js';
 
 // Mock logger to reduce noise
@@ -16,15 +16,15 @@ vi.mock('../../server/utils/logger.js', () => ({
 }));
 
 interface MockMultiplexerManager {
-  getAvailableMultiplexers: ReturnType<typeof vi.fn>;
-  getTmuxWindows: ReturnType<typeof vi.fn>;
-  getTmuxPanes: ReturnType<typeof vi.fn>;
-  createSession: ReturnType<typeof vi.fn>;
-  attachToSession: ReturnType<typeof vi.fn>;
-  killSession: ReturnType<typeof vi.fn>;
-  getCurrentMultiplexer: ReturnType<typeof vi.fn>;
-  killTmuxWindow: ReturnType<typeof vi.fn>;
-  killTmuxPane: ReturnType<typeof vi.fn>;
+  getAvailableMultiplexers: Mock;
+  getTmuxWindows: Mock;
+  getTmuxPanes: Mock;
+  createSession: Mock;
+  attachToSession: Mock;
+  killSession: Mock;
+  getCurrentMultiplexer: Mock;
+  killTmuxWindow: Mock;
+  killTmuxPane: Mock;
 }
 
 describe('Multiplexer API Tests', () => {

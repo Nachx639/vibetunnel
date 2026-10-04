@@ -253,7 +253,8 @@ export function setupFetchMock() {
     };
   });
 
-  global.fetch = fetchMock as typeof global.fetch;
+  // Answers with partial Response objects (ok, status, json, text): enough for the components.
+  global.fetch = fetchMock as unknown as typeof global.fetch;
 
   return {
     mockResponse(

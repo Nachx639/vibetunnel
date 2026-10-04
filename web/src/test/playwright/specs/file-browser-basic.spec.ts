@@ -59,10 +59,14 @@ test.describe('File Browser Basic Tests', () => {
       .waitForFunction(
         () => {
           // Check for multiple possible file browser implementations
-          const fileBrowser = document.querySelector('file-browser, [data-testid="file-browser"]');
-          const fileDialog = document.querySelector('dialog, modal-wrapper, [role="dialog"]');
-          const fileInput = document.querySelector('input[type="file"]');
-          const modalContent = document.querySelector('.modal-content');
+          const fileBrowser = document.querySelector<HTMLElement>(
+            'file-browser, [data-testid="file-browser"]'
+          );
+          const fileDialog = document.querySelector<HTMLElement>(
+            'dialog, modal-wrapper, [role="dialog"]'
+          );
+          const fileInput = document.querySelector<HTMLElement>('input[type="file"]');
+          const modalContent = document.querySelector<HTMLElement>('.modal-content');
           const browserVisible =
             fileBrowser &&
             (fileBrowser.offsetParent !== null || fileBrowser.getAttribute('visible') === 'true');
@@ -132,8 +136,10 @@ test.describe('File Browser Basic Tests', () => {
       const uiElementsFound = await page
         .waitForFunction(
           () => {
-            const browser = document.querySelector('file-browser, [data-testid="file-browser"]');
-            if (!browser) return false;
+            const browser = document.querySelector<HTMLElement>(
+              'file-browser, [data-testid="file-browser"]'
+            );
+            if (!browser) return null;
 
             const pathDisplay = browser.querySelector('.path, [data-testid="current-path"]');
             const fileList = browser.querySelector(
@@ -153,7 +159,7 @@ test.describe('File Browser Basic Tests', () => {
         .then((handle) => handle.jsonValue())
         .catch(() => ({ hasPath: false, hasFileList: false, isVisible: false }));
 
-      if (uiElementsFound.hasPath || uiElementsFound.hasFileList) {
+      if (uiElementsFound?.hasPath || uiElementsFound?.hasFileList) {
         console.log('✅ File browser UI elements verified');
       } else {
         console.log('ℹ️  File browser opened but UI elements not found - acceptable for test');
@@ -184,12 +190,14 @@ test.describe('File Browser Basic Tests', () => {
       const navigationReady = await page
         .waitForFunction(
           () => {
-            const browser = document.querySelector('file-browser, [data-testid="file-browser"]');
-            if (!browser) return false;
+            const browser = document.querySelector<HTMLElement>(
+              'file-browser, [data-testid="file-browser"]'
+            );
+            if (!browser) return null;
 
-            const upButton = browser.querySelector(
+            const upButton = browser.querySelector<HTMLButtonElement>(
               'button[data-testid="up-directory"], .up-button, button:has-text("..")'
-            ) as HTMLElement;
+            );
             const closeButton = browser.querySelector(
               'button[data-testid="close"], .close-button, button:has-text("Close")'
             );
@@ -197,7 +205,7 @@ test.describe('File Browser Basic Tests', () => {
             return {
               hasUpButton: !!upButton,
               hasCloseButton: !!closeButton,
-              upButtonClickable: upButton && !upButton.disabled && upButton.offsetParent !== null,
+              upButtonClickable: !!upButton && !upButton.disabled && upButton.offsetParent !== null,
             };
           },
           undefined,
@@ -206,7 +214,7 @@ test.describe('File Browser Basic Tests', () => {
         .then((handle) => handle.jsonValue())
         .catch(() => ({ hasUpButton: false, hasCloseButton: false, upButtonClickable: false }));
 
-      if (navigationReady.upButtonClickable) {
+      if (navigationReady?.upButtonClickable) {
         const upButton = page
           .locator('button[data-testid="up-directory"], .up-button, button:has-text("..")')
           .first();
@@ -214,7 +222,7 @@ test.describe('File Browser Basic Tests', () => {
         console.log('✅ Directory navigation tested');
       }
 
-      if (navigationReady.hasCloseButton) {
+      if (navigationReady?.hasCloseButton) {
         const closeButton = page
           .locator('button[data-testid="close"], .close-button, button:has-text("Close")')
           .first();

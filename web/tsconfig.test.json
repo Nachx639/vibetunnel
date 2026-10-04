@@ -1,9 +1,22 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "module": "ES2020",
-    "lib": ["ES2020", "dom"],
-    "types": ["vitest/globals", "node"]
+    // Same ESM + bundler resolution as tsconfig.client.json (tsc 7 removed node10). ES2022 because
+    // tests use top-level await, and its lib because they run on Node 22+ (.at(), replaceAll).
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "dom", "dom.iterable"],
+    // The base config's custom typeRoots makes tsc skip node_modules when resolving "types",
+    // so the vitest/globals subpath (vitest.config.ts sets globals: true) would not resolve.
+    "typeRoots": null,
+    "types": ["vitest/globals", "node"],
+    // vitest.config.ts aliases '@' to ./src.
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "noEmit": true,
+    // Type-check only; tsc 7 kept stale diagnostics in the build info after "types" changed.
+    "incremental": false
   },
   "include": [
     "src/**/*.test.ts",
@@ -17,6 +30,12 @@
   "exclude": [
     "node_modules",
     "dist",
-    "public"
+    "public",
+    // Both are describe.skip'd and written against APIs that no longer exist, so they need a
+    // rewrite, not type fixes: PtyManager's env option and cols/rows/command/args/name on
+    // PtySession; TerminalManager's createTerminal/writeOutput/resize, a synchronous
+    // getBufferSnapshot and the removed server/types module.
+    "src/test/unit/pty-manager.test.ts",
+    "src/test/unit/terminal-manager.test.ts"
   ]
 }

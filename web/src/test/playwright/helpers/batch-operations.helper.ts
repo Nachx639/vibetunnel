@@ -193,7 +193,7 @@ export class BatchOperations {
       }
 
       return sessions.filter((s: SessionInfo) => {
-        if (status === SESSION_STATE.RUNNING) {
+        if (status === 'running') {
           return (
             s.active === true &&
             s.status !== SESSION_STATE.EXITED &&

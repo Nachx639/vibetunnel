@@ -7,7 +7,6 @@
 
 import * as fs from 'fs';
 import * as pty from 'node-pty';
-import { which } from 'node-pty/lib/utils';
 import * as path from 'path';
 
 // Terminal state restoration
@@ -50,16 +49,6 @@ function resolveCommand(args: string[]): { command: string; args: string[] } {
   }
 
   const [cmd, ...cmdArgs] = args;
-
-  // Try to find the command in PATH
-  try {
-    const resolved = which(cmd);
-    if (resolved) {
-      return { command: resolved, args: cmdArgs };
-    }
-  } catch (_e) {
-    // Command not found in PATH
-  }
 
   // Check if it's a relative path that exists
   if (cmd.includes('/') || cmd.includes('\\')) {

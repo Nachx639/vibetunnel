@@ -76,6 +76,8 @@ vi.mock('fs', () => ({
 // Import modules after mocks are set up
 const sessionsModule = await import('../../server/routes/sessions.js');
 
+type SessionRoutesConfig = Parameters<typeof sessionsModule.createSessionRoutes>[0];
+
 import express from 'express';
 import request from 'supertest';
 
@@ -98,9 +100,12 @@ describe('Session Creation with Git Info', () => {
     const mockTerminalManager = { getTerminalById: vi.fn() };
     const mockRemoteRegistry = null;
 
-    const config = {
-      ptyManager: { createSession: mockCreateSession },
-      terminalManager: mockTerminalManager,
+    // Partial fakes of the two managers, cast once here.
+    const config: SessionRoutesConfig = {
+      ptyManager: {
+        createSession: mockCreateSession,
+      } as unknown as SessionRoutesConfig['ptyManager'],
+      terminalManager: mockTerminalManager as unknown as SessionRoutesConfig['terminalManager'],
       remoteRegistry: mockRemoteRegistry,
       isHQMode: false,
     };

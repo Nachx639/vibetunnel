@@ -235,7 +235,7 @@ main|1|1||vim|5678|vim|80|24|/Users/test/docs`;
   describe('attachToTmux', () => {
     it('should create a PTY session for tmux attach', async () => {
       const mockSession = { sessionId: 'vt-123' };
-      mockPtyManager.createSession.mockResolvedValue(mockSession);
+      vi.mocked(mockPtyManager.createSession).mockResolvedValue(mockSession as never);
 
       const sessionId = await tmuxManager.attachToTmux('main');
 
@@ -253,7 +253,7 @@ main|1|1||vim|5678|vim|80|24|/Users/test/docs`;
 
     it('should attach to specific window', async () => {
       const mockSession = { sessionId: 'vt-456' };
-      mockPtyManager.createSession.mockResolvedValue(mockSession);
+      vi.mocked(mockPtyManager.createSession).mockResolvedValue(mockSession as never);
 
       const sessionId = await tmuxManager.attachToTmux('main', 2);
 
@@ -266,7 +266,7 @@ main|1|1||vim|5678|vim|80|24|/Users/test/docs`;
 
     it('should attach to specific pane', async () => {
       const mockSession = { sessionId: 'vt-789' };
-      mockPtyManager.createSession.mockResolvedValue(mockSession);
+      vi.mocked(mockPtyManager.createSession).mockResolvedValue(mockSession as never);
 
       const sessionId = await tmuxManager.attachToTmux('main', 1, 2);
 

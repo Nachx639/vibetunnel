@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import type { Session } from '../../../shared/types.js';
 import { InputManager } from './input-manager.js';
 
@@ -24,7 +24,10 @@ vi.mock('../../services/terminal-socket-client.js', () => ({
 describe('InputManager', () => {
   let inputManager: InputManager;
   let mockSession: Session;
-  let mockCallbacks: { requestUpdate: vi.Mock };
+  let mockCallbacks: {
+    requestUpdate: Mock<() => void>;
+    getKeyboardCaptureActive: Mock<() => boolean>;
+  };
 
   beforeEach(() => {
     inputManager = new InputManager();
@@ -32,9 +35,10 @@ describe('InputManager', () => {
       id: 'test-session-id',
       name: 'Test Session',
       status: 'running',
-      createdAt: new Date().toISOString(),
-      lastActivity: new Date().toISOString(),
-      command: 'bash',
+      startedAt: new Date().toISOString(),
+      lastModified: new Date().toISOString(),
+      command: ['bash'],
+      workingDir: '/home/test',
       pid: 12345,
     };
 
@@ -203,7 +207,7 @@ describe('InputManager', () => {
         status: 400,
         json: vi.fn().mockResolvedValue({}),
       };
-      vi.mocked(global.fetch).mockResolvedValueOnce(mockResponse as Response);
+      vi.mocked(global.fetch).mockResolvedValueOnce(mockResponse as unknown as Response);
 
       const event = new KeyboardEvent('keydown', {
         key: 'a',

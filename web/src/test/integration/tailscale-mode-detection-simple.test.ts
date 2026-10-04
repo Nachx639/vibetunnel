@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TailscaleServeService } from '../../server/services/tailscale-serve-service.js';
+import type {
+  TailscaleServeService,
+  TailscaleServeStatus,
+} from '../../server/services/tailscale-serve-service.js';
 
 // Mock the logger
 vi.mock('../../server/utils/logger.js', () => ({
@@ -149,7 +152,7 @@ describe('Tailscale Mode Detection Simple Tests', () => {
   describe('State Transitions', () => {
     it('handles Private to Public transition', async () => {
       // Start in Private
-      let currentStatus = {
+      let currentStatus: TailscaleServeStatus = {
         isRunning: true,
         port: 4020,
         funnelEnabled: false,
@@ -193,7 +196,7 @@ describe('Tailscale Mode Detection Simple Tests', () => {
 
     it('handles Public to Private transition', async () => {
       // Start in Public
-      let currentStatus = {
+      let currentStatus: TailscaleServeStatus = {
         isRunning: true,
         port: 4020,
         funnelEnabled: true,
@@ -240,7 +243,7 @@ describe('Tailscale Mode Detection Simple Tests', () => {
   describe('Error Recovery', () => {
     it('recovers from Funnel startup errors', async () => {
       // Error state
-      let currentStatus = {
+      let currentStatus: TailscaleServeStatus = {
         isRunning: true,
         port: 4020,
         funnelEnabled: false,
@@ -272,7 +275,7 @@ describe('Tailscale Mode Detection Simple Tests', () => {
 
     it('handles service restart', async () => {
       // Service running
-      let currentStatus = {
+      let currentStatus: TailscaleServeStatus = {
         isRunning: true,
         port: 4020,
         funnelEnabled: false,

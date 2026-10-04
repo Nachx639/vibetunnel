@@ -4,10 +4,10 @@ import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createStandardTestRepo, type GitTestRepo } from '../helpers/git-test-helper.js';
 import { SessionTestHelper } from '../helpers/session-test-helper.js';
-import { createTestServer } from '../helpers/test-server.js';
+import { createTestServer, type TestServerResult } from '../helpers/test-server.js';
 
 describe('Worktree Workflows Integration Tests', () => {
-  let testServer: ReturnType<typeof createTestServer>;
+  let testServer: TestServerResult;
   let gitRepo: GitTestRepo;
   let sessionHelper: SessionTestHelper;
   const createdSessionIds: string[] = [];

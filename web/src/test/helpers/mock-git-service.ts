@@ -5,11 +5,16 @@
  */
 
 import type {
-  GitBranch,
   GitService,
   Worktree,
   WorktreeListResponse,
 } from '../../client/services/git-service.js';
+
+export interface GitBranch {
+  name: string;
+  current: boolean;
+  remote: boolean;
+}
 
 export interface MockWorktreeOptions {
   path: string;
@@ -26,7 +31,10 @@ export interface MockWorktreeOptions {
   filesChanged?: number;
 }
 
-export class MockGitService implements GitService {
+/** Fakes the GitService calls it shares with the client; the rest is extra mock state. */
+export class MockGitService
+  implements Pick<GitService, 'listWorktrees' | 'deleteWorktree' | 'setFollowMode'>
+{
   private worktrees: Map<string, Worktree[]> = new Map();
   private branches: Map<string, GitBranch[]> = new Map();
   private followBranches: Map<string, string | undefined> = new Map();
@@ -155,7 +163,7 @@ export class MockGitService implements GitService {
 
   async getRepositoryRoot(path: string): Promise<string | null> {
     // Simple mock: return the path if it's a known repo
-    if (this.isGitRepository(path)) {
+    if (await this.isGitRepository(path)) {
       return path;
     }
     return null;

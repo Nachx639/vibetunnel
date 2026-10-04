@@ -105,9 +105,7 @@ export async function clickSessionCard(page: Page, sessionName: string): Promise
   await sessionCard.waitFor({ state: 'visible' });
   await sessionCard.scrollIntoViewIfNeeded();
 
-  // Ensure card is stable before clicking
-  await sessionCard.waitFor({ state: 'stable' });
-
+  // click() waits for the card to be stable (waitFor has no 'stable' state).
   await sessionCard.click();
 
   // Wait for navigation

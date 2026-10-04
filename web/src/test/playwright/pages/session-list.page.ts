@@ -372,7 +372,7 @@ export class SessionListPage extends BasePage {
           const _createdSession = await this.page.evaluate((name) => {
             const cards = document.querySelectorAll('session-card');
             for (const card of cards) {
-              if (card.textContent?.includes(name)) {
+              if (name && card.textContent?.includes(name)) {
                 return true;
               }
             }

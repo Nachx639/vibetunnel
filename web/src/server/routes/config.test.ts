@@ -2,7 +2,11 @@ import type { Express } from 'express';
 import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { QuickStartCommand, VibeTunnelConfig } from '../../types/config.js';
+import type {
+  NotificationPreferences,
+  QuickStartCommand,
+  VibeTunnelConfig,
+} from '../../types/config.js';
 import type { ConfigService } from '../services/config-service.js';
 import { createConfigRoutes } from './config.js';
 
@@ -67,7 +71,7 @@ describe('Config Routes', () => {
     it('should use default repository path when not configured', async () => {
       mockConfigService.getConfig = vi.fn(() => ({
         ...defaultConfig,
-        repositoryBasePath: null,
+        repositoryBasePath: undefined,
       }));
 
       const response = await request(app).get('/api/config');
@@ -300,13 +304,15 @@ describe('Config Routes', () => {
   describe('notification preferences', () => {
     describe('GET /api/config with notification preferences', () => {
       it('should include notification preferences in response', async () => {
-        const notificationPreferences = {
+        const notificationPreferences: NotificationPreferences = {
           enabled: true,
           sessionStart: false,
           sessionExit: true,
           commandCompletion: true,
           commandError: true,
           bell: true,
+          soundEnabled: true,
+          vibrationEnabled: true,
         };
 
         mockConfigService.getNotificationPreferences = vi.fn(() => notificationPreferences);
@@ -323,7 +329,8 @@ describe('Config Routes', () => {
       });
 
       it('should handle missing notification preferences', async () => {
-        mockConfigService.getNotificationPreferences = vi.fn(() => undefined);
+        // A fake without an implementation answers undefined.
+        mockConfigService.getNotificationPreferences = vi.fn<() => NotificationPreferences>();
 
         const response = await request(app).get('/api/config');
 

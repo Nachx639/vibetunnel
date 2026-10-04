@@ -1,7 +1,14 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as eventUtils from '../../utils/event-utils.js';
-import { LifecycleEventManager } from './lifecycle-event-manager.js';
+import {
+  LifecycleEventManager,
+  type LifecycleEventManagerCallbacks,
+} from './lifecycle-event-manager.js';
+
+/** Each test hands the manager only the callbacks its path calls. */
+const partialCallbacks = (callbacks: Partial<LifecycleEventManagerCallbacks>) =>
+  callbacks as LifecycleEventManagerCallbacks;
 
 // Mock the event utils module
 vi.mock('../../utils/event-utils.js');
@@ -36,7 +43,7 @@ describe('LifecycleEventManager', () => {
         status: 'running',
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession(mockSession as Parameters<typeof manager.setSession>[0]);
 
       // Test Cmd+O shortcut
@@ -72,7 +79,7 @@ describe('LifecycleEventManager', () => {
         handleKeyboardInput: vi.fn(),
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
 
       // Test browser shortcut (e.g., Ctrl+C)
       const browserShortcut = new KeyboardEvent('keydown', {
@@ -96,7 +103,7 @@ describe('LifecycleEventManager', () => {
         handleKeyboardInput: vi.fn(),
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
 
       const cmdOEvent = new KeyboardEvent('keydown', {
         key: 'o',
@@ -122,7 +129,7 @@ describe('LifecycleEventManager', () => {
         handleKeyboardInput: vi.fn(),
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
 
       const event = new KeyboardEvent('keydown', {
         key: 'o',
@@ -142,7 +149,7 @@ describe('LifecycleEventManager', () => {
         handleKeyboardInput: vi.fn(),
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',
@@ -165,7 +172,7 @@ describe('LifecycleEventManager', () => {
         handleKeyboardInput: vi.fn(),
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       document.body.setAttribute('data-ime-composing', 'true');
 
       try {
@@ -188,7 +195,7 @@ describe('LifecycleEventManager', () => {
         handleKeyboardInput: vi.fn(),
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',
@@ -210,7 +217,7 @@ describe('LifecycleEventManager', () => {
         handleKeyboardInput: vi.fn(),
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',
@@ -232,7 +239,7 @@ describe('LifecycleEventManager', () => {
       const input = document.createElement('input');
       document.body.appendChild(input);
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',
@@ -260,7 +267,7 @@ describe('LifecycleEventManager', () => {
       const input = document.createElement('input');
       document.body.appendChild(input);
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
 
       try {
         input.addEventListener('keydown', manager.mobileHardwareKeyboardHandler);
@@ -293,7 +300,7 @@ describe('LifecycleEventManager', () => {
       pasteInput.className = 'terminal-paste-input';
       document.body.appendChild(pasteInput);
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',
@@ -325,7 +332,7 @@ describe('LifecycleEventManager', () => {
       terminal.appendChild(terminalSurface);
       document.body.appendChild(terminal);
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',
@@ -358,7 +365,7 @@ describe('LifecycleEventManager', () => {
       terminal.appendChild(terminalInput);
       document.body.appendChild(terminal);
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',
@@ -389,7 +396,7 @@ describe('LifecycleEventManager', () => {
       shadowRoot.appendChild(input);
       document.body.appendChild(inlineEdit);
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',
@@ -419,7 +426,7 @@ describe('LifecycleEventManager', () => {
         handleKeyboardInput: vi.fn(),
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',
@@ -445,7 +452,7 @@ describe('LifecycleEventManager', () => {
         setupEventListeners: (isMobile: boolean) => void;
       };
 
-      manager.setCallbacks(mockCallbacks as Parameters<typeof manager.setCallbacks>[0]);
+      manager.setCallbacks(partialCallbacks(mockCallbacks));
       manager.setSession({
         id: 'test-session',
         status: 'running',

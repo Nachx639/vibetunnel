@@ -534,7 +534,7 @@ describe('ImageUploadMenu', () => {
       });
 
       // Create new element to trigger camera check
-      const newElement = await fixture(html`
+      const newElement = await fixture<ImageUploadMenu>(html`
         <image-upload-menu .isMobile=${true}></image-upload-menu>
       `);
 
@@ -564,7 +564,7 @@ describe('ImageUploadMenu', () => {
       });
 
       // Create new element to trigger camera check
-      const newElement = await fixture(html`
+      const newElement = await fixture<ImageUploadMenu>(html`
         <image-upload-menu .isMobile=${true}></image-upload-menu>
       `);
 

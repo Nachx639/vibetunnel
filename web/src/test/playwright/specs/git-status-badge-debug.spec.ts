@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import type { Session } from '../../../shared/types';
 
 test.describe('Git Status Badge Debugging', () => {
   test.beforeEach(async ({ page }) => {
@@ -156,7 +157,7 @@ test.describe('Git Status Badge Debugging', () => {
     const sessionData = await page.evaluate(() => {
       // Try to access session data from the page
       const sessionView = document.querySelector('session-view');
-      const sessionElement = sessionView as HTMLElement & { session?: unknown };
+      const sessionElement = sessionView as HTMLElement & { session?: Session };
       if (sessionElement?.session) {
         return sessionElement.session;
       }
@@ -253,7 +254,7 @@ test.describe('Git Status Badge Debugging', () => {
           const response = await fetch(`/api/sessions/${id}/git-status`);
           return await response.json();
         } catch (e) {
-          return { error: e.toString() };
+          return { error: String(e) };
         }
       }, sessionId);
       console.log('Manual git status response:', gitStatusResponse);

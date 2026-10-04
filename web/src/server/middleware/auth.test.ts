@@ -17,6 +17,19 @@ vi.mock('../utils/logger.js', () => ({
   })),
 }));
 
+type AuthConfig = Parameters<typeof createAuthMiddleware>[0];
+
+/** The flags the server always passes are off unless a test turns them on. */
+function authMiddleware(config: Partial<AuthConfig>) {
+  return createAuthMiddleware({
+    enableSSHKeys: false,
+    disallowUserPassword: false,
+    noAuth: false,
+    isHQMode: false,
+    ...config,
+  });
+}
+
 describe('Auth Middleware', () => {
   let app: express.Express;
   let mockAuthService: AuthService;
@@ -56,7 +69,7 @@ describe('Auth Middleware', () => {
 
   describe('No Auth Mode', () => {
     it('should bypass authentication when noAuth is true', async () => {
-      const middleware = createAuthMiddleware({ noAuth: true });
+      const middleware = authMiddleware({ noAuth: true });
 
       app.use('/api', middleware);
       app.get('/api/test', (_req, res) => res.json({ success: true }));
@@ -70,7 +83,7 @@ describe('Auth Middleware', () => {
 
   describe('Tailscale Authentication', () => {
     it('should authenticate user with valid Tailscale headers from localhost', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowTailscaleAuth: true,
         authService: mockAuthService,
       });
@@ -108,7 +121,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should reject Tailscale headers without proxy headers', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowTailscaleAuth: true,
         authService: mockAuthService,
       });
@@ -126,7 +139,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should reject Tailscale headers from non-localhost', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowTailscaleAuth: true,
         authService: mockAuthService,
       });
@@ -154,7 +167,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should handle missing Tailscale login header', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowTailscaleAuth: true,
         authService: mockAuthService,
       });
@@ -173,7 +186,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should set tailscale auth info on /api/auth endpoints', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowTailscaleAuth: true,
         authService: mockAuthService,
       });
@@ -205,7 +218,7 @@ describe('Auth Middleware', () => {
 
   describe('Local Bypass Authentication', () => {
     it('should allow local requests when allowLocalBypass is true', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowLocalBypass: true,
         authService: mockAuthService,
       });
@@ -231,7 +244,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should require token for local bypass when localAuthToken is set', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowLocalBypass: true,
         localAuthToken: 'secret-token',
         authService: mockAuthService,
@@ -263,7 +276,7 @@ describe('Auth Middleware', () => {
         .find((entry) => !entry.internal)?.address;
       expect(localInterfaceAddress).toBeDefined();
 
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowLocalBypass: true,
         localAuthToken: 'secret-token',
         authService: mockAuthService,
@@ -289,7 +302,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should reject a valid local token from a remote address', () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowLocalBypass: true,
         localAuthToken: 'secret-token',
         authService: mockAuthService,
@@ -314,7 +327,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should reject requests with forwarded headers even from localhost', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowLocalBypass: true,
         authService: mockAuthService,
       });
@@ -332,7 +345,7 @@ describe('Auth Middleware', () => {
     it('should authenticate with valid bearer token', async () => {
       mockAuthService.verifyToken = vi.fn().mockReturnValue({ valid: true, userId: 'test-user' });
 
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         authService: mockAuthService,
         enableSSHKeys: true,
       });
@@ -362,7 +375,7 @@ describe('Auth Middleware', () => {
     it('should reject invalid bearer token', async () => {
       mockAuthService.verifyToken = vi.fn().mockReturnValue({ valid: false });
 
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         authService: mockAuthService,
       });
 
@@ -379,7 +392,7 @@ describe('Auth Middleware', () => {
 
   describe('Security Validations', () => {
     it('should skip auth for auth endpoints', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         authService: mockAuthService,
       });
 
@@ -395,7 +408,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should skip auth for logs endpoint', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         authService: mockAuthService,
       });
 
@@ -407,7 +420,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should skip auth for push endpoint', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         authService: mockAuthService,
       });
 
@@ -419,7 +432,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should require auth for other endpoints when no auth method succeeds', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         authService: mockAuthService,
       });
 
@@ -474,7 +487,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should accept ::1 as localhost for Tailscale auth', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowTailscaleAuth: true,
         authService: mockAuthService,
       });
@@ -500,7 +513,7 @@ describe('Auth Middleware', () => {
     });
 
     it('should accept ::ffff:127.0.0.1 as localhost for Tailscale auth', async () => {
-      const middleware = createAuthMiddleware({
+      const middleware = authMiddleware({
         allowTailscaleAuth: true,
         authService: mockAuthService,
       });

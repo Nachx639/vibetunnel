@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import type { Repository } from '../components/autocomplete-manager';
 import type { AuthClient } from './auth-client';
 import { RepositoryService } from './repository-service';
@@ -11,7 +11,7 @@ describe('RepositoryService', () => {
   let service: RepositoryService;
   let mockAuthClient: AuthClient;
   let mockServerConfigService: ServerConfigService;
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: Mock;
   let mockStorage: { [key: string]: string };
 
   beforeEach(() => {

@@ -289,7 +289,6 @@ export class WaitUtils {
     // Additional check for any pending XHR/fetch requests
     await page.waitForFunction(
       (maxRequests) => {
-        // @ts-expect-error - accessing internal state
         const requests = window.performance
           .getEntriesByType('resource')
           .filter((entry) => entry.duration === 0);

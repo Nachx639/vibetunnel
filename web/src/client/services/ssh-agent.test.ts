@@ -126,7 +126,7 @@ const setOpenSSHCommentWithoutPadding = (comment: string): string => {
   return encodeOpenSSHKey(result);
 };
 
-const decodeSSHPublicKey = (publicKey: string): Uint8Array => {
+const decodeSSHPublicKey = (publicKey: string): Uint8Array<ArrayBuffer> => {
   const [, encoded] = publicKey.split(' ');
   const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
   const keyType = readString(bytes, 0);

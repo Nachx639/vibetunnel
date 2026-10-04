@@ -54,7 +54,6 @@ describe('Sessions API Tests', () => {
         },
         body: JSON.stringify({
           command: ['echo', 'hello world'],
-          workingDir: server?.testDir,
         }),
       });
 
@@ -76,7 +75,6 @@ describe('Sessions API Tests', () => {
         },
         body: JSON.stringify({
           command: ['echo', 'named session'],
-          workingDir: server?.testDir,
           name: sessionName,
         }),
       });
@@ -117,7 +115,6 @@ describe('Sessions API Tests', () => {
         },
         body: JSON.stringify({
           command: ['echo', 'dimension test'],
-          workingDir: server?.testDir,
           cols: 120,
           rows: 30,
         }),
@@ -149,7 +146,6 @@ describe('Sessions API Tests', () => {
         },
         body: JSON.stringify({
           command: ['bash', '-c', 'while true; do echo "running"; sleep 1; done'],
-          workingDir: server?.testDir,
           name: 'Long Running Test',
         }),
       });
@@ -345,7 +341,6 @@ describe('Sessions API Tests', () => {
         },
         body: JSON.stringify({
           command: ['cat'],
-          workingDir: server?.testDir,
         }),
       });
 
@@ -378,7 +373,6 @@ describe('Sessions API Tests', () => {
         },
         body: JSON.stringify({
           command: ['cat'],
-          workingDir: server?.testDir,
         }),
       });
 

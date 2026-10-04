@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { SessionManager } from '../../server/pty/session-manager';
-import type { SessionInfo } from '../../server/types';
+import type { SessionInfo } from '../../shared/types';
 
 describe('SessionManager', () => {
   let sessionManager: SessionManager;
@@ -43,14 +43,13 @@ describe('SessionManager', () => {
     it('should save session info to file', () => {
       const sessionId = 'test123';
       const sessionInfo: SessionInfo = {
-        cmdline: ['echo', 'test'],
+        id: sessionId,
+        command: ['echo', 'test'],
         name: 'Test Session',
-        cwd: testDir,
+        workingDir: testDir,
         pid: 12345,
         status: 'running',
-        started_at: new Date().toISOString(),
-        term: 'xterm-256color',
-        spawn_type: 'pty',
+        startedAt: new Date().toISOString(),
       };
 
       // Create session directory first
@@ -71,14 +70,13 @@ describe('SessionManager', () => {
     it('should load session info from file', () => {
       const sessionId = 'test456';
       const sessionInfo: SessionInfo = {
-        cmdline: ['bash', '-l'],
+        id: sessionId,
+        command: ['bash', '-l'],
         name: 'Bash Session',
-        cwd: '/home/user',
+        workingDir: '/home/user',
         pid: 54321,
         status: 'running',
-        started_at: new Date().toISOString(),
-        term: 'xterm',
-        spawn_type: 'pty',
+        startedAt: new Date().toISOString(),
       };
 
       // Create session directory and save info
@@ -98,14 +96,13 @@ describe('SessionManager', () => {
     it('should update existing session status', () => {
       const sessionId = 'test789';
       const initialInfo: SessionInfo = {
-        cmdline: ['vim'],
+        id: sessionId,
+        command: ['vim'],
         name: 'Editor',
-        cwd: testDir,
+        workingDir: testDir,
         pid: 11111,
         status: 'running',
-        started_at: new Date().toISOString(),
-        term: 'xterm',
-        spawn_type: 'pty',
+        startedAt: new Date().toISOString(),
       };
 
       // Create session directory and save initial info
@@ -133,15 +130,14 @@ describe('SessionManager', () => {
 
       for (const session of sessions) {
         const sessionInfo: SessionInfo = {
-          cmdline: ['echo', session.name],
+          id: session.id,
+          command: ['echo', session.name],
           name: session.name,
-          cwd: testDir,
+          workingDir: testDir,
           pid: session.pid,
           status: session.status,
           exitCode: session.exitCode,
-          started_at: new Date().toISOString(),
-          term: 'xterm',
-          spawn_type: 'pty',
+          startedAt: new Date().toISOString(),
         };
         sessionManager.createSessionDirectory(session.id);
         sessionManager.saveSessionInfo(session.id, sessionInfo);
@@ -177,14 +173,13 @@ describe('SessionManager', () => {
       // Create a valid session
       sessionManager.createSessionDirectory('validsession');
       sessionManager.saveSessionInfo('validsession', {
-        cmdline: ['ls'],
+        id: 'validsession',
+        command: ['ls'],
         name: 'Valid',
-        cwd: testDir,
+        workingDir: testDir,
         pid: 12345,
         status: 'running',
-        started_at: new Date().toISOString(),
-        term: 'xterm',
-        spawn_type: 'pty',
+        startedAt: new Date().toISOString(),
       });
 
       const sessions = sessionManager.listSessions();
@@ -213,39 +208,36 @@ describe('SessionManager', () => {
 
       sessionManager.createSessionDirectory('running');
       sessionManager.saveSessionInfo('running', {
-        cmdline: ['node'],
+        id: 'running',
+        command: ['node'],
         name: 'Running',
-        cwd: testDir,
+        workingDir: testDir,
         pid: runningPid,
         status: 'running',
-        started_at: new Date().toISOString(),
-        term: 'xterm',
-        spawn_type: 'pty',
+        startedAt: new Date().toISOString(),
       });
 
       sessionManager.createSessionDirectory('zombie');
       sessionManager.saveSessionInfo('zombie', {
-        cmdline: ['ghost'],
+        id: 'zombie',
+        command: ['ghost'],
         name: 'Zombie',
-        cwd: testDir,
+        workingDir: testDir,
         pid: zombiePid,
         status: 'running',
-        started_at: new Date().toISOString(),
-        term: 'xterm',
-        spawn_type: 'pty',
+        startedAt: new Date().toISOString(),
       });
 
       sessionManager.createSessionDirectory('exited');
       sessionManager.saveSessionInfo('exited', {
-        cmdline: ['done'],
+        id: 'exited',
+        command: ['done'],
         name: 'Exited',
-        cwd: testDir,
+        workingDir: testDir,
         pid: 12345,
         status: 'exited',
         exitCode: 0,
-        started_at: new Date().toISOString(),
-        term: 'xterm',
-        spawn_type: 'pty',
+        startedAt: new Date().toISOString(),
       });
 
       // Update zombie sessions
@@ -269,14 +261,13 @@ describe('SessionManager', () => {
     it('should handle sessions without PID', () => {
       sessionManager.createSessionDirectory('no-pid');
       sessionManager.saveSessionInfo('no-pid', {
-        cmdline: ['test'],
+        id: 'no-pid',
+        command: ['test'],
         name: 'No PID',
-        cwd: testDir,
+        workingDir: testDir,
         status: 'running',
-        started_at: new Date().toISOString(),
-        term: 'xterm',
-        spawn_type: 'pty',
-      } as SessionInfo); // Intentionally missing pid
+        startedAt: new Date().toISOString(),
+      }); // Intentionally missing pid
 
       sessionManager.updateZombieSessions();
 
@@ -291,15 +282,14 @@ describe('SessionManager', () => {
       const sessionId = 'to-delete';
       sessionManager.createSessionDirectory(sessionId);
       sessionManager.saveSessionInfo(sessionId, {
-        cmdline: ['rm', '-rf'],
+        id: sessionId,
+        command: ['rm', '-rf'],
         name: 'Clean Me',
-        cwd: testDir,
+        workingDir: testDir,
         pid: 12345,
         status: 'exited',
         exitCode: 0,
-        started_at: new Date().toISOString(),
-        term: 'xterm',
-        spawn_type: 'pty',
+        startedAt: new Date().toISOString(),
       });
 
       const sessionDir = path.join(testDir, sessionId);
@@ -336,14 +326,13 @@ describe('SessionManager', () => {
       // Create session
       sessionManager.createSessionDirectory(sessionId);
       sessionManager.saveSessionInfo(sessionId, {
-        cmdline: ['test'],
+        id: sessionId,
+        command: ['test'],
         name: 'Test',
-        cwd: testDir,
+        workingDir: testDir,
         pid: 12345,
         status: 'running',
-        started_at: new Date().toISOString(),
-        term: 'xterm',
-        spawn_type: 'pty',
+        startedAt: new Date().toISOString(),
       });
 
       // Now it exists

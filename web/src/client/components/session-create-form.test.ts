@@ -10,6 +10,7 @@ import {
 } from '@/test/utils/component-helpers';
 import { TitleMode } from '../../shared/types';
 import type { AuthClient } from '../services/auth-client';
+import type { GitRepoInfo } from '../services/git-service';
 
 // Mock AuthClient
 vi.mock('../services/auth-client');
@@ -17,7 +18,33 @@ vi.mock('../services/auth-client');
 // localStorage mock will be created in beforeEach
 
 // Import component type
+import type { QuickStartEditor } from './quick-start-editor';
 import type { SessionCreateForm } from './session-create-form';
+import type { QuickStartItem } from './session-create-form/quick-start-section';
+
+/** The form's private state and handlers that these tests read or drive directly. */
+type SessionCreateFormInternals = {
+  isCreating: boolean;
+  showFileBrowser: boolean;
+  macAppConnected: boolean;
+  gitRepoInfo: GitRepoInfo | null;
+  availableBranches: string[];
+  selectedBaseBranch: string;
+  selectedWorktree?: string;
+  quickStartCommands: QuickStartItem[];
+  selectedQuickStart: string;
+  isCheckingGit: boolean;
+  handleCreate(): Promise<void>;
+  handleBrowse(): void;
+  handleDirectorySelected(e: CustomEvent): void;
+  handleBrowserCancel(): void;
+  handleCancel(): void;
+  handleQuickStartSelected(e: CustomEvent): void;
+  checkServerStatus(): Promise<boolean>;
+  checkGitRepository(): Promise<void>;
+};
+
+const internals = (form: SessionCreateForm) => form as unknown as SessionCreateFormInternals;
 
 describe('SessionCreateForm', () => {
   let element: SessionCreateForm;
@@ -103,12 +130,12 @@ describe('SessionCreateForm', () => {
       expect(element.workingDir).toBe('~/Documents');
       expect(element.command).toBe('zsh');
       expect(element.sessionName).toBe('');
-      expect(element.isCreating).toBe(false);
+      expect(internals(element).isCreating).toBe(false);
       expect(fetchMock.getCalls().some((call) => call[0] === '/api/remotes')).toBe(false);
     });
 
     it('should load saved values from localStorage', async () => {
-      localStorageMock.getItem.mockImplementation((key) => {
+      vi.mocked(localStorageMock.getItem).mockImplementation((key) => {
         if (key === 'vibetunnel_last_working_dir') return '/home/user/projects';
         if (key === 'vibetunnel_last_command') return 'npm run dev';
         return null;
@@ -166,7 +193,7 @@ describe('SessionCreateForm', () => {
     });
 
     it('should disable fields when creating', async () => {
-      element.isCreating = true;
+      internals(element).isCreating = true;
       await element.updateComplete;
 
       const inputs = element.querySelectorAll('input');
@@ -186,8 +213,8 @@ describe('SessionCreateForm', () => {
       expect(quickStartSection).toBe(true);
 
       // Verify quickStartCommands is defined
-      expect(element.quickStartCommands).toBeDefined();
-      expect(element.quickStartCommands.length).toBeGreaterThan(0);
+      expect(internals(element).quickStartCommands).toBeDefined();
+      expect(internals(element).quickStartCommands.length).toBeGreaterThan(0);
 
       // The test environment may not render the buttons correctly due to lit-html issues
       // so we'll just verify the data structure exists
@@ -200,7 +227,7 @@ describe('SessionCreateForm', () => {
         'zsh',
         'node',
       ];
-      const actualCommands = element.quickStartCommands.map((item) => item.command);
+      const actualCommands = internals(element).quickStartCommands.map((item) => item.command);
 
       expectedCommands.forEach((cmd) => {
         expect(actualCommands).toContain(cmd);
@@ -209,8 +236,7 @@ describe('SessionCreateForm', () => {
 
     it('should update command when quick start is clicked', async () => {
       // Access the private method directly for testing
-      // @ts-expect-error - accessing private method for testing
-      element.handleQuickStartSelected(
+      internals(element).handleQuickStartSelected(
         new CustomEvent('quick-start-selected', {
           detail: { command: 'python3' },
         })
@@ -218,7 +244,7 @@ describe('SessionCreateForm', () => {
       await element.updateComplete;
 
       expect(element.command).toBe('python3');
-      expect(element.selectedQuickStart).toBe('python3');
+      expect(internals(element).selectedQuickStart).toBe('python3');
     });
 
     it('should highlight selected quick start', async () => {
@@ -229,8 +255,7 @@ describe('SessionCreateForm', () => {
       expect(element.command).toBe('node');
 
       // Selecting Claude should not change title mode anymore
-      // @ts-expect-error - accessing private method for testing
-      element.handleQuickStartSelected(
+      internals(element).handleQuickStartSelected(
         new CustomEvent('quick-start-selected', {
           detail: { command: 'claude' },
         })
@@ -278,7 +303,7 @@ describe('SessionCreateForm', () => {
       hqElement.command = 'zsh';
       hqElement.workingDir = '~/work';
       hqElement.spawnWindow = true;
-      await hqElement.handleCreate();
+      await internals(hqElement).handleCreate();
 
       const sessionCall = fetchMock.getCalls().find((call) => call[0] === '/api/sessions');
       expect(JSON.parse((sessionCall?.[1]?.body as string) || '{}')).toMatchObject({
@@ -389,7 +414,7 @@ describe('SessionCreateForm', () => {
 
       const errorHandler = vi.fn();
       hqElement.addEventListener('error', errorHandler);
-      await hqElement.handleCreate();
+      await internals(hqElement).handleCreate();
 
       expect(hqElement.querySelector('[data-testid="no-machines-warning"]')).toBeTruthy();
       expect(
@@ -425,7 +450,7 @@ describe('SessionCreateForm', () => {
           ?.disabled
       ).toBe(true);
 
-      await hqElement.handleCreate();
+      await internals(hqElement).handleCreate();
       expect(fetchMock.getCalls().some((call) => call[0] === '/api/sessions')).toBe(false);
 
       hqElement.remove();
@@ -447,7 +472,7 @@ describe('SessionCreateForm', () => {
       await element.updateComplete;
 
       // Directly call the create handler since button rendering is unreliable in tests
-      await element.handleCreate();
+      await internals(element).handleCreate();
 
       // Wait for the request to complete
       await waitForAsync();
@@ -487,7 +512,7 @@ describe('SessionCreateForm', () => {
       await element.updateComplete;
 
       // Directly call the create handler
-      await element.handleCreate();
+      await internals(element).handleCreate();
       await waitForAsync();
 
       expect(localStorageMock.setItem).toHaveBeenCalledWith(
@@ -505,7 +530,7 @@ describe('SessionCreateForm', () => {
       await element.updateComplete;
 
       // Directly call the create handler
-      await element.handleCreate();
+      await internals(element).handleCreate();
       await waitForAsync();
 
       expect(element.command).toBe('');
@@ -526,7 +551,7 @@ describe('SessionCreateForm', () => {
       await element.updateComplete;
 
       // Directly call the create handler
-      await element.handleCreate();
+      await internals(element).handleCreate();
       await waitForAsync();
 
       expect(errorHandler).toHaveBeenCalledWith(
@@ -550,7 +575,7 @@ describe('SessionCreateForm', () => {
       expect(isFormValid).toBe(false);
 
       // Force a click through the handleCreate method directly
-      await element.handleCreate();
+      await internals(element).handleCreate();
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -566,7 +591,7 @@ describe('SessionCreateForm', () => {
       await element.updateComplete;
 
       // Directly call the create handler
-      await element.handleCreate();
+      await internals(element).handleCreate();
       await waitForAsync();
 
       const calls = fetchMock.getCalls();
@@ -590,7 +615,7 @@ describe('SessionCreateForm', () => {
   describe('file browser integration', () => {
     it('should show file browser when browse button is clicked', async () => {
       // Directly call the browse handler
-      element.handleBrowse();
+      internals(element).handleBrowse();
       await element.updateComplete;
 
       // Check if file browser is rendered
@@ -604,7 +629,7 @@ describe('SessionCreateForm', () => {
         detail: '/new/directory/path',
       });
 
-      element.handleDirectorySelected(event);
+      internals(element).handleDirectorySelected(event);
       await element.updateComplete;
 
       expect(element.workingDir).toBe('/new/directory/path');
@@ -612,11 +637,11 @@ describe('SessionCreateForm', () => {
 
     it('should hide file browser on cancel', async () => {
       // First show the browser
-      element.handleBrowse();
+      internals(element).handleBrowse();
       await element.updateComplete;
 
       // Then cancel it
-      element.handleBrowserCancel();
+      internals(element).handleBrowserCancel();
       await element.updateComplete;
 
       // After canceling, the file browser should no longer be visible
@@ -680,7 +705,7 @@ describe('SessionCreateForm', () => {
       element.addEventListener('cancel', cancelHandler);
 
       // Directly call the cancel handler
-      element.handleCancel();
+      internals(element).handleCancel();
 
       expect(cancelHandler).toHaveBeenCalled();
     });
@@ -690,7 +715,7 @@ describe('SessionCreateForm', () => {
       element.addEventListener('cancel', cancelHandler);
 
       // The close button also calls handleCancel
-      element.handleCancel();
+      internals(element).handleCancel();
 
       expect(cancelHandler).toHaveBeenCalled();
     });
@@ -698,21 +723,21 @@ describe('SessionCreateForm', () => {
 
   describe('form state', () => {
     it('should show loading state when creating', async () => {
-      element.isCreating = true;
+      internals(element).isCreating = true;
       await element.updateComplete;
 
       // When isCreating is true, the button text should change
       // Since we can't reliably find buttons in tests, just verify the state
-      expect(element.isCreating).toBe(true);
+      expect(internals(element).isCreating).toBe(true);
     });
 
     it('should disable cancel button when creating', async () => {
-      element.isCreating = true;
+      internals(element).isCreating = true;
       await element.updateComplete;
 
       // When isCreating is true, cancel button should be disabled
       // Verify the state since we can't reliably find buttons
-      expect(element.isCreating).toBe(true);
+      expect(internals(element).isCreating).toBe(true);
     });
   });
 
@@ -779,13 +804,12 @@ describe('SessionCreateForm', () => {
       await newElement.updateComplete;
 
       // Force the component to check server status
-      // @ts-expect-error - accessing private method for testing
-      await newElement.checkServerStatus();
+      await internals(newElement).checkServerStatus();
       await waitForAsync(100);
       await newElement.updateComplete;
 
       // First check if Options section is expanded
-      const optionsButton = newElement.querySelector('#session-options-button');
+      const optionsButton = newElement.querySelector<HTMLButtonElement>('#session-options-button');
 
       if (optionsButton) {
         optionsButton.click();
@@ -852,7 +876,7 @@ describe('SessionCreateForm', () => {
       await newElement.updateComplete;
 
       // Create session
-      await newElement.handleCreate();
+      await internals(newElement).handleCreate();
       await waitForAsync();
 
       // Check that spawn_terminal was false in the request
@@ -896,7 +920,7 @@ describe('SessionCreateForm', () => {
       await newElement.updateComplete;
 
       // Create session
-      await newElement.handleCreate();
+      await internals(newElement).handleCreate();
       await waitForAsync();
 
       // Check that spawn_terminal was true in the request
@@ -920,7 +944,7 @@ describe('SessionCreateForm', () => {
       await newElement.updateComplete;
 
       // Verify that macAppConnected defaults to false
-      expect(newElement.macAppConnected).toBe(false);
+      expect(internals(newElement).macAppConnected).toBe(false);
 
       // The component should log a warning but not crash
       // No need to check fetch calls since defensive check prevents them
@@ -938,7 +962,7 @@ describe('SessionCreateForm', () => {
 
       // Override global fetch with a custom mock that handles Git API patterns
       const originalFetch = global.fetch;
-      global.fetch = vi.fn(async (url: string, options?: RequestInit) => {
+      global.fetch = vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
         const urlStr = url.toString();
 
         // Track the call
@@ -1025,17 +1049,16 @@ describe('SessionCreateForm', () => {
     it('should show branch selector when Git repository is detected', async () => {
       // Trigger Git check
       element.workingDir = '/home/user/project';
-      // @ts-expect-error - accessing private method for testing
-      await element.checkGitRepository();
+      await internals(element).checkGitRepository();
       await element.updateComplete;
       // Wait a bit for async branch loading
       await waitForAsync(100);
       await element.updateComplete;
 
       // Check that the Git repo info and branches are set correctly
-      expect(element.gitRepoInfo).toBeTruthy();
-      expect(element.gitRepoInfo?.isGitRepo).toBe(true);
-      expect(element.availableBranches).toEqual(['main', 'feature']);
+      expect(internals(element).gitRepoInfo).toBeTruthy();
+      expect(internals(element).gitRepoInfo?.isGitRepo).toBe(true);
+      expect(internals(element).availableBranches).toEqual(['main', 'feature']);
 
       // Check that branch selector is rendered
       const branchSelect = element.querySelector('[data-testid="git-base-branch-select"]');
@@ -1050,7 +1073,8 @@ describe('SessionCreateForm', () => {
 
     it('should not show branch selector for non-Git directories', async () => {
       // Override fetch to return non-Git response
-      global.fetch = vi.fn(async (url: string) => {
+      const previousFetch = global.fetch;
+      global.fetch = vi.fn(async (url: RequestInfo | URL) => {
         const urlStr = url.toString();
         if (urlStr.includes('/api/git/repo-info')) {
           return {
@@ -1059,13 +1083,12 @@ describe('SessionCreateForm', () => {
             json: async () => ({ isGitRepo: false }),
           } as Response;
         }
-        return fetchMock(url);
+        return previousFetch(url);
       });
 
       // Trigger Git check
       element.workingDir = '/home/user/not-git';
-      // @ts-expect-error - accessing private method for testing
-      await element.checkGitRepository();
+      await internals(element).checkGitRepository();
       await element.updateComplete;
 
       // Check that branch selector is NOT rendered
@@ -1078,15 +1101,14 @@ describe('SessionCreateForm', () => {
 
       // Set working directory to feature worktree
       element.workingDir = '/home/user/project-feature';
-      // @ts-expect-error - accessing private method for testing
-      await element.checkGitRepository();
+      await internals(element).checkGitRepository();
       await element.updateComplete;
       // Wait for async operations
       await waitForAsync(100);
       await element.updateComplete;
 
       // Verify feature branch is selected in worktree
-      expect(element.selectedWorktree).toBe('feature');
+      expect(internals(element).selectedWorktree).toBe('feature');
     });
 
     it('should select base branch when not in a worktree', async () => {
@@ -1094,15 +1116,14 @@ describe('SessionCreateForm', () => {
 
       // Set working directory to a subdirectory
       element.workingDir = '/home/user/project/src';
-      // @ts-expect-error - accessing private method for testing
-      await element.checkGitRepository();
+      await internals(element).checkGitRepository();
       await element.updateComplete;
       // Wait for async operations
       await waitForAsync(100);
       await element.updateComplete;
 
       // Verify main branch is selected
-      expect(element.selectedBaseBranch).toBe('main');
+      expect(internals(element).selectedBaseBranch).toBe('main');
     });
 
     it('should include Git info in session creation request', async () => {
@@ -1115,8 +1136,7 @@ describe('SessionCreateForm', () => {
       element.command = 'vim';
 
       // Trigger Git repository check which will load currentBranch and selectedBaseBranch
-      // @ts-expect-error - accessing private method for testing
-      await element.checkGitRepository();
+      await internals(element).checkGitRepository();
       await element.updateComplete;
 
       // The Git check should have loaded the repository info and set currentBranch to 'main'
@@ -1125,7 +1145,7 @@ describe('SessionCreateForm', () => {
       await element.updateComplete;
 
       // Create session
-      await element.handleCreate();
+      await internals(element).handleCreate();
       await waitForAsync();
 
       // Check request includes Git info
@@ -1143,14 +1163,14 @@ describe('SessionCreateForm', () => {
       });
 
       // Clear Git state
-      element.gitRepoInfo = null;
-      element.selectedBaseBranch = '';
+      internals(element).gitRepoInfo = null;
+      internals(element).selectedBaseBranch = '';
       element.command = 'bash';
       element.workingDir = '/home/user/downloads';
       await element.updateComplete;
 
       // Create session
-      await element.handleCreate();
+      await internals(element).handleCreate();
       await waitForAsync();
 
       // Check request does NOT include Git info
@@ -1164,7 +1184,8 @@ describe('SessionCreateForm', () => {
 
     it('should handle Git check errors gracefully', async () => {
       // Override fetch to return error
-      global.fetch = vi.fn(async (url: string) => {
+      const previousFetch = global.fetch;
+      global.fetch = vi.fn(async (url: RequestInfo | URL) => {
         const urlStr = url.toString();
         if (urlStr.includes('/api/git/repo-info')) {
           return {
@@ -1173,7 +1194,7 @@ describe('SessionCreateForm', () => {
             json: async () => ({ error: 'Permission denied' }),
           } as Response;
         }
-        return fetchMock(url);
+        return previousFetch(url);
       });
 
       // Trigger working directory change which should check Git
@@ -1184,9 +1205,9 @@ describe('SessionCreateForm', () => {
       await element.updateComplete;
 
       // Should handle error without crashing
-      expect(element.gitRepoInfo).toBe(null);
-      expect(element.availableBranches).toEqual([]);
-      expect(element.selectedBaseBranch).toBe('');
+      expect(internals(element).gitRepoInfo).toBe(null);
+      expect(internals(element).availableBranches).toEqual([]);
+      expect(internals(element).selectedBaseBranch).toBe('');
 
       // Branch selector element exists but should not render any content
       const branchSelector = element.querySelector('git-branch-selector');
@@ -1235,7 +1256,7 @@ describe('SessionCreateForm', () => {
       });
 
       // Show file browser first
-      element.showFileBrowser = true;
+      internals(element).showFileBrowser = true;
       await element.updateComplete;
 
       // Find the file-browser element and dispatch event from it
@@ -1258,14 +1279,14 @@ describe('SessionCreateForm', () => {
       // formatPathForDisplay converts /home/user/path to ~/path
       expect(element.workingDir).toBe('~/new-project');
       // File browser should be hidden after selection
-      expect(element.showFileBrowser).toBe(false);
+      expect(internals(element).showFileBrowser).toBe(false);
     });
 
     it('should update selected branch when changed in dropdown', async () => {
       // Set up Git state
-      element.gitRepoInfo = { isGitRepo: true, repoPath: '/home/user/project' };
-      element.availableBranches = ['main', 'develop', 'feature'];
-      element.selectedBaseBranch = 'main';
+      internals(element).gitRepoInfo = { isGitRepo: true, repoPath: '/home/user/project' };
+      internals(element).availableBranches = ['main', 'develop', 'feature'];
+      internals(element).selectedBaseBranch = 'main';
       await element.updateComplete;
 
       // Find and change the select element
@@ -1281,7 +1302,7 @@ describe('SessionCreateForm', () => {
       await element.updateComplete;
 
       // Verify branch was updated
-      expect(element.selectedBaseBranch).toBe('develop');
+      expect(internals(element).selectedBaseBranch).toBe('develop');
     });
 
     it('should show loading state while checking Git', async () => {
@@ -1289,16 +1310,16 @@ describe('SessionCreateForm', () => {
       element.workingDir = '/home/user/project';
 
       // Start the check without awaiting
-      const checkPromise = element.checkGitRepository();
+      const checkPromise = internals(element).checkGitRepository();
 
       // Should be in loading state
-      expect(element.isCheckingGit).toBe(true);
+      expect(internals(element).isCheckingGit).toBe(true);
 
       // Wait for completion
       await checkPromise;
 
       // Should no longer be loading
-      expect(element.isCheckingGit).toBe(false);
+      expect(internals(element).isCheckingGit).toBe(false);
     });
 
     it('should check Git on modal open if working directory is set', async () => {
@@ -1378,7 +1399,7 @@ describe('SessionCreateForm', () => {
       await waitForAsync();
       await element.updateComplete;
 
-      const quickStartEditor = element.querySelector('quick-start-editor');
+      const quickStartEditor = element.querySelector<QuickStartEditor>('quick-start-editor');
       expect(quickStartEditor?.commands).toEqual([
         { name: '✨ claude', command: 'claude' },
         { command: 'zsh' },
@@ -1465,7 +1486,7 @@ describe('SessionCreateForm', () => {
       // Mock the PUT endpoint to return error
       fetchMock.mockResponse('/api/config', { error: 'Failed to save' }, { status: 500 });
 
-      const originalCommands = [...element.quickStartCommands];
+      const originalCommands = [...internals(element).quickStartCommands];
       const newCommands = [{ command: 'invalid' }];
 
       // Dispatch event
@@ -1478,7 +1499,7 @@ describe('SessionCreateForm', () => {
       await waitForAsync();
 
       // Commands should not be updated on error
-      expect(element.quickStartCommands).toEqual(originalCommands);
+      expect(internals(element).quickStartCommands).toEqual(originalCommands);
     });
 
     it('should load quick start commands from server on init', async () => {
@@ -1487,7 +1508,7 @@ describe('SessionCreateForm', () => {
       expect(configCall).toBeTruthy();
 
       // Check commands were loaded
-      expect(element.quickStartCommands).toEqual([
+      expect(internals(element).quickStartCommands).toEqual([
         { label: '✨ claude', command: 'claude' },
         { label: 'zsh', command: 'zsh' },
         { label: '▶️ pnpm run dev', command: 'pnpm run dev' },
@@ -1510,8 +1531,10 @@ describe('SessionCreateForm', () => {
       await newElement.updateComplete;
 
       // Should have default commands
-      expect(newElement.quickStartCommands.length).toBeGreaterThan(0);
-      expect(newElement.quickStartCommands.some((cmd) => cmd.command === 'zsh')).toBe(true);
+      expect(internals(newElement).quickStartCommands.length).toBeGreaterThan(0);
+      expect(internals(newElement).quickStartCommands.some((cmd) => cmd.command === 'zsh')).toBe(
+        true
+      );
 
       newElement.remove();
     });

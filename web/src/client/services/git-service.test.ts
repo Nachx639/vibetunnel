@@ -4,17 +4,19 @@ import { setupFetchMock } from '@/test/utils/component-helpers';
 import type { AuthClient } from './auth-client';
 import { GitService } from './git-service';
 
+// The fakes answer with the parts of a Response the service reads (ok, status, statusText, json).
+const installFetch = (fake: (url: string, init?: RequestInit) => Promise<unknown>) => {
+  global.fetch = fake as unknown as typeof fetch;
+};
+
 describe('GitService', () => {
   let gitService: GitService;
   let fetchMock: ReturnType<typeof setupFetchMock>;
   let mockAuthClient: AuthClient;
 
   beforeEach(() => {
-    // Setup fetch mock
+    // Setup fetch mock (it installs itself as global.fetch)
     fetchMock = setupFetchMock();
-
-    // Mock global fetch to use our mock
-    global.fetch = fetchMock;
 
     // Create mock auth client
     mockAuthClient = {
@@ -38,7 +40,7 @@ describe('GitService', () => {
       };
 
       // Use vi.fn to mock fetch with custom logic
-      const mockFetch = vi.fn(async (url: string) => {
+      const mockFetch = vi.fn(async (url: string, _init?: RequestInit) => {
         if (url.includes('/api/git/repo-info')) {
           return {
             ok: true,
@@ -48,7 +50,7 @@ describe('GitService', () => {
         }
         throw new Error('Unexpected URL');
       });
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       const result = await gitService.checkGitRepo('/home/user/project/src');
 
@@ -78,7 +80,7 @@ describe('GitService', () => {
         }
         throw new Error('Unexpected URL');
       });
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       const result = await gitService.checkGitRepo('/home/user/downloads');
 
@@ -98,7 +100,7 @@ describe('GitService', () => {
         }
         throw new Error('Unexpected URL');
       });
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await expect(gitService.checkGitRepo('/restricted')).rejects.toThrow(
         'Failed to check git repo: Forbidden'
@@ -137,7 +139,7 @@ describe('GitService', () => {
         }
         throw new Error('Unexpected URL');
       });
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       const result = await gitService.listWorktrees('/home/user/project');
 
@@ -162,7 +164,7 @@ describe('GitService', () => {
         }
         throw new Error('Unexpected URL');
       });
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await expect(gitService.listWorktrees('/nonexistent')).rejects.toThrow(
         'Failed to list worktrees: Not Found'
@@ -172,7 +174,7 @@ describe('GitService', () => {
 
   describe('createWorktree', () => {
     it('should create a new worktree', async () => {
-      const mockFetch = vi.fn(async (url: string) => {
+      const mockFetch = vi.fn(async (url: string, _init?: RequestInit) => {
         if (url.includes('/api/worktrees')) {
           return {
             ok: true,
@@ -182,7 +184,7 @@ describe('GitService', () => {
         }
         throw new Error('Unexpected URL');
       });
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await gitService.createWorktree(
         '/home/user/project',
@@ -209,12 +211,12 @@ describe('GitService', () => {
     });
 
     it('should handle creation without base branch', async () => {
-      const mockFetch = vi.fn(async () => ({
+      const mockFetch = vi.fn(async (_url: string, _init?: RequestInit) => ({
         ok: true,
         status: 201,
         json: async () => ({}),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await gitService.createWorktree(
         '/home/user/project',
@@ -233,7 +235,7 @@ describe('GitService', () => {
         status: 400,
         json: async () => ({ error: 'Branch already exists' }),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await expect(
         gitService.createWorktree('/home/user/project', 'existing', '/home/user/project-existing')
@@ -243,12 +245,12 @@ describe('GitService', () => {
 
   describe('deleteWorktree', () => {
     it('should delete a worktree', async () => {
-      const mockFetch = vi.fn(async () => ({
+      const mockFetch = vi.fn(async (_url: string, _init?: RequestInit) => ({
         ok: true,
         status: 204,
         json: async () => ({}),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await gitService.deleteWorktree('/home/user/project', 'feature');
 
@@ -259,12 +261,12 @@ describe('GitService', () => {
     });
 
     it('should force delete a worktree', async () => {
-      const mockFetch = vi.fn(async () => ({
+      const mockFetch = vi.fn(async (_url: string, _init?: RequestInit) => ({
         ok: true,
         status: 204,
         json: async () => ({}),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await gitService.deleteWorktree('/home/user/project', 'feature', true);
 
@@ -279,7 +281,7 @@ describe('GitService', () => {
         status: 400,
         json: async () => ({ error: 'Worktree has uncommitted changes' }),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await expect(gitService.deleteWorktree('/home/user/project', 'feature')).rejects.toThrow(
         'Worktree has uncommitted changes'
@@ -289,12 +291,12 @@ describe('GitService', () => {
 
   describe('pruneWorktrees', () => {
     it('should prune worktree information', async () => {
-      const mockFetch = vi.fn(async () => ({
+      const mockFetch = vi.fn(async (_url: string, _init?: RequestInit) => ({
         ok: true,
         status: 200,
         json: async () => ({}),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await gitService.pruneWorktrees('/home/user/project');
 
@@ -319,7 +321,7 @@ describe('GitService', () => {
         statusText: 'Internal Server Error',
         json: async () => ({ error: 'Failed to prune' }),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await expect(gitService.pruneWorktrees('/home/user/project')).rejects.toThrow(
         'Failed to prune worktrees'
@@ -329,12 +331,12 @@ describe('GitService', () => {
 
   describe('setFollowMode', () => {
     it('should enable follow mode', async () => {
-      const mockFetch = vi.fn(async () => ({
+      const mockFetch = vi.fn(async (_url: string, _init?: RequestInit) => ({
         ok: true,
         status: 200,
         json: async () => ({}),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await gitService.setFollowMode('/home/user/project', 'main', true);
 
@@ -351,12 +353,12 @@ describe('GitService', () => {
     });
 
     it('should disable follow mode', async () => {
-      const mockFetch = vi.fn(async () => ({
+      const mockFetch = vi.fn(async (_url: string, _init?: RequestInit) => ({
         ok: true,
         status: 200,
         json: async () => ({}),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await gitService.setFollowMode('/home/user/project', 'main', false);
 
@@ -371,7 +373,7 @@ describe('GitService', () => {
         status: 400,
         json: async () => ({ error: 'Invalid repository' }),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await expect(gitService.setFollowMode('/invalid', 'main', true)).rejects.toThrow(
         'Invalid repository'
@@ -382,7 +384,7 @@ describe('GitService', () => {
   describe('error handling', () => {
     it('should handle network errors', async () => {
       const mockFetch = vi.fn().mockRejectedValue(new Error('Network error'));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await expect(gitService.checkGitRepo('/home/user/project')).rejects.toThrow('Network error');
     });
@@ -395,7 +397,7 @@ describe('GitService', () => {
           throw new Error('Invalid JSON');
         },
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       await expect(gitService.checkGitRepo('/home/user/project')).rejects.toThrow();
     });
@@ -406,7 +408,7 @@ describe('GitService', () => {
         status: 200,
         json: async () => ({}),
       }));
-      global.fetch = mockFetch as typeof global.fetch;
+      installFetch(mockFetch);
 
       // Test various endpoints
       const endpoints = [

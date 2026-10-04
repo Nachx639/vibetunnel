@@ -101,9 +101,9 @@ describe('PTY Session.json Watcher', () => {
 
     // Mock process.stdout.write to capture title sequences
     const originalWrite = process.stdout.write;
-    const writeSpy = vi.fn((data: string | Uint8Array, ...args: unknown[]): boolean => {
+    const writeSpy = vi.fn((...args: Parameters<typeof originalWrite>): boolean => {
       // Call the original write method
-      return originalWrite.call(process.stdout, data, ...args) as boolean;
+      return originalWrite.apply(process.stdout, args);
     });
     process.stdout.write = writeSpy as typeof process.stdout.write;
 
@@ -154,8 +154,8 @@ describe('PTY Session.json Watcher', () => {
 
     // Mock process.stdout.write to capture title sequences
     const originalWrite = process.stdout.write;
-    const writeSpy = vi.fn((data: string | Uint8Array, ...args: unknown[]): boolean => {
-      return originalWrite.call(process.stdout, data, ...args) as boolean;
+    const writeSpy = vi.fn((...args: Parameters<typeof originalWrite>): boolean => {
+      return originalWrite.apply(process.stdout, args);
     });
     process.stdout.write = writeSpy as typeof process.stdout.write;
 

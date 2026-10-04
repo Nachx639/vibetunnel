@@ -18,6 +18,9 @@ vi.mock('../utils/path-utils', () => ({
 // Import component type
 import type { SessionCard } from './session-card';
 
+// The kill-in-progress flag is private state.
+const internals = (el: SessionCard) => el as unknown as { killing: boolean };
+
 describe('SessionCard', () => {
   let element: SessionCard;
   let fetchMock: ReturnType<typeof setupFetchMock>;
@@ -64,7 +67,7 @@ describe('SessionCard', () => {
   describe('initialization', () => {
     it('should create component with default state', () => {
       expect(element).toBeDefined();
-      expect(element.killing).toBe(false);
+      expect(internals(element).killing).toBe(false);
     });
 
     it('should render session details', async () => {
@@ -344,7 +347,7 @@ describe('SessionCard', () => {
       const killPromise = element.kill();
 
       // Should be in killing state
-      expect(element.killing).toBe(true);
+      expect(internals(element).killing).toBe(true);
 
       // Should show killing UI
       await element.updateComplete;
@@ -354,7 +357,7 @@ describe('SessionCard', () => {
       await killPromise;
 
       // Should no longer be killing
-      expect(element.killing).toBe(false);
+      expect(internals(element).killing).toBe(false);
     });
 
     it('should prevent multiple simultaneous kills', async () => {
@@ -397,7 +400,7 @@ describe('SessionCard', () => {
 
   describe('styling', () => {
     it('should apply opacity when killing', async () => {
-      element.killing = true;
+      internals(element).killing = true;
       await element.updateComplete;
 
       const card = element.querySelector('.card');
@@ -416,7 +419,7 @@ describe('SessionCard', () => {
   describe('cleanup', () => {
     it('should clean up intervals on disconnect', () => {
       // Set up some intervals
-      element.killing = true;
+      internals(element).killing = true;
 
       // Disconnect
       element.disconnectedCallback();

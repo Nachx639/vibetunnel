@@ -76,7 +76,8 @@ async function globalSetup(config: FullConfig) {
   }
 
   // Set up any global test data or configuration
-  process.env.PLAYWRIGHT_TEST_BASE_URL = config.use?.baseURL || testConfig.baseURL;
+  // `use` lives on each project in the resolved config (all share the top-level baseURL).
+  process.env.PLAYWRIGHT_TEST_BASE_URL = config.projects[0]?.use.baseURL || testConfig.baseURL;
 
   // Clean up sessions in CI (or if explicitly requested)
   if (process.env.CI || process.env.CLEAN_TEST_SESSIONS === 'true') {

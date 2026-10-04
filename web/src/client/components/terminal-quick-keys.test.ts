@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/component-helpers.js';
 import {
   COMPACT_QUICK_KEYS_LAYOUT,
@@ -9,8 +9,10 @@ import {
 } from '../utils/quick-keys-layout.js';
 import { TerminalQuickKeys } from './terminal-quick-keys.js';
 
-// Define interface for private methods we need to test
-interface TerminalQuickKeysPrivate extends TerminalQuickKeys {
+type OnKeyPress = NonNullable<TerminalQuickKeys['onKeyPress']>;
+
+// Private methods we need to test; keyof only sees the public members of the component.
+type TerminalQuickKeysPrivate = Pick<TerminalQuickKeys, keyof TerminalQuickKeys> & {
   getButtonSizeClass(label: string): string;
   handleKeyPress(
     key: string,
@@ -21,15 +23,15 @@ interface TerminalQuickKeysPrivate extends TerminalQuickKeys {
   ): void;
   activeModifiers: Set<string>;
   isLandscape: boolean;
-}
+};
 
 describe('TerminalQuickKeys', () => {
   let component: TerminalQuickKeysPrivate;
-  let mockOnKeyPress: ReturnType<typeof vi.fn>;
+  let mockOnKeyPress: Mock<OnKeyPress>;
 
   beforeEach(() => {
     setupLocalStorageMock();
-    component = new TerminalQuickKeys() as TerminalQuickKeysPrivate;
+    component = new TerminalQuickKeys() as unknown as TerminalQuickKeysPrivate;
     mockOnKeyPress = vi.fn();
     component.onKeyPress = mockOnKeyPress;
     component.visible = true;

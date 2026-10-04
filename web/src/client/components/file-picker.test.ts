@@ -7,6 +7,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import './file-picker.js';
 import type { FilePicker } from './file-picker.js';
 
+// Private state the tests set directly.
+type FilePickerInternals = {
+  uploading: boolean;
+  uploadProgress: number;
+  fileInput: HTMLInputElement | null;
+};
+const internals = (el: FilePicker) => el as unknown as FilePickerInternals;
+
 // Mock auth client
 vi.mock('../services/auth-client.js', () => ({
   authClient: {
@@ -57,8 +65,8 @@ describe('FilePicker Component', () => {
 
   it('should show upload progress when uploading', async () => {
     element.visible = true;
-    element.uploading = true;
-    element.uploadProgress = 50;
+    internals(element).uploading = true;
+    internals(element).uploadProgress = 50;
     await element.updateComplete;
 
     const progressText = element.querySelector('span');
@@ -70,7 +78,7 @@ describe('FilePicker Component', () => {
 
   it('should show file selection button when not uploading', async () => {
     element.visible = true;
-    element.uploading = false;
+    internals(element).uploading = false;
     await element.updateComplete;
 
     const fileButton = element.querySelector('#file-picker-choose-button');
@@ -84,7 +92,7 @@ describe('FilePicker Component', () => {
     const cancelEventSpy = vi.fn();
     element.addEventListener('file-cancel', cancelEventSpy);
 
-    const cancelButton = element.querySelector('#file-picker-cancel-button');
+    const cancelButton = element.querySelector<HTMLButtonElement>('#file-picker-cancel-button');
 
     expect(cancelButton).toBeTruthy();
     cancelButton?.click();
@@ -124,7 +132,7 @@ describe('FilePicker Component', () => {
 
   it('should disable cancel button when uploading', async () => {
     element.visible = true;
-    element.uploading = true;
+    internals(element).uploading = true;
     await element.updateComplete;
 
     const cancelButton = element.querySelector('#file-picker-cancel-button');
@@ -142,7 +150,7 @@ describe('FilePicker Component', () => {
     element.visible = true;
     await element.updateComplete;
 
-    const fileButton = element.querySelector('#file-picker-choose-button');
+    const fileButton = element.querySelector<HTMLButtonElement>('#file-picker-choose-button');
 
     expect(fileButton).toBeTruthy();
 
@@ -152,7 +160,7 @@ describe('FilePicker Component', () => {
       click: vi.fn(),
       remove: vi.fn(),
     } as Pick<HTMLInputElement, 'removeAttribute' | 'click' | 'remove'>;
-    element.fileInput = mockFileInput as HTMLInputElement;
+    internals(element).fileInput = mockFileInput as HTMLInputElement;
 
     fileButton?.click();
 
@@ -247,8 +255,9 @@ describe('FilePicker Component', () => {
     const uploadPromise = element.uploadFile(imageFile);
 
     // Simulate successful upload
-    const loadHandler = mockXHR.addEventListener.mock.calls.find((call) => call[0] === 'load')[1];
-    loadHandler();
+    const loadCall = mockXHR.addEventListener.mock.calls.find((call) => call[0] === 'load');
+    if (!loadCall) throw new Error('the upload never listened for load');
+    loadCall[1]();
 
     await uploadPromise;
 

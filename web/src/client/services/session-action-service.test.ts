@@ -18,7 +18,7 @@ vi.mock('../utils/session-actions.js', () => ({
 }));
 
 describe('SessionActionService', () => {
-  const mockAuthClient: AuthClient = {
+  const mockAuthClient = {
     getAuthHeader: () => ({ Authorization: 'Bearer test-token' }),
     isAuthenticated: () => true,
     login: vi.fn(),
@@ -26,9 +26,10 @@ describe('SessionActionService', () => {
     on: vi.fn(),
     emit: vi.fn(),
     removeListener: vi.fn(),
-  };
+  } as unknown as AuthClient;
 
-  const mockSession: Session = {
+  // The service reads only the id and status of a session.
+  const mockSession = {
     id: 'test-session-id',
     name: 'Test Session',
     status: 'running',
@@ -38,7 +39,7 @@ describe('SessionActionService', () => {
     path: '/test/path',
     cols: 80,
     rows: 24,
-  };
+  } as unknown as Session;
 
   beforeEach(() => {
     vi.clearAllMocks();

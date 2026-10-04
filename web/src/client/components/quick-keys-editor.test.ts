@@ -10,7 +10,8 @@ import {
 } from '../utils/quick-keys-layout.js';
 import { QuickKeysEditor } from './quick-keys-editor.js';
 
-interface QuickKeysEditorPrivate extends QuickKeysEditor {
+// keyof only sees public members: the editor's public surface plus the private ones tests drive.
+type QuickKeysEditorPrivate = Pick<QuickKeysEditor, keyof QuickKeysEditor> & {
   draftLayout: typeof COMPACT_QUICK_KEYS_LAYOUT;
   selectedKey: 'Escape' | 'Control' | 'Home';
   applyPreset(layout: typeof COMPACT_QUICK_KEYS_LAYOUT): void;
@@ -18,14 +19,14 @@ interface QuickKeysEditorPrivate extends QuickKeysEditor {
   moveSelectedToRow(row: number): void;
   moveSelectedWithinRow(offset: -1 | 1): void;
   handleSave(): void;
-}
+};
 
 describe('QuickKeysEditor', () => {
   let component: QuickKeysEditorPrivate;
 
   beforeEach(async () => {
     setupLocalStorageMock();
-    component = new QuickKeysEditor() as QuickKeysEditorPrivate;
+    component = new QuickKeysEditor() as unknown as QuickKeysEditorPrivate;
     component.visible = true;
     document.body.append(component);
     await component.updateComplete;
@@ -39,7 +40,7 @@ describe('QuickKeysEditor', () => {
   it('opens with the persisted layout and keeps Done outside customization', async () => {
     component.remove();
     saveQuickKeysLayout(COMPACT_QUICK_KEYS_LAYOUT);
-    component = new QuickKeysEditor() as QuickKeysEditorPrivate;
+    component = new QuickKeysEditor() as unknown as QuickKeysEditorPrivate;
     component.visible = true;
     document.body.append(component);
     await component.updateComplete;

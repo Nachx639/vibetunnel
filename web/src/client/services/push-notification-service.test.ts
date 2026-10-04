@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ServerEvent } from '../../shared/types.js';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/config.js';
 import type { NotificationPreferences } from './push-notification-service.js';
 import { pushNotificationService } from './push-notification-service.js';
@@ -229,7 +230,7 @@ describe('PushNotificationService', () => {
     testService.vapidPublicKey = 'test-vapid-key';
 
     // Set up default mock for serverConfigService
-    (serverConfigService.getNotificationPreferences as vi.Mock).mockResolvedValue({
+    vi.mocked(serverConfigService.getNotificationPreferences).mockResolvedValue({
       enabled: false,
       sessionExit: true,
       sessionStart: true,
@@ -358,7 +359,7 @@ describe('PushNotificationService', () => {
         soundEnabled: true,
         vibrationEnabled: false,
       };
-      (serverConfigService.getNotificationPreferences as vi.Mock).mockResolvedValue(serverPrefs);
+      vi.mocked(serverConfigService.getNotificationPreferences).mockResolvedValue(serverPrefs);
 
       await pushNotificationService.initialize();
 
@@ -390,7 +391,7 @@ describe('PushNotificationService', () => {
   describe('requestPermission', () => {
     it('should request notification permission', async () => {
       mockNotification.requestPermission.mockResolvedValue('granted');
-      mockWindow.Notification = mockNotification;
+      mockWindow.Notification = mockNotification as unknown as typeof Notification;
       vi.stubGlobal('window', mockWindow);
 
       const result = await pushNotificationService.requestPermission();
@@ -401,7 +402,7 @@ describe('PushNotificationService', () => {
 
     it('should handle permission denial', async () => {
       mockNotification.requestPermission.mockResolvedValue('denied');
-      mockWindow.Notification = mockNotification;
+      mockWindow.Notification = mockNotification as unknown as typeof Notification;
       vi.stubGlobal('window', mockWindow);
 
       const result = await pushNotificationService.requestPermission();
@@ -546,7 +547,7 @@ describe('PushNotificationService', () => {
         vibrationEnabled: true,
       };
 
-      (serverConfigService.updateNotificationPreferences as vi.Mock).mockRejectedValue(
+      vi.mocked(serverConfigService.updateNotificationPreferences).mockRejectedValue(
         new Error('Network error')
       );
 
@@ -566,8 +567,8 @@ describe('PushNotificationService', () => {
       await pushNotificationService.initialize();
 
       // Capture the event handler
-      let testNotificationHandler: ((data: unknown) => void) | undefined;
-      (serverEventService.on as vi.Mock).mockImplementation((event, handler) => {
+      let testNotificationHandler: ((event: ServerEvent) => void) | undefined;
+      vi.mocked(serverEventService.on).mockImplementation((event, handler) => {
         if (event === 'test-notification') {
           testNotificationHandler = handler;
         }
@@ -580,10 +581,11 @@ describe('PushNotificationService', () => {
       await new Promise((resolve) => setTimeout(resolve, 100)); // allow time for listener to be registered
 
       expect(testNotificationHandler).toBeDefined();
+      // Only the fields the handler reads.
       testNotificationHandler?.({
         title: 'VibeTunnel Test',
         body: 'Push notifications are working correctly!',
-      });
+      } as ServerEvent);
 
       await testPromise;
 
@@ -607,8 +609,8 @@ describe('PushNotificationService', () => {
       await pushNotificationService.initialize();
 
       // Capture the event handler
-      let testNotificationHandler: ((data: unknown) => void) | undefined;
-      (serverEventService.on as vi.Mock).mockImplementation((event, handler) => {
+      let testNotificationHandler: ((event: ServerEvent) => void) | undefined;
+      vi.mocked(serverEventService.on).mockImplementation((event, handler) => {
         if (event === 'test-notification') {
           testNotificationHandler = handler;
         }
@@ -621,7 +623,7 @@ describe('PushNotificationService', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(testNotificationHandler).toBeDefined();
-      testNotificationHandler?.({});
+      testNotificationHandler?.({} as ServerEvent);
 
       await testPromise;
 

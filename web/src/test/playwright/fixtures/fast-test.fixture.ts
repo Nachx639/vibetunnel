@@ -50,7 +50,7 @@ export const test = base.extend({
           if (typeof args[1] === 'number' && args[1] > 100) {
             args[1] = Math.min(args[1], 100);
           }
-          return target.apply(thisArg, args);
+          return Reflect.apply(target, thisArg, args);
         },
       });
 

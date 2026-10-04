@@ -12,6 +12,9 @@ import type { SessionCard } from './session-card';
 // Import component types
 import type { SessionList } from './session-list';
 
+// The create modal left session-list (24fe9043); these tests still set its old flag as an expando.
+type LegacySessionList = SessionList & { showCreateModal?: boolean };
+
 // Helper function to get all elements of a specific type
 function getAllElements<T extends Element>(parent: Element, selector: string): T[] {
   return Array.from(parent.querySelectorAll(selector));
@@ -34,7 +37,7 @@ describe('SessionList', () => {
     // Setup fetch mock
     originalFetch = global.fetch;
     fetchMock = { calls: new Map() };
-    global.fetch = vi.fn((url: string, _options?: RequestInit) => {
+    global.fetch = vi.fn((url: string | URL | Request, _options?: RequestInit) => {
       const urlString = typeof url === 'string' ? url : url.toString();
       fetchMock.calls.set(urlString, (fetchMock.calls.get(urlString) || 0) + 1);
 
@@ -193,7 +196,7 @@ describe('SessionList', () => {
         (createButton as HTMLElement).click();
         await element.updateComplete;
 
-        expect(element.showCreateModal).toBe(true);
+        expect((element as LegacySessionList).showCreateModal).toBe(true);
 
         const modal = element.querySelector('session-create-form');
         expect(modal).toBeTruthy();
@@ -201,7 +204,7 @@ describe('SessionList', () => {
     });
 
     it('should close modal on cancel', async () => {
-      element.showCreateModal = true;
+      (element as LegacySessionList).showCreateModal = true;
       await element.updateComplete;
 
       const closeHandler = vi.fn();
@@ -222,7 +225,7 @@ describe('SessionList', () => {
       const createdHandler = vi.fn();
       element.addEventListener('session-created', createdHandler);
 
-      element.showCreateModal = true;
+      (element as LegacySessionList).showCreateModal = true;
       await element.updateComplete;
 
       const createForm = element.querySelector('session-create-form');
@@ -491,7 +494,7 @@ describe('SessionList', () => {
       element.hideExited = false;
       await element.updateComplete;
 
-      const sessionCards = getAllElements(element, 'session-card');
+      const sessionCards = getAllElements<SessionCard>(element, 'session-card');
       expect(sessionCards).toHaveLength(2);
 
       // The exited session should show a static duration of ~30s

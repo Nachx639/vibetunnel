@@ -120,7 +120,7 @@ describe.sequential
         });
 
         // Wait and retry for the log file to be written and flushed
-        let info: { exists: boolean; size: number };
+        let info: { exists: boolean; size: number; path: string };
         let attempts = 0;
         const maxAttempts = 10;
         const retryDelay = 200;

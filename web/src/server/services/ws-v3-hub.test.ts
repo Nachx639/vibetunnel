@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import type { ServerEvent } from '../../shared/types.js';
 import { ServerEventType } from '../../shared/types.js';
@@ -13,7 +13,7 @@ import {
 } from '../../shared/ws-v3.js';
 import type { PtyManager } from '../pty/index.js';
 import type { CastOutputHub, CastOutputHubListener } from './cast-output-hub.js';
-import type { GitStatusHub, GitStatusHubListener } from './git-status-hub.js';
+import type { GitStatusHub, GitStatusHubEvent, GitStatusHubListener } from './git-status-hub.js';
 import type { SessionMonitor } from './session-monitor.js';
 import type { TerminalManager } from './terminal-manager.js';
 import { type WebSocketRequestV3, WsV3Hub } from './ws-v3-hub.js';
@@ -29,7 +29,7 @@ vi.mock('../utils/logger.js', () => ({
 }));
 
 class FakeWebSocket extends EventEmitter {
-  readyState = WebSocket.OPEN;
+  readyState: WebSocket['readyState'] = WebSocket.OPEN;
   sent: Uint8Array[] = [];
   send = vi.fn((data: Uint8Array) => {
     this.sent.push(new Uint8Array(data));
@@ -66,6 +66,8 @@ describe('WsV3Hub', () => {
   let sessionMonitor: EventEmitter;
   let hub: WsV3Hub;
 
+  type PtySessionStub = { gitRepoPath?: string; workingDir?: string } | null;
+  let getSession: Mock<(sessionId: string) => PtySessionStub>;
   let castListener: CastOutputHubListener | undefined;
   let snapshotListener: BufferChangeListener | undefined;
   let gitListener: GitStatusHubListener | undefined;
@@ -75,8 +77,7 @@ describe('WsV3Hub', () => {
     snapshotListener = undefined;
     gitListener = undefined;
 
-    type PtySessionStub = { gitRepoPath?: string; workingDir?: string } | null;
-    const getSession = vi.fn<(sessionId: string) => PtySessionStub>(() => null);
+    getSession = vi.fn<(sessionId: string) => PtySessionStub>(() => null);
 
     ptyManager = {
       getSession,
@@ -94,7 +95,7 @@ describe('WsV3Hub', () => {
     terminalManager = {
       subscribeToBufferChanges: vi.fn<SubscribeToBufferChangesFn>(async (_sessionId, cb) => {
         snapshotListener = cb;
-        return vi.fn();
+        return vi.fn<() => void>();
       }),
       encodeSnapshot: vi.fn(() => Buffer.from([9, 9, 9])),
     } as unknown as TerminalManager;
@@ -203,7 +204,7 @@ describe('WsV3Hub', () => {
     expect(castListener).toBeTypeOf('function');
 
     if (!castListener) throw new Error('expected cast listener');
-    castListener({ kind: 'output', data: 'hello' });
+    castListener({ kind: 'output', data: 'hello', historical: false });
     await flush();
     const stdout = decodeLastFrame(ws);
     expect(stdout.type).toBe(WsV3MessageType.STDOUT);
@@ -336,7 +337,7 @@ describe('WsV3Hub', () => {
     );
     await flush();
 
-    const unsubscribeStdout = castOutputHub.subscribe.mock.results[0]?.value;
+    const unsubscribeStdout = vi.mocked(castOutputHub.subscribe).mock.results[0]?.value;
     expect(typeof unsubscribeStdout).toBe('function');
 
     sendBinaryFrame(
@@ -353,7 +354,7 @@ describe('WsV3Hub', () => {
   });
 
   it('streams git-status updates as EVENT frames when enabled', async () => {
-    ptyManager.getSession.mockReturnValue({
+    getSession.mockReturnValue({
       gitRepoPath: '/repo',
       workingDir: '/repo',
     });
@@ -375,14 +376,22 @@ describe('WsV3Hub', () => {
     expect(gitListener).toBeTypeOf('function');
 
     if (!gitListener) throw new Error('expected git listener');
-    gitListener({ kind: 'git-status-update', gitBranch: 'main' });
+    const update: GitStatusHubEvent = {
+      type: 'git-status-update',
+      sessionId: 's1',
+      gitModifiedCount: 2,
+      gitAddedCount: 1,
+      gitDeletedCount: 0,
+      gitAheadCount: 1,
+      gitBehindCount: 0,
+      gitInsertionCount: 10,
+      gitDeletionCount: 3,
+    };
+    gitListener(update);
     await flush();
     const evt = decodeLastFrame(ws);
     expect(evt.type).toBe(WsV3MessageType.EVENT);
     expect(evt.sessionId).toBe('s1');
-    expect(JSON.parse(new TextDecoder().decode(evt.payload))).toMatchObject({
-      kind: 'git-status-update',
-      gitBranch: 'main',
-    });
+    expect(JSON.parse(new TextDecoder().decode(evt.payload))).toEqual(update);
   });
 });

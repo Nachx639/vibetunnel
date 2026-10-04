@@ -10,7 +10,8 @@ interface CreateSessionOptions {
   name?: string;
   command?: string[];
   workingDir?: string;
-  status?: 'running' | 'exited' | 'stopped';
+  /** A session status, or 'stopped' (an exited session). */
+  status?: Session['status'] | 'stopped';
   exitCode?: number;
   startedAt?: string;
   pid?: number;

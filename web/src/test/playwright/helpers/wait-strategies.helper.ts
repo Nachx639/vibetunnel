@@ -119,7 +119,7 @@ export async function waitForTextChange(
     { timeout }
   );
 
-  return newText as string;
+  return (await newText.jsonValue()) ?? '';
 }
 
 /**

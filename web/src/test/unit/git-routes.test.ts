@@ -1,9 +1,18 @@
 import express from 'express';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import type { Session } from '../../shared/types.js';
+
+type ExecFileFn = (...args: unknown[]) => Promise<{ stdout: string; stderr: string }>;
+
+/** The SessionManager methods the git event route calls, faked per test. */
+type SessionManagerFake = {
+  listSessions: Mock<() => Pick<Session, 'id' | 'name' | 'workingDir'>[]>;
+  updateSessionName: Mock<(sessionId: string, name: string) => string>;
+};
 
 // Mock promisify to return a function that we can control
-let mockExecFile: ReturnType<typeof vi.fn>;
+let mockExecFile: Mock<ExecFileFn>;
 
 vi.mock('util', () => {
   return {
@@ -62,7 +71,7 @@ describe('Git Routes', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockExecFile = vi.fn();
+    mockExecFile = vi.fn<ExecFileFn>();
 
     // Import after mocks are set up
     const gitModule = await import('../../server/routes/git.js');
@@ -197,7 +206,7 @@ describe('Git Routes', () => {
   });
 
   describe('POST /api/git/event', () => {
-    let mockSessionManagerInstance: ReturnType<typeof vi.fn>;
+    let mockSessionManagerInstance: SessionManagerFake;
 
     beforeEach(() => {
       // Reset mocks for each test
@@ -207,11 +216,9 @@ describe('Git Routes', () => {
       };
 
       // Make SessionManager constructor return our mock instance
-      (SessionManager as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-        function SessionManager() {
-          return mockSessionManagerInstance;
-        }
-      );
+      vi.mocked(SessionManager).mockImplementation(function SessionManager() {
+        return mockSessionManagerInstance;
+      });
     });
 
     it('should handle git event with repository lock', async () => {
@@ -332,7 +339,7 @@ describe('Git Routes', () => {
     });
 
     it('should send notification to Mac app when connected', async () => {
-      (controlUnixHandler.isMacAppConnected as ReturnType<typeof vi.fn>).mockReturnValue(true);
+      vi.mocked(controlUnixHandler.isMacAppConnected).mockReturnValue(true);
 
       mockExecFile
         .mockResolvedValueOnce({ stdout: '/home/user/project/.git\n', stderr: '' }) // git dir check

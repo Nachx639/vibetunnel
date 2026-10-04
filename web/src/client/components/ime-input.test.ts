@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { IME_VERTICAL_OFFSET_PX } from '../utils/terminal-constants.js';
-import { DesktopIMEInput } from './ime-input.js';
+import { DesktopIMEInput, type DesktopIMEInputOptions } from './ime-input.js';
 
 describe('DesktopIMEInput', () => {
   let container: HTMLDivElement;
   let imeInput: DesktopIMEInput;
-  let onTextInput: ReturnType<typeof vi.fn>;
-  let onSpecialKey: ReturnType<typeof vi.fn>;
+  let onTextInput: Mock<DesktopIMEInputOptions['onTextInput']>;
+  let onSpecialKey: Mock<NonNullable<DesktopIMEInputOptions['onSpecialKey']>>;
 
   const createCompositionEvent = (type: string, data = ''): CompositionEvent => {
     const event = new Event(type, { bubbles: true }) as CompositionEvent;

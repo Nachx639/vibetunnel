@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { createRepositoryRoutes } from './repositories';
 
 // Mock functions (must be declared before vi.mock calls due to hoisting)
@@ -35,12 +35,21 @@ vi.mock('../utils/path-utils', () => ({
   resolveAbsolutePath: vi.fn((path: string) => path),
 }));
 
+type RouteLayer = ReturnType<typeof createRepositoryRoutes>['stack'][number];
+/** Express keeps a route's verbs in route.methods; @types/express leaves the field out. */
+type RouteWithMethods = NonNullable<RouteLayer['route']> & {
+  methods: Partial<Record<string, boolean>>;
+};
+const routeMethods = (layer: RouteLayer) => (layer.route as RouteWithMethods | undefined)?.methods;
+/** Express passes next to every handler; these routes never call it. */
+const next = vi.fn();
+
 describe('repositories routes', () => {
   let router: ReturnType<typeof createRepositoryRoutes>;
   let mockReq: Partial<Request>;
   let mockRes: Partial<Response>;
-  let mockJson: ReturnType<typeof vi.fn>;
-  let mockStatus: ReturnType<typeof vi.fn>;
+  let mockJson: Mock;
+  let mockStatus: Mock;
 
   beforeEach(() => {
     router = createRepositoryRoutes();
@@ -78,14 +87,14 @@ describe('repositories routes', () => {
       // Find the branches route handler
       const routeStack = router.stack;
       const branchesRoute = routeStack.find(
-        (layer) => layer.route?.path === '/repositories/branches' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/repositories/branches' && routeMethods(layer)?.get
       );
 
       expect(branchesRoute).toBeDefined();
 
       // Execute the route handler
       if (branchesRoute?.route?.stack?.[0]) {
-        await branchesRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await branchesRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockJson).toHaveBeenCalledWith(
@@ -121,11 +130,11 @@ describe('repositories routes', () => {
 
       const routeStack = router.stack;
       const branchesRoute = routeStack.find(
-        (layer) => layer.route?.path === '/repositories/branches' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/repositories/branches' && routeMethods(layer)?.get
       );
 
       if (branchesRoute?.route?.stack?.[0]) {
-        await branchesRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await branchesRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockStatus).toHaveBeenCalledWith(400);
@@ -142,11 +151,11 @@ describe('repositories routes', () => {
 
       const routeStack = router.stack;
       const branchesRoute = routeStack.find(
-        (layer) => layer.route?.path === '/repositories/branches' && layer.route?.methods?.get
+        (layer) => layer.route?.path === '/repositories/branches' && routeMethods(layer)?.get
       );
 
       if (branchesRoute?.route?.stack?.[0]) {
-        await branchesRoute.route.stack[0].handle(mockReq as Request, mockRes as Response);
+        await branchesRoute.route.stack[0].handle(mockReq as Request, mockRes as Response, next);
       }
 
       expect(mockStatus).toHaveBeenCalledWith(500);

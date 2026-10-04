@@ -11,7 +11,7 @@ test.describe('Tailscale WebSocket Authentication', () => {
     await page.addInitScript(() => {
       const globalWindow = window as TestWindow;
       globalWindow.__appLogs = [];
-      const levels = ['log', 'warn', 'error', 'debug'];
+      const levels = ['log', 'warn', 'error', 'debug'] as const;
       const stringify = (value: unknown) => {
         if (typeof value === 'string') return value;
         try {
@@ -22,10 +22,10 @@ test.describe('Tailscale WebSocket Authentication', () => {
       };
 
       levels.forEach((level) => {
-        const original = console[level as keyof Console].bind(console);
-        console[level as keyof Console] = (...args: unknown[]) => {
+        const original = console[level].bind(console);
+        console[level] = (...args: unknown[]) => {
           try {
-            globalWindow.__appLogs.push(args.map(stringify).join(' '));
+            globalWindow.__appLogs?.push(args.map(stringify).join(' '));
           } catch {
             // Ignore log capture errors
           }

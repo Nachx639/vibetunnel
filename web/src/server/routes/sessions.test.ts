@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { tailscaleServeService } from '../services/tailscale-serve-service';
 import { detectGitInfo } from '../utils/git-info';
 import { controlUnixHandler } from '../websocket/control-unix-handler';
@@ -34,12 +34,28 @@ vi.mock('./sessions', async () => {
 
 describe('sessions routes', () => {
   let mockPtyManager: {
-    getSessions: ReturnType<typeof vi.fn>;
-    createSession: ReturnType<typeof vi.fn>;
+    getSessions: Mock;
+    createSession: Mock;
   };
   let mockTerminalManager: {
-    getTerminal: ReturnType<typeof vi.fn>;
+    getTerminal: Mock;
   };
+
+  type SessionRoutesConfig = Parameters<typeof createSessionRoutes>[0];
+
+  /** The routes over the partial fakes above, which stand in for the real managers. */
+  function sessionRoutes(
+    config: Omit<SessionRoutesConfig, 'ptyManager' | 'terminalManager' | 'remoteRegistry'> & {
+      remoteRegistry: object | null;
+    }
+  ) {
+    return createSessionRoutes({
+      ...config,
+      ptyManager: mockPtyManager as unknown as SessionRoutesConfig['ptyManager'],
+      terminalManager: mockTerminalManager as unknown as SessionRoutesConfig['terminalManager'],
+      remoteRegistry: config.remoteRegistry as SessionRoutesConfig['remoteRegistry'],
+    });
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -105,9 +121,7 @@ describe('sessions routes', () => {
       // Mock Mac app as connected
       vi.mocked(controlUnixHandler.isMacAppConnected).mockReturnValue(true);
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -138,6 +152,7 @@ describe('sessions routes', () => {
       } as unknown as Response;
 
       // Call the route handler
+      if (!statusRoute?.route) throw new Error('Could not find GET /server/status route handler');
       await statusRoute.route.stack[0].handle(mockReq, mockRes);
 
       // Verify response
@@ -152,9 +167,7 @@ describe('sessions routes', () => {
       // Mock Mac app as disconnected
       vi.mocked(controlUnixHandler.isMacAppConnected).mockReturnValue(false);
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: true,
       });
@@ -181,6 +194,7 @@ describe('sessions routes', () => {
         status: vi.fn().mockReturnThis(),
       } as unknown as Response;
 
+      if (!statusRoute?.route) throw new Error('Could not find GET /server/status route handler');
       await statusRoute.route.stack[0].handle(mockReq, mockRes);
 
       expect(mockRes.json).toHaveBeenCalledWith({
@@ -196,9 +210,7 @@ describe('sessions routes', () => {
         throw new Error('Connection check failed');
       });
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: true,
       });
@@ -224,6 +236,7 @@ describe('sessions routes', () => {
         status: vi.fn().mockReturnThis(),
       } as unknown as Response;
 
+      if (!statusRoute?.route) throw new Error('Could not find GET /server/status route handler');
       await statusRoute.route.stack[0].handle(mockReq, mockRes);
 
       expect(mockRes.json).toHaveBeenCalledWith({
@@ -245,9 +258,7 @@ describe('sessions routes', () => {
         lastError: 'Tailscale command not found',
       });
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -312,9 +323,7 @@ describe('sessions routes', () => {
       // The mock is already set up to return regular repository info for /test/repo
       // based on our implementation in beforeEach
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -324,6 +333,7 @@ describe('sessions routes', () => {
         route?: {
           path: string;
           methods: { post?: boolean };
+          stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }>;
         };
       }
       const routes = (router as { stack: RouteLayer[] }).stack;
@@ -370,9 +380,7 @@ describe('sessions routes', () => {
         gitMainRepoPath: '/test/main-repo',
       });
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -381,6 +389,7 @@ describe('sessions routes', () => {
         route?: {
           path: string;
           methods: { post?: boolean };
+          stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }>;
         };
       }
       const routes = (router as { stack: RouteLayer[] }).stack;
@@ -430,9 +439,7 @@ describe('sessions routes', () => {
         gitMainRepoPath: undefined,
       });
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -441,6 +448,7 @@ describe('sessions routes', () => {
         route?: {
           path: string;
           methods: { post?: boolean };
+          stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }>;
         };
       }
       const routes = (router as { stack: RouteLayer[] }).stack;
@@ -488,9 +496,7 @@ describe('sessions routes', () => {
         gitMainRepoPath: undefined,
       });
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -499,6 +505,7 @@ describe('sessions routes', () => {
         route?: {
           path: string;
           methods: { post?: boolean };
+          stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }>;
         };
       }
       const routes = (router as { stack: RouteLayer[] }).stack;
@@ -542,9 +549,7 @@ describe('sessions routes', () => {
         success: true,
       });
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -553,6 +558,7 @@ describe('sessions routes', () => {
         route?: {
           path: string;
           methods: { post?: boolean };
+          stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }>;
         };
       }
       const routes = (router as { stack: RouteLayer[] }).stack;
@@ -606,9 +612,7 @@ describe('sessions routes', () => {
     });
 
     it('should return CreateSessionResponse format with sessionId and createdAt for web sessions', async () => {
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -658,9 +662,7 @@ describe('sessions routes', () => {
       // Note: Terminal spawn integration is complex and tested elsewhere.
       // This test ensures the fallback path returns the correct response format.
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -715,9 +717,7 @@ describe('sessions routes', () => {
         error: 'Terminal spawn failed',
       });
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -764,9 +764,7 @@ describe('sessions routes', () => {
     });
 
     it('should validate createdAt is a valid ISO string', async () => {
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: null,
         isHQMode: false,
       });
@@ -793,7 +791,7 @@ describe('sessions routes', () => {
         },
       } as Request;
 
-      let capturedResponse: { sessionId: string; createdAt: string };
+      let capturedResponse: { sessionId: string; createdAt: string } | undefined;
       const mockRes = {
         json: vi.fn((data) => {
           capturedResponse = data;
@@ -809,6 +807,7 @@ describe('sessions routes', () => {
 
       // Verify createdAt can be parsed as a valid Date
       expect(capturedResponse).toBeDefined();
+      if (!capturedResponse) throw new Error('No response was sent');
       expect(capturedResponse.createdAt).toBeDefined();
       const parsedDate = new Date(capturedResponse.createdAt);
       expect(parsedDate.toISOString()).toBe(capturedResponse.createdAt);
@@ -817,9 +816,12 @@ describe('sessions routes', () => {
   });
 
   describe('POST /sessions - Remote Server Communication', () => {
+    // `Response` in this file is Express's; fetch answers the global one.
+    type FetchResponse = Awaited<ReturnType<typeof fetch>>;
     let mockRemoteRegistry: {
-      getRemote: ReturnType<typeof vi.fn>;
-      addSessionToRemote: ReturnType<typeof vi.fn>;
+      getRemote: Mock;
+      addSessionToRemote: Mock;
+      getRemotes?: Mock;
     };
 
     beforeEach(() => {
@@ -852,11 +854,9 @@ describe('sessions routes', () => {
           sessionId: 'remote-session-123',
           createdAt: '2023-01-01T12:00:00.000Z',
         }),
-      } as Response);
+      } as unknown as FetchResponse);
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: mockRemoteRegistry,
         isHQMode: true,
       });
@@ -941,11 +941,9 @@ describe('sessions routes', () => {
           sessionId: 'legacy-session-456',
           // No createdAt field (legacy format)
         }),
-      } as Response);
+      } as unknown as FetchResponse);
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: mockRemoteRegistry,
         isHQMode: true,
       });
@@ -1008,11 +1006,9 @@ describe('sessions routes', () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
         json: vi.fn().mockResolvedValue({ sessionId: 'test-session' }),
-      } as Response);
+      } as unknown as FetchResponse);
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: mockRemoteRegistry,
         isHQMode: true,
       });
@@ -1078,9 +1074,7 @@ describe('sessions routes', () => {
         .fn()
         .mockReturnValue([{ id: 'remote-1', name: 'mac-mini' }]);
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: mockRemoteRegistry,
         isHQMode: true,
       });
@@ -1138,9 +1132,7 @@ describe('sessions routes', () => {
       // on a machine first, and still creates nothing.
       mockRemoteRegistry.getRemotes = vi.fn().mockReturnValue([]);
 
-      const router = createSessionRoutes({
-        ptyManager: mockPtyManager,
-        terminalManager: mockTerminalManager,
+      const router = sessionRoutes({
         remoteRegistry: mockRemoteRegistry,
         isHQMode: true,
       });

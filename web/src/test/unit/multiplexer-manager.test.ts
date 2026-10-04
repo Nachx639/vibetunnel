@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mocked, vi } from 'vitest';
 import type { PtyManager } from '../../server/pty/pty-manager.js';
+import type { SessionCreationResult } from '../../server/pty/types.js';
 import { MultiplexerManager } from '../../server/services/multiplexer-manager.js';
 import { ScreenManager } from '../../server/services/screen-manager.js';
 import { TmuxManager } from '../../server/services/tmux-manager.js';
 import { ZellijManager } from '../../server/services/zellij-manager.js';
-import type { MultiplexerType } from '../../shared/multiplexer-types.js';
+import type { MultiplexerType, TmuxPane, TmuxWindow } from '../../shared/multiplexer-types.js';
 import { TitleMode } from '../../shared/types.js';
 
 // Mock the managers
@@ -12,31 +13,60 @@ vi.mock('../../server/services/tmux-manager.js');
 vi.mock('../../server/services/zellij-manager.js');
 vi.mock('../../server/services/screen-manager.js');
 
-// Mock PtyManager
+// Mock PtyManager: MultiplexerManager only reads the new session's id
+type CreateSessionFake = (
+  ...args: Parameters<PtyManager['createSession']>
+) => Promise<Pick<SessionCreationResult, 'sessionId'>>;
+const mockCreateSession = vi.fn<CreateSessionFake>();
 const mockPtyManager = {
-  createSession: vi.fn(),
+  createSession: mockCreateSession,
 } as unknown as PtyManager;
+
+// The methods MultiplexerManager calls on each multiplexer
+type TmuxFake = Mocked<
+  Pick<
+    TmuxManager,
+    | 'isAvailable'
+    | 'listSessions'
+    | 'listWindows'
+    | 'listPanes'
+    | 'createSession'
+    | 'attachToTmux'
+    | 'killSession'
+    | 'isInsideTmux'
+    | 'getCurrentSession'
+  >
+>;
+type ZellijFake = Mocked<
+  Pick<
+    ZellijManager,
+    | 'isAvailable'
+    | 'listSessions'
+    | 'createSession'
+    | 'attachToZellij'
+    | 'killSession'
+    | 'isInsideZellij'
+    | 'getCurrentSession'
+  >
+>;
+type ScreenFake = Mocked<
+  Pick<
+    ScreenManager,
+    | 'isAvailable'
+    | 'listSessions'
+    | 'createSession'
+    | 'attachToSession'
+    | 'killSession'
+    | 'isInsideScreen'
+    | 'getCurrentSession'
+  >
+>;
 
 describe('MultiplexerManager', () => {
   let multiplexerManager: MultiplexerManager;
-  let mockTmuxManager: Partial<{
-    listSessions: () => Promise<unknown[]>;
-    createSession: (options: unknown) => Promise<string>;
-    attachToSession: (sessionId: string) => Promise<void>;
-    killSession: (sessionId: string) => Promise<void>;
-  }>;
-  let mockZellijManager: Partial<{
-    listSessions: () => Promise<unknown[]>;
-    createSession: (options: unknown) => Promise<string>;
-    attachToSession: (sessionId: string) => Promise<void>;
-    killSession: (sessionId: string) => Promise<void>;
-  }>;
-  let mockScreenManager: Partial<{
-    listSessions: () => Promise<unknown[]>;
-    createSession: (options: unknown) => Promise<string>;
-    attachToSession: (sessionId: string) => Promise<void>;
-    killSession: (sessionId: string) => Promise<void>;
-  }>;
+  let mockTmuxManager: TmuxFake;
+  let mockZellijManager: ZellijFake;
+  let mockScreenManager: ScreenFake;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,10 +107,14 @@ describe('MultiplexerManager', () => {
       getCurrentSession: vi.fn(),
     };
 
-    // Mock getInstance methods
-    vi.mocked(TmuxManager.getInstance).mockReturnValue(mockTmuxManager);
-    vi.mocked(ZellijManager.getInstance).mockReturnValue(mockZellijManager);
-    vi.mocked(ScreenManager.getInstance).mockReturnValue(mockScreenManager);
+    // Mock getInstance methods (the fakes cover only the methods used)
+    vi.mocked(TmuxManager.getInstance).mockReturnValue(mockTmuxManager as unknown as TmuxManager);
+    vi.mocked(ZellijManager.getInstance).mockReturnValue(
+      mockZellijManager as unknown as ZellijManager
+    );
+    vi.mocked(ScreenManager.getInstance).mockReturnValue(
+      mockScreenManager as unknown as ScreenManager
+    );
 
     multiplexerManager = MultiplexerManager.getInstance(mockPtyManager);
   });
@@ -95,8 +129,8 @@ describe('MultiplexerManager', () => {
       mockZellijManager.isAvailable.mockResolvedValue(false);
       mockScreenManager.isAvailable.mockResolvedValue(false);
       mockTmuxManager.listSessions.mockResolvedValue([
-        { name: 'main', windows: 2 },
-        { name: 'dev', windows: 1 },
+        { name: 'main', windows: 2, created: '1h ago', attached: true },
+        { name: 'dev', windows: 1, created: '2h ago', attached: false },
       ]);
 
       const result = await multiplexerManager.getAvailableMultiplexers();
@@ -106,8 +140,8 @@ describe('MultiplexerManager', () => {
           available: true,
           type: 'tmux',
           sessions: [
-            { name: 'main', windows: 2, type: 'tmux' },
-            { name: 'dev', windows: 1, type: 'tmux' },
+            { name: 'main', windows: 2, created: '1h ago', attached: true, type: 'tmux' },
+            { name: 'dev', windows: 1, created: '2h ago', attached: false, type: 'tmux' },
           ],
         },
         zellij: {
@@ -144,9 +178,9 @@ describe('MultiplexerManager', () => {
 
   describe('getTmuxWindows', () => {
     it('should return windows for tmux session', async () => {
-      const mockWindows = [
-        { index: 0, name: 'vim', panes: 1, active: true },
-        { index: 1, name: 'shell', panes: 2, active: false },
+      const mockWindows: TmuxWindow[] = [
+        { session: 'main', index: 0, name: 'vim', panes: 1, active: true },
+        { session: 'main', index: 1, name: 'shell', panes: 2, active: false },
       ];
       mockTmuxManager.listWindows.mockResolvedValue(mockWindows);
 
@@ -159,9 +193,9 @@ describe('MultiplexerManager', () => {
 
   describe('getTmuxPanes', () => {
     it('should return panes for tmux session', async () => {
-      const mockPanes = [
-        { sessionName: 'main', windowIndex: 0, paneIndex: 0, active: true },
-        { sessionName: 'main', windowIndex: 0, paneIndex: 1, active: false },
+      const mockPanes: TmuxPane[] = [
+        { session: 'main', window: 0, index: 0, active: true, width: 80, height: 24 },
+        { session: 'main', window: 0, index: 1, active: false, width: 80, height: 24 },
       ];
       mockTmuxManager.listPanes.mockResolvedValue(mockPanes);
 
@@ -172,7 +206,9 @@ describe('MultiplexerManager', () => {
     });
 
     it('should return panes for specific window', async () => {
-      const mockPanes = [{ sessionName: 'main', windowIndex: 1, paneIndex: 0, active: true }];
+      const mockPanes: TmuxPane[] = [
+        { session: 'main', window: 1, index: 0, active: true, width: 80, height: 24 },
+      ];
       mockTmuxManager.listPanes.mockResolvedValue(mockPanes);
 
       const panes = await multiplexerManager.getTmuxPanes('main', 1);
@@ -184,9 +220,9 @@ describe('MultiplexerManager', () => {
 
   describe('createSession', () => {
     it('should create tmux session', async () => {
-      await multiplexerManager.createSession('tmux', 'new-session', { command: 'vim' });
+      await multiplexerManager.createSession('tmux', 'new-session', { command: ['vim'] });
 
-      expect(mockTmuxManager.createSession).toHaveBeenCalledWith('new-session', 'vim');
+      expect(mockTmuxManager.createSession).toHaveBeenCalledWith('new-session', ['vim']);
       expect(mockZellijManager.createSession).not.toHaveBeenCalled();
     });
 
@@ -253,7 +289,7 @@ describe('MultiplexerManager', () => {
 
     it('should attach to screen session', async () => {
       mockScreenManager.attachToSession.mockResolvedValue(['screen', '-r', 'main']);
-      mockPtyManager.createSession.mockResolvedValue({ sessionId: 'vt-999' });
+      mockCreateSession.mockResolvedValue({ sessionId: 'vt-999' });
 
       const sessionId = await multiplexerManager.attachToSession('screen', 'main');
 

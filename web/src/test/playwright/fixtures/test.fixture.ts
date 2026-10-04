@@ -86,7 +86,8 @@ export const test = base.extend<TestFixtures>({
 
           // Clear IndexedDB if present
           if (typeof indexedDB !== 'undefined' && indexedDB.deleteDatabase) {
-            indexedDB.deleteDatabase('vibetunnel-offline').catch(() => {});
+            // A request, not a promise: there is nothing to catch here.
+            indexedDB.deleteDatabase('vibetunnel-offline');
           }
         })
         .catch(() => {});

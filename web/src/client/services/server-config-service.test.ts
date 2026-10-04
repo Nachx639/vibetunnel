@@ -57,7 +57,7 @@ describe('ServerConfigService', () => {
     it('should include auth header when authClient is set', async () => {
       const mockAuthClient = {
         getAuthHeader: () => ({ Authorization: 'Bearer test-token' }),
-      } as AuthClient;
+      } as unknown as AuthClient;
 
       service.setAuthClient(mockAuthClient);
 
@@ -302,7 +302,7 @@ describe('ServerConfigService', () => {
       // Set new auth client
       const mockAuthClient = {
         getAuthHeader: () => ({ Authorization: 'Bearer new-token' }),
-      } as AuthClient;
+      } as unknown as AuthClient;
       service.setAuthClient(mockAuthClient);
 
       // Next load should fetch from server (cache cleared)

@@ -24,7 +24,6 @@ describe('Worktree Creation UI', () => {
     element.gitRepoInfo = {
       isGitRepo: true,
       repoPath: '/test/repo',
-      currentBranch: 'main',
       hasChanges: false,
       isWorktree: false,
     };
