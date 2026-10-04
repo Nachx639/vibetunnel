@@ -1096,4 +1096,8 @@ export const fr: Messages = {
   'screenMenu.changed': 'La question à l’écran a changé. Réessayez.',
   'chat.menuTooNarrow':
     'Claude vous attend · {reason}. Son menu a été dessiné pour un écran plus large : ouvrez le terminal pour répondre.',
+  'claudeWaiting.dialog': 'Boîte de dialogue ouverte',
+  'claudeWaiting.goal': 'Proposition d’objectif',
+  'claudeWaiting.sandbox': 'Demande d’accès au réseau',
+  'claudeWaiting.worker': 'Demande d’un sous-agent',
 };

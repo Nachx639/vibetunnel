@@ -1079,6 +1079,10 @@ export const en = {
   'screenMenu.changed': 'The question on screen changed. Try again.',
   'chat.menuTooNarrow':
     'Claude is waiting for you · {reason}. Its menu was drawn for a wider screen: open the terminal to answer.',
+  'claudeWaiting.dialog': 'Dialog on screen',
+  'claudeWaiting.goal': 'Goal proposal',
+  'claudeWaiting.sandbox': 'Network access request',
+  'claudeWaiting.worker': 'Subagent request',
 };
 
 export type MessageKey = keyof typeof en;

@@ -1084,4 +1084,8 @@ export const ptBR: Messages = {
   'screenMenu.changed': 'A pergunta na tela mudou. Tente de novo.',
   'chat.menuTooNarrow':
     'Claude está esperando por você · {reason}. O menu foi desenhado para uma tela mais larga: abra o terminal para responder.',
+  'claudeWaiting.dialog': 'Diálogo aberto',
+  'claudeWaiting.goal': 'Proposta de objetivo',
+  'claudeWaiting.sandbox': 'Pedido de acesso à rede',
+  'claudeWaiting.worker': 'Pedido de um subagente',
 };

@@ -1047,4 +1047,8 @@ export const zhCN: Messages = {
   'screenMenu.changed': '屏幕上的问题已变化，请重试。',
   'chat.menuTooNarrow':
     'Claude 正在等待你 · {reason}。它的菜单是为更宽的屏幕绘制的：请打开终端作答。',
+  'claudeWaiting.dialog': '对话框已打开',
+  'claudeWaiting.goal': '目标提议',
+  'claudeWaiting.sandbox': '网络访问请求',
+  'claudeWaiting.worker': '子代理请求',
 };

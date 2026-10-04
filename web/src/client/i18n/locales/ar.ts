@@ -1056,4 +1056,8 @@ export const ar: Messages = {
   'screenMenu.sendFailed': 'تعذّر الإرسال. حاول مرة أخرى.',
   'screenMenu.changed': 'تغيّر السؤال على الشاشة. حاول مرة أخرى.',
   'chat.menuTooNarrow': 'Claude بانتظارك · {reason}. رُسمت قائمته لشاشة أعرض: افتح الطرفية للرد.',
+  'claudeWaiting.dialog': 'نافذة حوار مفتوحة',
+  'claudeWaiting.goal': 'اقتراح هدف',
+  'claudeWaiting.sandbox': 'طلب وصول إلى الشبكة',
+  'claudeWaiting.worker': 'طلب من وكيل فرعي',
 };

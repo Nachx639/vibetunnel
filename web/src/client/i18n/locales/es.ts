@@ -1085,4 +1085,8 @@ export const es: Messages = {
   'screenMenu.changed': 'La pregunta en pantalla ha cambiado. Vuelve a intentarlo.',
   'chat.menuTooNarrow':
     'Claude te está esperando · {reason}. Su menú se dibujó para una pantalla más ancha: abre la terminal para responder.',
+  'claudeWaiting.dialog': 'Diálogo abierto',
+  'claudeWaiting.goal': 'Propuesta de objetivo',
+  'claudeWaiting.sandbox': 'Petición de acceso a la red',
+  'claudeWaiting.worker': 'Petición de un subagente',
 };

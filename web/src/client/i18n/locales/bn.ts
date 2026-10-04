@@ -1060,4 +1060,8 @@ export const bn: Messages = {
   'screenMenu.changed': 'স্ক্রিনের প্রশ্নটি বদলে গেছে। আবার চেষ্টা করুন।',
   'chat.menuTooNarrow':
     'Claude আপনার জন্য অপেক্ষা করছে · {reason}। এর মেনু আরও চওড়া স্ক্রিনের জন্য আঁকা: উত্তর দিতে টার্মিনাল খুলুন।',
+  'claudeWaiting.dialog': 'ডায়ালগ খোলা',
+  'claudeWaiting.goal': 'লক্ষ্যের প্রস্তাব',
+  'claudeWaiting.sandbox': 'নেটওয়ার্ক অ্যাক্সেসের অনুরোধ',
+  'claudeWaiting.worker': 'সাব-এজেন্টের অনুরোধ',
 };

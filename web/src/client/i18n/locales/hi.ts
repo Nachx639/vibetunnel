@@ -1058,4 +1058,8 @@ export const hi: Messages = {
   'screenMenu.changed': 'स्क्रीन पर सवाल बदल गया है। फिर से कोशिश करें।',
   'chat.menuTooNarrow':
     'Claude आपका इंतज़ार कर रहा है · {reason}। इसका मेनू चौड़ी स्क्रीन के लिए बना है: जवाब देने के लिए टर्मिनल खोलें।',
+  'claudeWaiting.dialog': 'डायलॉग खुला है',
+  'claudeWaiting.goal': 'लक्ष्य का प्रस्ताव',
+  'claudeWaiting.sandbox': 'नेटवर्क एक्सेस का अनुरोध',
+  'claudeWaiting.worker': 'सब-एजेंट का अनुरोध',
 };
