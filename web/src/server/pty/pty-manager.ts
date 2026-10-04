@@ -31,6 +31,7 @@ import { ProcessTreeAnalyzer } from '../services/process-tree-analyzer.js';
 import type { SessionMonitor } from '../services/session-monitor.js';
 import { TitleSequenceFilter } from '../utils/ansi-title-filter.js';
 import { createLogger } from '../utils/logger.js';
+import { terminalSessionEnv } from '../utils/session-env.js';
 import {
   extractCdDirectory,
   generateTitleSequence,
@@ -399,12 +400,11 @@ export class PtyManager extends EventEmitter {
       let ptyProcess: IPty;
       try {
         // Set up environment like Linux implementation
-        const ptyEnv = {
-          ...process.env,
+        const ptyEnv = terminalSessionEnv(process.env, {
           TERM: term,
           // Set session ID to prevent recursive vt calls and for debugging
           VIBETUNNEL_SESSION_ID: sessionId,
-        };
+        });
 
         // Debug log the spawn parameters
         logger.debug('PTY spawn parameters:', {
