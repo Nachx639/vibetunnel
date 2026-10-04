@@ -11,6 +11,7 @@
  */
 import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import { detectMobile } from '../utils/mobile-utils.js';
 import './modal-wrapper.js';
@@ -34,6 +35,8 @@ export interface ClipboardManagerCallbacks {
 
 @customElement('clipboard-manager')
 export class ClipboardManager extends LitElement {
+  protected readonly i18n = new LocaleController(this);
+
   // Disable shadow DOM to use Tailwind
   createRenderRoot() {
     return this;
@@ -74,7 +77,7 @@ export class ClipboardManager extends LitElement {
 
   private async readCurrentClipboard() {
     if (!navigator.clipboard) {
-      this.error = 'Clipboard API not available. Please use Ctrl+V to paste.';
+      this.error = t('clipboard.apiUnavailable');
       return;
     }
 
@@ -102,7 +105,12 @@ export class ClipboardManager extends LitElement {
             for (const type of item.types) {
               if (type.startsWith('image/')) {
                 const blob = await item.getType(type);
-                this.addToHistory(`[Image: ${type}]`, 'image', undefined, blob.size);
+                this.addToHistory(
+                  t('clipboard.imageItem', { type }),
+                  'image',
+                  undefined,
+                  blob.size
+                );
                 break;
               }
             }
@@ -113,7 +121,7 @@ export class ClipboardManager extends LitElement {
       }
     } catch (error) {
       logger.error('Failed to read clipboard:', error);
-      this.error = 'Failed to read clipboard. Please ensure clipboard permissions are granted.';
+      this.error = t('clipboard.readFailed');
     } finally {
       this.isReading = false;
     }
@@ -185,8 +193,7 @@ export class ClipboardManager extends LitElement {
       this.handleClose();
     } else if (item.type === 'image' && this.callbacks?.onImagePaste) {
       // For now, just show a message that image pasting from history isn't supported
-      this.error =
-        'Image pasting from history not yet supported. Please copy the image again and use paste current.';
+      this.error = t('clipboard.imageHistoryUnsupported');
     }
   }
 
@@ -207,24 +214,30 @@ export class ClipboardManager extends LitElement {
     this.dispatchEvent(new CustomEvent('close'));
   }
 
+  /** "You can also use Ctrl+V to paste directly", with the shortcut rendered as a key cap. */
+  private renderShortcutHint() {
+    const [before, after = ''] = t('clipboard.shortcutHint', { key: '\u0000' }).split('\u0000');
+    return html`${before}<kbd class="px-1.5 py-0.5 bg-bg-tertiary border border-border rounded text-xs">Ctrl+V</kbd>${after}`;
+  }
+
   private formatTimestamp(timestamp: number): string {
     const now = Date.now();
     const diff = now - timestamp;
 
     if (diff < 60000) {
       // Less than 1 minute
-      return 'Just now';
+      return t('clipboard.justNow');
     } else if (diff < 3600000) {
       // Less than 1 hour
       const minutes = Math.floor(diff / 60000);
-      return `${minutes}m ago`;
+      return t('clipboard.minutesAgo', { n: minutes });
     } else if (diff < 86400000) {
       // Less than 1 day
       const hours = Math.floor(diff / 3600000);
-      return `${hours}h ago`;
+      return t('clipboard.hoursAgo', { n: hours });
     } else {
       const days = Math.floor(diff / 86400000);
-      return `${days}d ago`;
+      return t('clipboard.daysAgo', { n: days });
     }
   }
 
@@ -261,7 +274,7 @@ export class ClipboardManager extends LitElement {
         .closeOnBackdrop=${true}
         .closeOnEscape=${true}
         .contentClass=${`clipboard-manager-modal font-mono text-sm w-full max-w-[90vw] sm:max-w-2xl ${this.isMobile ? 'max-h-[70vh]' : 'max-h-[75vh]'}`}
-        ariaLabel="Clipboard Manager"
+        .ariaLabel=${t('clipboard.title')}
         style="z-index: 1050;"
         @close=${this.handleClose}
       >
@@ -272,7 +285,7 @@ export class ClipboardManager extends LitElement {
               <div class="flex items-center gap-3">
                 <span class="text-xl">📋</span>
                 <h2 class="text-lg font-semibold text-text">
-                  ${this.showHistory ? 'Clipboard History' : 'Clipboard Manager'}
+                  ${this.showHistory ? t('clipboard.historyTitle') : t('clipboard.title')}
                 </h2>
               </div>
               <div class="flex items-center gap-2">
@@ -285,7 +298,7 @@ export class ClipboardManager extends LitElement {
                       this.showHistory = true;
                     }}
                   >
-                    History (${this.clipboardHistory.length})
+                    ${t('clipboard.history', { n: this.clipboardHistory.length })}
                   </button>
                 `
                     : ''
@@ -293,7 +306,7 @@ export class ClipboardManager extends LitElement {
                 <button
                   class="p-2 text-text-muted hover:text-text transition-colors"
                   @click=${this.handleClose}
-                  title="Close"
+                  title=${t('common.close')}
                 >
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -312,7 +325,7 @@ export class ClipboardManager extends LitElement {
                 <div class="flex items-start gap-3">
                   <span class="text-status-error mt-0.5">⚠️</span>
                   <div>
-                    <p class="text-status-error font-medium">Error</p>
+                    <p class="text-status-error font-medium">${t('clipboard.error')}</p>
                     <p class="text-sm text-status-error/80 mt-1">${this.error}</p>
                   </div>
                 </div>
@@ -329,7 +342,7 @@ export class ClipboardManager extends LitElement {
                 <div class="mb-4">
                   <h3 class="text-sm font-medium text-text mb-2 flex items-center gap-2">
                     <span class="text-primary">📋</span>
-                    Current Clipboard
+                    ${t('clipboard.current')}
                     ${
                       this.isReading
                         ? html`
@@ -351,18 +364,18 @@ export class ClipboardManager extends LitElement {
                       @click=${this.handlePasteCurrent}
                     >
                       <span class="text-lg">📤</span>
-                      Paste Current Content
+                      ${t('clipboard.pasteCurrent')}
                     </button>
                   `
                       : html`
                     <div class="bg-bg-secondary border border-border rounded-lg p-6 text-center">
-                      <p class="text-text-muted mb-3">No clipboard content detected</p>
+                      <p class="text-text-muted mb-3">${t('clipboard.noContent')}</p>
                       <button
                         class="bg-bg-tertiary hover:bg-surface-hover border border-border px-4 py-2 rounded-lg transition-colors text-sm"
                         @click=${this.readCurrentClipboard}
                         ?disabled=${this.isReading}
                       >
-                        ${this.isReading ? 'Reading...' : 'Refresh Clipboard'}
+                        ${this.isReading ? t('clipboard.reading') : t('clipboard.refresh')}
                       </button>
                     </div>
                   `
@@ -372,7 +385,7 @@ export class ClipboardManager extends LitElement {
                 <!-- Quick paste instructions -->
                 <div class="border-t border-border pt-4">
                   <p class="text-xs text-text-muted text-center">
-                    You can also use <kbd class="px-1.5 py-0.5 bg-bg-tertiary border border-border rounded text-xs">Ctrl+V</kbd> to paste directly
+                    ${this.renderShortcutHint()}
                   </p>
                 </div>
               </div>
@@ -390,7 +403,7 @@ export class ClipboardManager extends LitElement {
                     <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                       <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/>
                     </svg>
-                    Back to Current
+                    ${t('clipboard.backToCurrent')}
                   </button>
                   
                   ${
@@ -400,7 +413,7 @@ export class ClipboardManager extends LitElement {
                       class="text-sm text-status-error hover:text-status-error/80 transition-colors"
                       @click=${this.handleClearHistory}
                     >
-                      Clear All
+                      ${t('clipboard.clearAll')}
                     </button>
                   `
                       : ''
@@ -436,7 +449,7 @@ export class ClipboardManager extends LitElement {
                             <button
                               class="p-1.5 text-primary hover:text-primary-hover transition-colors opacity-0 group-hover:opacity-100"
                               @click=${() => this.handlePasteFromHistory(item)}
-                              title="Paste this content"
+                              title=${t('clipboard.pasteItem')}
                             >
                               <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                                 <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z"/>
@@ -446,7 +459,7 @@ export class ClipboardManager extends LitElement {
                             <button
                               class="p-1.5 text-status-error hover:text-status-error/80 transition-colors opacity-0 group-hover:opacity-100"
                               @click=${() => this.handleRemoveHistoryItem(item.id)}
-                              title="Remove from history"
+                              title=${t('clipboard.removeItem')}
                             >
                               <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -462,8 +475,8 @@ export class ClipboardManager extends LitElement {
                     : html`
                   <div class="text-center py-8">
                     <div class="text-4xl mb-4 opacity-50">📋</div>
-                    <p class="text-text-muted mb-2">No clipboard history</p>
-                    <p class="text-sm text-text-muted">Copy some content to see it here</p>
+                    <p class="text-text-muted mb-2">${t('clipboard.noHistory')}</p>
+                    <p class="text-sm text-text-muted">${t('clipboard.noHistoryHint')}</p>
                   </div>
                 `
                 }

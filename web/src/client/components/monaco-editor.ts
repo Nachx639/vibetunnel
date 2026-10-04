@@ -14,6 +14,7 @@ import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { createRef, ref } from 'lit/directives/ref.js';
 import type { editor } from 'monaco-editor';
+import { LocaleController, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import { initializeMonaco } from '../utils/monaco-loader.js';
 
@@ -49,6 +50,8 @@ export class MonacoEditor extends LitElement {
   @property({ type: String }) mode: 'normal' | 'diff' = 'normal';
   @property({ type: Boolean }) showModeToggle = false;
   @property({ type: Object }) options: MonacoEditorOptions = {};
+
+  protected readonly i18n = new LocaleController(this);
 
   @state() private isLoading = true;
   @state() private diffMode: 'inline' | 'sideBySide' = 'sideBySide';
@@ -470,7 +473,7 @@ export class MonacoEditor extends LitElement {
                   class="loading"
                   style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgb(var(--color-text-muted)); font-family: ui-monospace, monospace;"
                 >
-                  Loading editor...
+                  ${t('monaco.loading')}
                 </div>
               `
               : ''
@@ -482,7 +485,7 @@ export class MonacoEditor extends LitElement {
                   class="mode-toggle"
                   style="position: absolute; top: 10px; right: 10px; z-index: 10; background: rgb(var(--color-surface)); border: 1px solid rgb(var(--color-border)); color: rgb(var(--color-text)); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer;"
                   @click=${this.toggleDiffMode}
-                  title="Toggle between inline and side-by-side diff"
+                  title=${t('monaco.toggleDiff')}
                   @mouseenter=${(e: MouseEvent) => {
                     const btn = e.target as HTMLButtonElement;
                     btn.style.background = 'rgb(var(--color-surface-hover))';
@@ -494,7 +497,7 @@ export class MonacoEditor extends LitElement {
                     btn.style.borderColor = 'rgb(var(--color-border))';
                   }}
                 >
-                  ${this.diffMode === 'inline' ? 'Side by Side' : 'Inline'}
+                  ${this.diffMode === 'inline' ? t('monaco.sideBySide') : t('monaco.inline')}
                 </button>
               `
               : ''

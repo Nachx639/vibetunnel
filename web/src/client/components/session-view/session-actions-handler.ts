@@ -8,6 +8,7 @@
  * - View mode toggling (terminal vs worktree)
  */
 import type { Session } from '../../../shared/types.js';
+import { t } from '../../i18n/index.js';
 import { authClient } from '../../services/auth-client.js';
 import { sessionActionService } from '../../services/session-action-service.js';
 import { createLogger } from '../../utils/logger.js';
@@ -68,7 +69,7 @@ export class SessionActionsHandler {
       // Show error to user
       this.callbacks.dispatchEvent(
         new CustomEvent('error', {
-          detail: `Failed to rename session: ${result.error}`,
+          detail: t('toast.renameFailed', { error: String(result.error) }),
           bubbles: true,
           composed: true,
         })

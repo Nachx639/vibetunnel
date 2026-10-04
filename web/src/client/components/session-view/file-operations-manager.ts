@@ -8,6 +8,7 @@
  * - Path insertion into terminal
  */
 import type { Session } from '../../../shared/types.js';
+import { t } from '../../i18n/index.js';
 import { createLogger } from '../../utils/logger.js';
 import type { FilePicker } from '../file-picker.js';
 import type { InputManager } from './input-manager.js';
@@ -179,7 +180,7 @@ export class FileOperationsManager {
       logger.log('No image found in clipboard');
       this.callbacks.dispatchEvent(
         new CustomEvent('error', {
-          detail: 'No image found in clipboard',
+          detail: t('toast.noClipboardImage'),
           bubbles: true,
           composed: true,
         })
@@ -188,7 +189,7 @@ export class FileOperationsManager {
       logger.error('Failed to paste image from clipboard:', error);
       this.callbacks.dispatchEvent(
         new CustomEvent('error', {
-          detail: 'Failed to access clipboard. Please check permissions.',
+          detail: t('toast.clipboardAccessFailed'),
           bubbles: true,
           composed: true,
         })
@@ -440,7 +441,7 @@ export class FileOperationsManager {
       logger.error('Failed to upload dropped/pasted file:', error);
       this.callbacks.dispatchEvent(
         new CustomEvent('error', {
-          detail: error instanceof Error ? error.message : 'Failed to upload file',
+          detail: error instanceof Error ? error.message : t('toast.uploadFailed'),
         })
       );
     }

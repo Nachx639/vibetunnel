@@ -11,6 +11,7 @@
 import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
+import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import { detectMobile } from '../utils/mobile-utils.js';
 import './modal-wrapper.js';
@@ -20,12 +21,12 @@ const logger = createLogger('slash-commands');
 interface SlashCommand {
   id: string;
   command: string;
-  title: string;
-  description: string;
+  title: MessageKey;
+  description: MessageKey;
   category: 'project' | 'files' | 'git' | 'development' | 'ai' | 'system';
   example?: string;
   requiresInput?: boolean;
-  inputPlaceholder?: string;
+  inputPlaceholder?: MessageKey;
 }
 
 export interface SlashCommandsCallbacks {
@@ -39,6 +40,8 @@ export class SlashCommands extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Boolean }) visible = false;
   @property({ type: Object }) session: Session | null = null;
@@ -60,96 +63,96 @@ export class SlashCommands extends LitElement {
     {
       id: 'project-overview',
       command: '/overview',
-      title: 'Project Overview',
-      description: 'Get an overview of the current project structure',
+      title: 'slash.cmd.overview.title',
+      description: 'slash.cmd.overview.description',
       category: 'project',
       example: '/overview',
     },
     {
       id: 'project-status',
       command: '/status',
-      title: 'Project Status',
-      description: 'Show current project status and recent changes',
+      title: 'slash.cmd.status.title',
+      description: 'slash.cmd.status.description',
       category: 'project',
       example: '/status',
     },
     {
       id: 'project-plan',
       command: '/plan',
-      title: 'Create Plan',
-      description: 'Create a development plan for a feature or change',
+      title: 'slash.cmd.plan.title',
+      description: 'slash.cmd.plan.description',
       category: 'project',
       example: '/plan Add user authentication',
       requiresInput: true,
-      inputPlaceholder: 'Describe what you want to plan...',
+      inputPlaceholder: 'slash.cmd.plan.placeholder',
     },
 
     // File commands
     {
       id: 'file-read',
       command: '/read',
-      title: 'Read File',
-      description: 'Read and analyze a specific file',
+      title: 'slash.cmd.read.title',
+      description: 'slash.cmd.read.description',
       category: 'files',
       example: '/read src/main.ts',
       requiresInput: true,
-      inputPlaceholder: 'Enter file path to read...',
+      inputPlaceholder: 'slash.cmd.read.placeholder',
     },
     {
       id: 'file-edit',
       command: '/edit',
-      title: 'Edit File',
-      description: 'Edit a file with specific instructions',
+      title: 'slash.cmd.edit.title',
+      description: 'slash.cmd.edit.description',
       category: 'files',
       example: '/edit src/utils.ts Add error handling',
       requiresInput: true,
-      inputPlaceholder: 'File path and instructions...',
+      inputPlaceholder: 'slash.cmd.edit.placeholder',
     },
     {
       id: 'file-create',
       command: '/create',
-      title: 'Create File',
-      description: 'Create a new file with specified content',
+      title: 'slash.cmd.create.title',
+      description: 'slash.cmd.create.description',
       category: 'files',
       example: '/create src/types.ts with TypeScript interfaces',
       requiresInput: true,
-      inputPlaceholder: 'File path and description...',
+      inputPlaceholder: 'slash.cmd.create.placeholder',
     },
     {
       id: 'file-search',
       command: '/search',
-      title: 'Search Files',
-      description: 'Search for content across project files',
+      title: 'slash.cmd.search.title',
+      description: 'slash.cmd.search.description',
       category: 'files',
       example: '/search function calculateTotal',
       requiresInput: true,
-      inputPlaceholder: 'Search term or pattern...',
+      inputPlaceholder: 'slash.cmd.search.placeholder',
     },
 
     // Git commands
     {
       id: 'git-status',
       command: '/git-status',
-      title: 'Git Status',
-      description: 'Show current git status and changes',
+      title: 'slash.cmd.gitStatus.title',
+      description: 'slash.cmd.gitStatus.description',
       category: 'git',
       example: '/git-status',
     },
     {
       id: 'git-commit',
       command: '/commit',
-      title: 'Git Commit',
-      description: 'Create a git commit with AI-generated message',
+      title: 'slash.cmd.commit.title',
+      description: 'slash.cmd.commit.description',
       category: 'git',
       example: '/commit',
       requiresInput: true,
-      inputPlaceholder: 'Optional commit message or description...',
+      inputPlaceholder: 'slash.cmd.commit.placeholder',
     },
     {
       id: 'git-diff',
       command: '/diff',
-      title: 'Git Diff',
-      description: 'Show and explain git diff for current changes',
+      title: 'slash.cmd.diff.title',
+      description: 'slash.cmd.diff.description',
       category: 'git',
       example: '/diff',
     },
@@ -158,107 +161,107 @@ export class SlashCommands extends LitElement {
     {
       id: 'dev-test',
       command: '/test',
-      title: 'Run Tests',
-      description: 'Run tests and analyze results',
+      title: 'slash.cmd.test.title',
+      description: 'slash.cmd.test.description',
       category: 'development',
       example: '/test',
       requiresInput: true,
-      inputPlaceholder: 'Optional test pattern or file...',
+      inputPlaceholder: 'slash.cmd.test.placeholder',
     },
     {
       id: 'dev-build',
       command: '/build',
-      title: 'Build Project',
-      description: 'Build the project and handle any issues',
+      title: 'slash.cmd.build.title',
+      description: 'slash.cmd.build.description',
       category: 'development',
       example: '/build',
     },
     {
       id: 'dev-lint',
       command: '/lint',
-      title: 'Lint Code',
-      description: 'Run linter and fix code quality issues',
+      title: 'slash.cmd.lint.title',
+      description: 'slash.cmd.lint.description',
       category: 'development',
       example: '/lint',
     },
     {
       id: 'dev-debug',
       command: '/debug',
-      title: 'Debug Issue',
-      description: 'Help debug a specific issue or error',
+      title: 'slash.cmd.debug.title',
+      description: 'slash.cmd.debug.description',
       category: 'development',
       example: '/debug TypeError in user validation',
       requiresInput: true,
-      inputPlaceholder: 'Describe the issue or error...',
+      inputPlaceholder: 'slash.cmd.debug.placeholder',
     },
 
     // AI commands
     {
       id: 'ai-explain',
       command: '/explain',
-      title: 'Explain Code',
-      description: 'Explain how specific code works',
+      title: 'slash.cmd.explain.title',
+      description: 'slash.cmd.explain.description',
       category: 'ai',
       example: '/explain this function',
       requiresInput: true,
-      inputPlaceholder: 'What do you want explained?',
+      inputPlaceholder: 'slash.cmd.explain.placeholder',
     },
     {
       id: 'ai-refactor',
       command: '/refactor',
-      title: 'Refactor Code',
-      description: 'Refactor code with specific improvements',
+      title: 'slash.cmd.refactor.title',
+      description: 'slash.cmd.refactor.description',
       category: 'ai',
       example: '/refactor to use async/await',
       requiresInput: true,
-      inputPlaceholder: 'How should the code be refactored?',
+      inputPlaceholder: 'slash.cmd.refactor.placeholder',
     },
     {
       id: 'ai-optimize',
       command: '/optimize',
-      title: 'Optimize Code',
-      description: 'Optimize code for performance or readability',
+      title: 'slash.cmd.optimize.title',
+      description: 'slash.cmd.optimize.description',
       category: 'ai',
       example: '/optimize for performance',
       requiresInput: true,
-      inputPlaceholder: 'What kind of optimization?',
+      inputPlaceholder: 'slash.cmd.optimize.placeholder',
     },
 
     // System commands
     {
       id: 'system-help',
       command: '/help',
-      title: 'Help',
-      description: 'Show available commands and help',
+      title: 'slash.cmd.help.title',
+      description: 'slash.cmd.help.description',
       category: 'system',
       example: '/help',
     },
     {
       id: 'system-clear',
       command: '/clear',
-      title: 'Clear Screen',
-      description: 'Clear the terminal screen',
+      title: 'slash.cmd.clear.title',
+      description: 'slash.cmd.clear.description',
       category: 'system',
       example: '/clear',
     },
     {
       id: 'system-reset',
       command: '/reset',
-      title: 'Reset Session',
-      description: "Reset Claude's context for this session",
+      title: 'slash.cmd.reset.title',
+      description: 'slash.cmd.reset.description',
       category: 'system',
       example: '/reset',
     },
   ];
 
-  private readonly categories = [
-    { id: 'all', name: 'All Commands', icon: '⚡' },
-    { id: 'project', name: 'Project', icon: '📁' },
-    { id: 'files', name: 'Files', icon: '📄' },
-    { id: 'git', name: 'Git', icon: '🔄' },
-    { id: 'development', name: 'Development', icon: '🛠️' },
-    { id: 'ai', name: 'AI', icon: '🤖' },
-    { id: 'system', name: 'System', icon: '⚙️' },
+  private readonly categories: Array<{ id: string; name: MessageKey; icon: string }> = [
+    { id: 'all', name: 'slash.category.all', icon: '⚡' },
+    { id: 'project', name: 'slash.category.project', icon: '📁' },
+    { id: 'files', name: 'slash.category.files', icon: '📄' },
+    { id: 'git', name: 'slash.category.git', icon: '🔄' },
+    { id: 'development', name: 'slash.category.development', icon: '🛠️' },
+    { id: 'ai', name: 'slash.category.ai', icon: '🤖' },
+    { id: 'system', name: 'slash.category.system', icon: '⚙️' },
   ];
 
   connectedCallback() {
@@ -311,8 +314,8 @@ export class SlashCommands extends LitElement {
       const query = this.searchQuery.toLowerCase();
       commands = commands.filter(
         (cmd) =>
-          cmd.title.toLowerCase().includes(query) ||
-          cmd.description.toLowerCase().includes(query) ||
+          t(cmd.title).toLowerCase().includes(query) ||
+          t(cmd.description).toLowerCase().includes(query) ||
           cmd.command.toLowerCase().includes(query) ||
           cmd.category.toLowerCase().includes(query)
       );
@@ -396,7 +399,7 @@ export class SlashCommands extends LitElement {
         .closeOnBackdrop=${true}
         .closeOnEscape=${true}
         .contentClass=${`slash-commands-modal font-mono text-sm w-full max-w-[90vw] sm:max-w-3xl ${this.isMobile ? 'max-h-[70vh]' : 'max-h-[80vh]'}`}
-        ariaLabel="Slash Commands"
+        .ariaLabel=${t('slash.modal.title')}
         style="z-index: 1050;"
         @close=${this.handleClose}
       >
@@ -413,7 +416,7 @@ export class SlashCommands extends LitElement {
                 </div>
                 <input
                   type="text"
-                  placeholder="Search slash commands..."
+                  placeholder=${t('slash.modal.searchPlaceholder')}
                   class="flex-1 bg-transparent border-none outline-none text-text placeholder-text-muted text-base"
                   .value=${this.searchQuery}
                   @input=${this.handleSearchInput}
@@ -431,7 +434,7 @@ export class SlashCommands extends LitElement {
                       this.searchQuery = '';
                       this.searchInputRef?.focus();
                     }}
-                    title="Clear search"
+                    title=${t('slash.modal.clearSearch')}
                   >
                     <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                       <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -443,7 +446,7 @@ export class SlashCommands extends LitElement {
                 <button
                   class="flex-shrink-0 p-2 text-text-muted hover:text-text transition-colors"
                   @click=${this.handleClose}
-                  title="Close"
+                  title=${t('common.close')}
                 >
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -464,7 +467,7 @@ export class SlashCommands extends LitElement {
                     @click=${() => this.handleCategorySelect(category.id)}
                   >
                     <span>${category.icon}</span>
-                    <span>${category.name}</span>
+                    <span>${t(category.name)}</span>
                     ${
                       category.id !== 'all'
                         ? html`
@@ -505,15 +508,15 @@ export class SlashCommands extends LitElement {
                               command.requiresInput
                                 ? html`
                               <span class="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
-                                requires input
+                                ${t('slash.modal.requiresInput')}
                               </span>
                             `
                                 : ''
                             }
                           </div>
-                          <h3 class="font-medium text-text mb-1">${command.title}</h3>
+                          <h3 class="font-medium text-text mb-1">${t(command.title)}</h3>
                           <p class="text-sm text-text-muted leading-relaxed mb-2">
-                            ${command.description}
+                            ${t(command.description)}
                           </p>
                           ${
                             command.example
@@ -540,8 +543,8 @@ export class SlashCommands extends LitElement {
                   : html`
                 <div class="p-8 text-center text-text-muted">
                   <div class="text-4xl mb-4 opacity-50">/</div>
-                  <p class="text-lg font-medium mb-2">No commands found</p>
-                  <p class="text-sm">Try a different search term or category</p>
+                  <p class="text-lg font-medium mb-2">${t('slash.modal.empty')}</p>
+                  <p class="text-sm">${t('slash.modal.emptyHint')}</p>
                 </div>
               `
               }
@@ -554,20 +557,20 @@ export class SlashCommands extends LitElement {
                 <button
                   class="flex-shrink-0 p-1 text-text-muted hover:text-text transition-colors"
                   @click=${this.handleBackFromInput}
-                  title="Back to commands"
+                  title=${t('slash.modal.back')}
                 >
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/>
                   </svg>
                 </button>
                 <div class="flex-1">
-                  <h2 class="text-lg font-semibold text-text">${this.selectedCommand?.title}</h2>
-                  <p class="text-sm text-text-muted">${this.selectedCommand?.description}</p>
+                  <h2 class="text-lg font-semibold text-text">${this.selectedCommand ? t(this.selectedCommand.title) : ''}</h2>
+                  <p class="text-sm text-text-muted">${this.selectedCommand ? t(this.selectedCommand.description) : ''}</p>
                 </div>
                 <button
                   class="flex-shrink-0 p-2 text-text-muted hover:text-text transition-colors"
                   @click=${this.handleClose}
-                  title="Close"
+                  title=${t('common.close')}
                 >
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -579,12 +582,12 @@ export class SlashCommands extends LitElement {
             <div class="p-4">
               <div class="mb-4">
                 <label class="block text-sm font-medium text-text mb-2">
-                  Command: <code class="text-primary">${this.selectedCommand?.command}</code>
+                  ${t('slash.modal.command')} <code class="text-primary">${this.selectedCommand?.command}</code>
                 </label>
                 <div class="relative">
                   <input
                     type="text"
-                    placeholder="${this.selectedCommand?.inputPlaceholder || 'Enter additional parameters...'}"
+                    placeholder=${t(this.selectedCommand?.inputPlaceholder ?? 'slash.modal.paramsPlaceholder')}
                     class="w-full bg-bg-secondary border border-border rounded-lg px-4 py-3 text-text placeholder-text-muted focus:border-primary focus:outline-none"
                     .value=${this.commandInput}
                     @input=${(e: Event) => {
@@ -607,7 +610,7 @@ export class SlashCommands extends LitElement {
                 this.selectedCommand?.example
                   ? html`
                 <div class="mb-4 p-3 bg-bg-tertiary rounded-lg border border-border">
-                  <p class="text-xs text-text-muted mb-2">Example:</p>
+                  <p class="text-xs text-text-muted mb-2">${t('slash.modal.example')}</p>
                   <code class="text-sm text-text">${this.selectedCommand.example}</code>
                 </div>
               `
@@ -619,13 +622,13 @@ export class SlashCommands extends LitElement {
                   class="px-4 py-2 text-sm border border-border rounded-lg hover:bg-surface-hover transition-colors"
                   @click=${this.handleBackFromInput}
                 >
-                  Cancel
+                  ${t('common.cancel')}
                 </button>
                 <button
                   class="px-6 py-2 bg-primary hover:bg-primary-hover text-primary-foreground font-medium rounded-lg transition-colors flex items-center gap-2"
                   @click=${this.handleCommandInputSubmit}
                 >
-                  <span>Execute Command</span>
+                  <span>${t('slash.modal.execute')}</span>
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
                   </svg>

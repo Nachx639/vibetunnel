@@ -6,6 +6,7 @@
  */
 import { html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { LocaleController, t } from '../../i18n/index.js';
 
 @customElement('ctrl-alpha-overlay')
 export class CtrlAlphaOverlay extends LitElement {
@@ -13,6 +14,8 @@ export class CtrlAlphaOverlay extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Boolean }) visible = false;
   @property({ type: Array }) ctrlSequence: string[] = [];
@@ -51,7 +54,7 @@ export class CtrlAlphaOverlay extends LitElement {
 
           <!-- Help text -->
           <div class="text-xs text-text-muted text-center mb-3 opacity-70">
-            Build sequences like ctrl+c ctrl+c
+            ${t('ctrl.help')}
           </div>
 
           <!-- Current sequence display -->
@@ -59,7 +62,7 @@ export class CtrlAlphaOverlay extends LitElement {
             this.ctrlSequence.length > 0
               ? html`
                 <div class="text-center mb-4 p-2 border border-border rounded bg-bg">
-                  <div class="text-xs text-text-muted mb-1">Current sequence:</div>
+                  <div class="text-xs text-text-muted mb-1">${t('ctrl.currentSequence')}</div>
                   <div class="text-sm text-primary font-bold">
                     ${this.ctrlSequence.map((letter) => `Ctrl+${letter}`).join(' ')}
                   </div>
@@ -111,7 +114,7 @@ export class CtrlAlphaOverlay extends LitElement {
 
           <!-- Common shortcuts info -->
           <div class="text-xs text-text-muted text-center mb-3">
-            <div>Common: C=interrupt, X=exit, O=save, W=search</div>
+            <div>${t('ctrl.common')}</div>
           </div>
 
           <!-- Action buttons -->
@@ -120,7 +123,7 @@ export class CtrlAlphaOverlay extends LitElement {
               class="font-mono px-4 py-2 text-sm transition-all cursor-pointer btn-ghost"
               @click=${() => this.onCancel?.()}
             >
-              CANCEL
+              ${t('ctrl.cancel')}
             </button>
             ${
               this.ctrlSequence.length > 0
@@ -129,13 +132,13 @@ export class CtrlAlphaOverlay extends LitElement {
                     class="font-mono px-3 py-2 text-sm transition-all cursor-pointer btn-ghost"
                     @click=${() => this.onClearSequence?.()}
                   >
-                    CLEAR
+                    ${t('ctrl.clear')}
                   </button>
                   <button
                     class="font-mono px-3 py-2 text-sm transition-all cursor-pointer btn-secondary"
                     @click=${() => this.onSendSequence?.()}
                   >
-                    SEND
+                    ${t('ctrl.send')}
                   </button>
                 `
                 : ''

@@ -7,6 +7,7 @@
 import { html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { Session } from '../../../shared/types.js';
+import { LocaleController, t } from '../../i18n/index.js';
 import { Z_INDEX } from '../../utils/constants.js';
 import type { TerminalThemeId } from '../../utils/terminal-themes.js';
 import type { UIState } from './ui-state-manager.js';
@@ -52,6 +53,8 @@ export class OverlaysContainer extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) session: Session | null = null;
   @property({ type: Object }) uiState: UIState | null = null;
@@ -121,13 +124,13 @@ export class OverlaysContainer extends LitElement {
                 e.preventDefault();
                 e.stopPropagation();
               }}
-              title="${this.uiState.showQuickKeys ? 'Hide keyboard' : 'Show keyboard'}"
+              title="${this.uiState.showQuickKeys ? t('chat.hideKeyboard') : t('keyboard.show')}"
               role="button"
-              aria-label="Toggle mobile keyboard"
+              aria-label=${t('keyboard.toggleMobile')}
             >
               <div class="flex flex-col items-center gap-1">
                 <span class="text-2xl">⌨</span>
-                <span class="text-xs font-medium opacity-90">TAP</span>
+                <span class="text-xs font-medium opacity-90">${t('keyboard.tap')}</span>
               </div>
             </div>
           `
@@ -191,12 +194,12 @@ export class OverlaysContainer extends LitElement {
                   </div>
                   <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50"></div>
                 </div>
-                <h3 class="text-2xl font-bold text-primary mb-3">Drop files here</h3>
-                <p class="text-sm text-text-muted mb-4">Files will be uploaded and the path sent to terminal</p>
+                <h3 class="text-2xl font-bold text-primary mb-3">${t('overlay.dropTitle')}</h3>
+                <p class="text-sm text-text-muted mb-4">${t('overlay.dropDescription')}</p>
                 <div class="inline-flex items-center gap-2 text-xs text-text-dim bg-bg-secondary px-4 py-2 rounded-lg">
-                  <span class="opacity-75">Or press</span>
+                  <span class="opacity-75">${t('overlay.orPress')}</span>
                   <kbd class="px-2 py-1 bg-bg-tertiary border border-border rounded text-primary font-mono text-xs">⌘V</kbd>
-                  <span class="opacity-75">to paste from clipboard</span>
+                  <span class="opacity-75">${t('overlay.toPaste')}</span>
                 </div>
               </div>
             </div>

@@ -19,6 +19,7 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
+import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import { detectMobile } from '../utils/mobile-utils.js';
 import type { ClipboardManagerCallbacks } from './clipboard-manager.js';
@@ -45,7 +46,8 @@ export interface MobileActionBarCallbacks
 
 interface ActionButton {
   id: string;
-  title: string;
+  /** Message key of the button's name; translated when rendered. */
+  title: MessageKey;
   icon: string;
   action:
     | keyof MobileActionBarCallbacks
@@ -79,6 +81,7 @@ export class MobileActionBar extends LitElement {
   @state() private isExpanded = false;
   @state() private longPressTimer: number | null = null;
   @state() private isMobile = detectMobile();
+  protected readonly i18n = new LocaleController(this);
 
   private readonly primaryActions: ActionButton[] = [
     // Temporarily disabled - no functionality yet
@@ -93,7 +96,7 @@ export class MobileActionBar extends LitElement {
     // },
     {
       id: 'clipboard',
-      title: 'Clipboard',
+      title: 'actionBar.clipboard',
       icon: '📋',
       action: 'showClipboardManager', // Internal action to show modal
       longPressAction: 'onPasteFromClipboard',
@@ -110,7 +113,7 @@ export class MobileActionBar extends LitElement {
     // },
     {
       id: 'keyboard',
-      title: 'Keyboard',
+      title: 'actionBar.keyboard',
       icon: '⌨️',
       action: 'onShowKeyboard',
       category: 'primary',
@@ -120,7 +123,7 @@ export class MobileActionBar extends LitElement {
   private readonly secondaryActions: ActionButton[] = [
     {
       id: 'new-session',
-      title: 'New Session',
+      title: 'actionBar.newSession',
       icon: '➕',
       action: 'onCreateSession',
       shortcut: 'Ctrl+N',
@@ -128,7 +131,7 @@ export class MobileActionBar extends LitElement {
     },
     {
       id: 'files',
-      title: 'Files',
+      title: 'actionBar.files',
       icon: '📁',
       action: 'onOpenFileBrowser',
       longPressAction: 'onUploadFile',
@@ -136,14 +139,14 @@ export class MobileActionBar extends LitElement {
     },
     {
       id: 'settings',
-      title: 'Settings',
+      title: 'common.settings',
       icon: '⚙️',
       action: 'onOpenTerminalSettings',
       category: 'secondary',
     },
     {
       id: 'theme',
-      title: 'Theme',
+      title: 'actionBar.theme',
       icon: '🌓',
       action: 'onToggleTheme',
       category: 'secondary',
@@ -343,11 +346,11 @@ export class MobileActionBar extends LitElement {
                     this.longPressTimer = null;
                   }
                 }}
-                title="${button.title}${button.longPressAction ? ' (Long press for more)' : ''}"
-                aria-label="${button.title}"
+                title=${button.longPressAction ? t('actionBar.longPressHint', { action: t(button.title) }) : t(button.title)}
+                aria-label=${t(button.title)}
               >
                 <span class="text-xl mb-0.5">${button.icon}</span>
-                <span class="text-xs font-medium leading-none">${button.title.split(' ')[0]}</span>
+                <span class="text-xs font-medium leading-none">${t(button.title).split(' ')[0]}</span>
                 
                 ${
                   button.badge
@@ -377,8 +380,8 @@ export class MobileActionBar extends LitElement {
                 this.isExpanded = !this.isExpanded;
                 this.triggerHaptic('light');
               }}
-              title="${this.isExpanded ? 'Collapse' : 'More actions'}"
-              aria-label="${this.isExpanded ? 'Collapse menu' : 'Show more actions'}"
+              title=${this.isExpanded ? t('actionBar.collapse') : t('actionBar.moreActions')}
+              aria-label=${this.isExpanded ? t('actionBar.collapseMenu') : t('actionBar.showMoreActions')}
             >
               <svg 
                 width="16" 
@@ -410,11 +413,11 @@ export class MobileActionBar extends LitElement {
                         this.longPressTimer = null;
                       }
                     }}
-                    title="${button.title}${button.longPressAction ? ' (Long press for more)' : ''}"
-                    aria-label="${button.title}"
+                    title=${button.longPressAction ? t('actionBar.longPressHint', { action: t(button.title) }) : t(button.title)}
+                    aria-label=${t(button.title)}
                   >
                     <span class="text-lg mb-0.5">${button.icon}</span>
-                    <span class="text-xs font-medium leading-none">${button.title.split(' ')[0]}</span>
+                    <span class="text-xs font-medium leading-none">${t(button.title).split(' ')[0]}</span>
                     
                     ${
                       button.longPressAction
@@ -441,7 +444,7 @@ export class MobileActionBar extends LitElement {
             <div class="inline-flex items-center gap-2 bg-primary/20 border border-primary/30 rounded-full px-3 py-1">
               <div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
               <span class="text-xs font-medium text-primary uppercase">
-                ${this.currentMode === 'plan' ? 'Plan Mode' : 'Auto Accept'}
+                ${this.currentMode === 'plan' ? t('palette.planMode.title') : t('palette.autoAccept.title')}
               </span>
             </div>
           </div>

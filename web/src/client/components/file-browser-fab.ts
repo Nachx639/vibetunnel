@@ -1,5 +1,6 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 
 @customElement('file-browser-fab')
 export class FileBrowserFAB extends LitElement {
@@ -78,6 +79,8 @@ export class FileBrowserFAB extends LitElement {
     }
   `;
 
+  protected readonly i18n = new LocaleController(this);
+
   @property({ type: Boolean }) visible = true;
 
   private handleClick() {
@@ -89,8 +92,9 @@ export class FileBrowserFAB extends LitElement {
       return html``;
     }
 
+    const label = `${t('menu.browseFiles')} (⌘O)`;
     return html`
-      <button class="fab" @click=${this.handleClick} title="Browse Files (⌘O)">
+      <button class="fab" @click=${this.handleClick} title=${label}>
         <svg
           class="icon"
           fill="currentColor"
@@ -100,7 +104,7 @@ export class FileBrowserFAB extends LitElement {
           <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
         </svg>
       </button>
-      <div class="tooltip">Browse Files (⌘O)</div>
+      <div class="tooltip">${label}</div>
     `;
   }
 }

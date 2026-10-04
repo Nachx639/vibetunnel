@@ -18,6 +18,7 @@
 import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
+import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import { detectMobile } from '../utils/mobile-utils.js';
 import './modal-wrapper.js';
@@ -59,8 +60,8 @@ export interface CommandPaletteCallbacks {
 
 interface CommandItem {
   id: string;
-  title: string;
-  description: string;
+  title: MessageKey;
+  description: MessageKey;
   icon: string;
   category: 'claude' | 'clipboard' | 'commands' | 'session' | 'files' | 'terminal' | 'navigation';
   action: keyof CommandPaletteCallbacks;
@@ -75,6 +76,8 @@ export class CommandPalette extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Boolean }) visible = false;
   @property({ type: Object }) session: Session | null = null;
@@ -94,8 +97,8 @@ export class CommandPalette extends LitElement {
     // Claude Code modes
     {
       id: 'claude-plan-mode',
-      title: 'Plan Mode',
-      description: 'Let Claude plan before executing changes',
+      title: 'palette.planMode.title',
+      description: 'palette.planMode.description',
       icon: '📋',
       category: 'claude',
       action: 'onTogglePlanMode',
@@ -104,8 +107,8 @@ export class CommandPalette extends LitElement {
     },
     {
       id: 'claude-auto-accept',
-      title: 'Auto Accept',
-      description: "Automatically accept Claude's edits",
+      title: 'palette.autoAccept.title',
+      description: 'palette.autoAccept.description',
       icon: '⚡',
       category: 'claude',
       action: 'onToggleAutoAccept',
@@ -113,8 +116,8 @@ export class CommandPalette extends LitElement {
     },
     {
       id: 'claude-normal-mode',
-      title: 'Normal Mode',
-      description: 'Standard Claude interaction mode',
+      title: 'palette.normalMode.title',
+      description: 'palette.normalMode.description',
       icon: '💬',
       category: 'claude',
       action: 'onToggleNormalMode',
@@ -123,8 +126,8 @@ export class CommandPalette extends LitElement {
     // Clipboard operations
     {
       id: 'paste-clipboard',
-      title: 'Paste from Clipboard',
-      description: 'Paste current clipboard content',
+      title: 'upload.paste',
+      description: 'palette.paste.description',
       icon: '📋',
       category: 'clipboard',
       action: 'onPasteFromClipboard',
@@ -133,8 +136,8 @@ export class CommandPalette extends LitElement {
     },
     {
       id: 'clipboard-history',
-      title: 'Clipboard History',
-      description: 'View and select from clipboard history',
+      title: 'clipboard.historyTitle',
+      description: 'palette.clipboardHistory.description',
       icon: '📝',
       category: 'clipboard',
       action: 'onShowClipboardHistory',
@@ -143,8 +146,8 @@ export class CommandPalette extends LitElement {
     // Slash commands
     {
       id: 'slash-commands',
-      title: 'Slash Commands',
-      description: 'Access Claude Code slash commands',
+      title: 'slash.modal.title',
+      description: 'palette.slashCommands.description',
       icon: '/',
       category: 'commands',
       action: 'onShowSlashCommands',
@@ -155,8 +158,8 @@ export class CommandPalette extends LitElement {
     // Session management
     {
       id: 'new-session',
-      title: 'New Session',
-      description: 'Create a new terminal session',
+      title: 'actionBar.newSession',
+      description: 'palette.newSession.description',
       icon: '➕',
       category: 'session',
       action: 'onCreateSession',
@@ -164,8 +167,8 @@ export class CommandPalette extends LitElement {
     },
     {
       id: 'terminate-session',
-      title: 'Terminate Session',
-      description: 'End the current session',
+      title: 'menu.terminateSession',
+      description: 'palette.terminateSession.description',
       icon: '🛑',
       category: 'session',
       action: 'onTerminateSession',
@@ -173,8 +176,8 @@ export class CommandPalette extends LitElement {
     },
     {
       id: 'clear-session',
-      title: 'Clear Session',
-      description: 'Clear session output',
+      title: 'menu.clearSession',
+      description: 'palette.clearSession.description',
       icon: '🧹',
       category: 'session',
       action: 'onClearSession',
@@ -183,8 +186,8 @@ export class CommandPalette extends LitElement {
     // File operations
     {
       id: 'browse-files',
-      title: 'Browse Files',
-      description: 'Open file browser',
+      title: 'menu.browseFiles',
+      description: 'palette.browseFiles.description',
       icon: '📁',
       category: 'files',
       action: 'onOpenFileBrowser',
@@ -192,16 +195,16 @@ export class CommandPalette extends LitElement {
     },
     {
       id: 'upload-file',
-      title: 'Upload File',
-      description: 'Upload a file to the session',
+      title: 'palette.uploadFile.title',
+      description: 'palette.uploadFile.description',
       icon: '📤',
       category: 'files',
       action: 'onUploadFile',
     },
     {
       id: 'upload-image',
-      title: 'Upload Image',
-      description: 'Upload an image for analysis',
+      title: 'menu.uploadImage',
+      description: 'palette.uploadImage.description',
       icon: '🖼️',
       category: 'files',
       action: 'onUploadImage',
@@ -210,16 +213,16 @@ export class CommandPalette extends LitElement {
     // Terminal settings
     {
       id: 'terminal-settings',
-      title: 'Terminal Settings',
-      description: 'Configure terminal appearance',
+      title: 'terminalSettings.title',
+      description: 'palette.terminalSettings.description',
       icon: '⚙️',
       category: 'terminal',
       action: 'onOpenTerminalSettings',
     },
     {
       id: 'toggle-theme',
-      title: 'Toggle Theme',
-      description: 'Switch between light/dark theme',
+      title: 'palette.toggleTheme.title',
+      description: 'palette.toggleTheme.description',
       icon: '🌓',
       category: 'terminal',
       action: 'onToggleTheme',
@@ -229,8 +232,8 @@ export class CommandPalette extends LitElement {
     // Navigation
     {
       id: 'toggle-sidebar',
-      title: 'Toggle Sidebar',
-      description: 'Show/hide session sidebar',
+      title: 'palette.toggleSidebar.title',
+      description: 'palette.toggleSidebar.description',
       icon: '📋',
       category: 'navigation',
       action: 'onToggleSidebar',
@@ -238,8 +241,8 @@ export class CommandPalette extends LitElement {
     },
     {
       id: 'go-back',
-      title: 'Go Back',
-      description: 'Return to session list',
+      title: 'palette.goBack.title',
+      description: 'palette.goBack.description',
       icon: '⬅️',
       category: 'navigation',
       action: 'onNavigateBack',
@@ -303,8 +306,8 @@ export class CommandPalette extends LitElement {
     } else {
       this.filteredCommands = this.commands.filter(
         (cmd) =>
-          cmd.title.toLowerCase().includes(query) ||
-          cmd.description.toLowerCase().includes(query) ||
+          t(cmd.title).toLowerCase().includes(query) ||
+          t(cmd.description).toLowerCase().includes(query) ||
           cmd.category.toLowerCase().includes(query) ||
           cmd.shortcut?.toLowerCase().includes(query)
       );
@@ -431,7 +434,7 @@ export class CommandPalette extends LitElement {
         .contentClass=${`command-palette-modal font-mono text-sm w-full max-w-[90vw] sm:max-w-2xl ${this.isMobile ? 'max-h-[70vh]' : 'max-h-[70vh]'}`}
         .modalClass="command-palette-backdrop" 
         style="z-index: 1050;"
-        ariaLabel="Command Palette"
+        .ariaLabel=${t('palette.title')}
         @close=${this.handleClose}
       >
         <div class="bg-surface border border-border rounded-xl shadow-2xl overflow-hidden" style="margin-bottom: 100px;">
@@ -445,7 +448,7 @@ export class CommandPalette extends LitElement {
               </div>
               <input
                 type="text"
-                placeholder="${this.isMobile ? 'Search commands...' : 'Search commands... (Ctrl+Shift+P)'}"
+                placeholder=${this.isMobile ? t('palette.searchPlaceholder') : `${t('palette.searchPlaceholder')} (Ctrl+Shift+P)`}
                 class="flex-1 bg-transparent border-none outline-none text-text placeholder-text-muted text-base"
                 .value=${this.searchQuery}
                 @input=${this.handleSearchInput}
@@ -463,7 +466,7 @@ export class CommandPalette extends LitElement {
                     this.searchQuery = '';
                     this.searchInputRef?.focus();
                   }}
-                  title="Clear search"
+                  title=${t('palette.clearSearch')}
                 >
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -500,7 +503,7 @@ export class CommandPalette extends LitElement {
                   <div class="flex-1 min-w-0">
                     <div class="flex items-baseline justify-between gap-2">
                       <h3 class="font-medium text-text truncate ${command.highlight ? 'text-primary' : ''}">
-                        ${command.title}
+                        ${t(command.title)}
                       </h3>
                       ${
                         command.shortcut
@@ -513,7 +516,7 @@ export class CommandPalette extends LitElement {
                       }
                     </div>
                     <p class="text-sm text-text-muted mt-1 leading-tight">
-                      ${command.description}
+                      ${t(command.description)}
                     </p>
                   </div>
                   
@@ -538,8 +541,8 @@ export class CommandPalette extends LitElement {
                 <svg width="48" height="48" viewBox="0 0 20 20" fill="currentColor" class="mx-auto mb-4 opacity-50">
                   <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
                 </svg>
-                <p class="text-lg font-medium mb-2">No commands found</p>
-                <p class="text-sm">Try a different search term</p>
+                <p class="text-lg font-medium mb-2">${t('palette.empty')}</p>
+                <p class="text-sm">${t('palette.emptyHint')}</p>
               </div>
             `
             }
@@ -549,11 +552,11 @@ export class CommandPalette extends LitElement {
           <div class="border-t border-border bg-bg-secondary px-4 py-3">
             <div class="flex items-center justify-between text-xs text-text-muted">
               <div class="flex items-center gap-4">
-                <span class="hidden sm:inline">↑↓ Navigate</span>
-                <span class="hidden sm:inline">↵ Execute</span>
-                <span class="hidden sm:inline">Esc Close</span>
+                <span class="hidden sm:inline">↑↓ ${t('palette.navigate')}</span>
+                <span class="hidden sm:inline">↵ ${t('palette.execute')}</span>
+                <span class="hidden sm:inline">Esc ${t('common.close')}</span>
               </div>
-              <span>${this.filteredCommands.length} commands</span>
+              <span>${t('palette.count', { n: this.filteredCommands.length })}</span>
             </div>
           </div>
         </div>

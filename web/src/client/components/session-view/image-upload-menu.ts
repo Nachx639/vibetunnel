@@ -6,6 +6,7 @@
  */
 import { html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../../i18n/index.js';
 import { Z_INDEX } from '../../utils/constants.js';
 
 // Delay to ensure menu close animation completes before action
@@ -17,6 +18,8 @@ export class ImageUploadMenu extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Function }) onPasteImage?: () => void;
   @property({ type: Function }) onSelectImage?: () => void;
@@ -124,9 +127,7 @@ export class ImageUploadMenu extends LitElement {
       this.showMenu = false;
       this.focusedIndex = -1;
       // Focus the menu button
-      const button = this.querySelector(
-        'button[aria-label="Upload image menu"]'
-      ) as HTMLButtonElement;
+      const button = this.querySelector('button[data-menu-button]') as HTMLButtonElement;
       button?.focus();
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -182,8 +183,8 @@ export class ImageUploadMenu extends LitElement {
     if (this.hasClipboardImage) {
       items.push({
         id: 'paste',
-        label: 'Paste from Clipboard',
-        ariaLabel: 'Paste image from clipboard',
+        label: t('upload.paste'),
+        ariaLabel: t('upload.paste.aria'),
         action: () => this.handleAction(this.onPasteImage),
         icon: html`<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M5.75 1a.75.75 0 00-.75.75v3c0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75v-3a.75.75 0 00-.75-.75h-4.5zM6.5 4V2.5h3V4h-3z"/>
@@ -194,8 +195,8 @@ export class ImageUploadMenu extends LitElement {
     }
     items.push({
       id: 'select',
-      label: 'Select Image',
-      ariaLabel: 'Select image from device',
+      label: t('upload.select'),
+      ariaLabel: t('upload.select.aria'),
       action: () => this.handleAction(this.onSelectImage),
       icon: html`<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path d="M14.5 2h-13C.67 2 0 2.67 0 3.5v9c0 .83.67 1.5 1.5 1.5h13c.83 0 1.5-.67 1.5-1.5v-9c0-.83-.67-1.5-1.5-1.5zM5.5 5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM13 11H3l2.5-3L7 10l2.5-3L13 11z"/>
@@ -204,8 +205,8 @@ export class ImageUploadMenu extends LitElement {
     if (this.isMobile && this.hasCamera) {
       items.push({
         id: 'camera',
-        label: 'Camera',
-        ariaLabel: 'Take photo with camera',
+        label: t('upload.camera'),
+        ariaLabel: t('upload.camera.aria'),
         action: () => this.handleAction(this.onOpenCamera),
         icon: html`<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M10.5 2.5a.5.5 0 00-.5-.5H6a.5.5 0 00-.5.5V3H3a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2h-2.5v-.5zM6.5 3h3v.5h-3V3zM13 4a1 1 0 011 1v6a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1h10z"/>
@@ -218,8 +219,8 @@ export class ImageUploadMenu extends LitElement {
     }
     items.push({
       id: 'browse',
-      label: 'Browse Files',
-      ariaLabel: 'Browse files on device',
+      label: t('menu.browseFiles'),
+      ariaLabel: t('upload.browse.aria'),
       action: () => this.handleAction(this.onBrowseFiles),
       icon: html`<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path d="M1.75 1h5.5c.966 0 1.75.784 1.75 1.75v1h4c.966 0 1.75.784 1.75 1.75v7.75A1.75 1.75 0 0113 15H3a1.75 1.75 0 01-1.75-1.75V2.75C1.25 1.784 1.784 1 1.75 1zM2.75 2.5v10.75c0 .138.112.25.25.25h10a.25.25 0 00.25-.25V5.5a.25.25 0 00-.25-.25H8.75v-2.5a.25.25 0 00-.25-.25h-5.5a.25.25 0 00-.25.25z"/>
@@ -243,13 +244,14 @@ export class ImageUploadMenu extends LitElement {
   render() {
     return html`
       <div class="relative">
-        <vt-tooltip content="Upload Image (⌘U)" .show=${!this.isMobile}>
+        <vt-tooltip content="${t('menu.uploadImage')} (⌘U)" .show=${!this.isMobile}>
           <button
             class="bg-bg-tertiary border border-border rounded-lg p-2 font-mono text-text-muted transition-all duration-200 hover:text-primary hover:bg-surface-hover hover:border-primary hover:shadow-sm flex-shrink-0"
             @click=${this.toggleMenu}
             @keydown=${this.handleMenuButtonKeyDown}
-            title="Upload Image"
-            aria-label="Upload image menu"
+            title=${t('menu.uploadImage')}
+            aria-label=${t('upload.menu')}
+            data-menu-button
             aria-expanded=${this.showMenu}
             data-testid="image-upload-button"
           >

@@ -27,6 +27,7 @@
  * - `input`: Skipped entirely during composition, normal handling otherwise
  */
 
+import { t } from '../../i18n/index.js';
 import { Z_INDEX } from '../../utils/constants.js';
 import { createLogger } from '../../utils/logger.js';
 import type { InputManager } from './input-manager.js';
@@ -900,7 +901,7 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
     this.hiddenInput.style.borderRadius = '8px';
     this.hiddenInput.style.padding = '8px';
     this.hiddenInput.style.zIndex = '10000';
-    this.hiddenInput.placeholder = 'Long-press to paste';
+    this.hiddenInput.placeholder = t('keyboard.longPressToPaste');
 
     const restoreStyles = () => {
       if (!this.hiddenInput) return;
@@ -1121,7 +1122,7 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
     const input = document.createElement('input');
     input.type = 'text';
     input.id = 'vibe-visible-keyboard-input';
-    input.placeholder = 'Type here...';
+    input.placeholder = t('keyboard.typeHere');
     input.style.position = 'fixed';
     input.style.bottom = '80px'; // Just above your "Show Keyboard" button
     input.style.left = '50%';

@@ -1,8 +1,16 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('keyboard-capture-indicator');
+
+/** "Double-tap {key} to toggle" cut around {key}, so the key can be rendered in its own element. */
+function toggleHintParts(): [before: string, after: string] {
+  const marker = '\u0000';
+  const [before, after = ''] = t('keyboardCapture.toggleHint', { key: marker }).split(marker);
+  return [before, after];
+}
 
 @customElement('keyboard-capture-indicator')
 export class KeyboardCaptureIndicator extends LitElement {
@@ -10,6 +18,8 @@ export class KeyboardCaptureIndicator extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Boolean }) active = true;
   @property({ type: Boolean }) isMobile = false;
@@ -86,33 +96,33 @@ export class KeyboardCaptureIndicator extends LitElement {
   private getOSSpecificShortcuts() {
     if (this.isMacOS) {
       return [
-        { key: 'Cmd+1...9', desc: 'Switch to session 1 to 9' },
-        { key: 'Cmd+0', desc: 'Switch to session 10' },
-        { key: 'Cmd+A', desc: 'Line start (not select all)' },
-        { key: 'Cmd+E', desc: 'Line end' },
-        { key: 'Cmd+R', desc: 'History search (not reload)' },
-        { key: 'Cmd+L', desc: 'Clear screen (not address bar)' },
-        { key: 'Cmd+D', desc: 'EOF/Exit (not bookmark)' },
-        { key: 'Cmd+F', desc: 'Forward char (not find)' },
-        { key: 'Cmd+P', desc: 'Previous cmd (not print)' },
-        { key: 'Cmd+U', desc: 'Delete to start (not view source)' },
-        { key: 'Cmd+K', desc: 'Delete to end (not search bar)' },
-        { key: 'Option+D', desc: 'Delete word forward' },
+        { key: 'Cmd+1...9', desc: t('keyboardCapture.switchSessions') },
+        { key: 'Cmd+0', desc: t('keyboardCapture.switchSession10') },
+        { key: 'Cmd+A', desc: t('keyboardCapture.lineStart') },
+        { key: 'Cmd+E', desc: t('keyboardCapture.lineEnd') },
+        { key: 'Cmd+R', desc: t('keyboardCapture.historySearch') },
+        { key: 'Cmd+L', desc: t('keyboardCapture.clearScreen') },
+        { key: 'Cmd+D', desc: t('keyboardCapture.eof') },
+        { key: 'Cmd+F', desc: t('keyboardCapture.forwardChar') },
+        { key: 'Cmd+P', desc: t('keyboardCapture.previousCommand') },
+        { key: 'Cmd+U', desc: t('keyboardCapture.deleteToStart') },
+        { key: 'Cmd+K', desc: t('keyboardCapture.deleteToEnd') },
+        { key: 'Option+D', desc: t('keyboardCapture.deleteWordForward') },
       ];
     } else {
       return [
-        { key: 'Ctrl+1...9', desc: 'Switch to session 1 to 9' },
-        { key: 'Ctrl+0', desc: 'Switch to session 10' },
-        { key: 'Ctrl+A', desc: 'Line start (not select all)' },
-        { key: 'Ctrl+E', desc: 'Line end' },
-        { key: 'Ctrl+R', desc: 'History search (not reload)' },
-        { key: 'Ctrl+L', desc: 'Clear screen (not address bar)' },
-        { key: 'Ctrl+D', desc: 'EOF/Exit (not bookmark)' },
-        { key: 'Ctrl+F', desc: 'Forward char (not find)' },
-        { key: 'Ctrl+P', desc: 'Previous cmd (not print)' },
-        { key: 'Ctrl+U', desc: 'Delete to start (not view source)' },
-        { key: 'Ctrl+K', desc: 'Delete to end (not search bar)' },
-        { key: 'Alt+D', desc: 'Delete word forward' },
+        { key: 'Ctrl+1...9', desc: t('keyboardCapture.switchSessions') },
+        { key: 'Ctrl+0', desc: t('keyboardCapture.switchSession10') },
+        { key: 'Ctrl+A', desc: t('keyboardCapture.lineStart') },
+        { key: 'Ctrl+E', desc: t('keyboardCapture.lineEnd') },
+        { key: 'Ctrl+R', desc: t('keyboardCapture.historySearch') },
+        { key: 'Ctrl+L', desc: t('keyboardCapture.clearScreen') },
+        { key: 'Ctrl+D', desc: t('keyboardCapture.eof') },
+        { key: 'Ctrl+F', desc: t('keyboardCapture.forwardChar') },
+        { key: 'Ctrl+P', desc: t('keyboardCapture.previousCommand') },
+        { key: 'Ctrl+U', desc: t('keyboardCapture.deleteToStart') },
+        { key: 'Ctrl+K', desc: t('keyboardCapture.deleteToEnd') },
+        { key: 'Alt+D', desc: t('keyboardCapture.deleteWordForward') },
       ];
     }
   }
@@ -143,29 +153,26 @@ export class KeyboardCaptureIndicator extends LitElement {
       ${this.animating ? 'animating' : ''}
     `.trim();
 
+    const toggleHint = toggleHintParts();
     const _tooltipContent =
       this.showDynamicTooltip && this.lastCapturedShortcut
         ? html`<div class="tooltip dynamic">${this.lastCapturedShortcut}</div>`
         : html`
           <div class="tooltip">
             <div>
-              <strong>Keyboard Capture ${this.active ? 'ON' : 'OFF'}</strong>
+              <strong>${this.active ? t('keyboardCapture.on') : t('keyboardCapture.off')}</strong>
             </div>
             <div style="margin-top: 0.5em;">
-              ${
-                this.active
-                  ? 'Terminal receives priority for shortcuts'
-                  : 'Browser shortcuts work normally'
-              }
+              ${this.active ? t('keyboardCapture.activeHint') : t('keyboardCapture.inactiveHint')}
             </div>
             <div style="margin-top: 0.5em;">
-              Double-tap <span class="shortcut-key">Escape</span> to toggle
+              ${toggleHint[0]}<span class="shortcut-key">Escape</span>${toggleHint[1]}
             </div>
             ${
               this.active
                 ? html`
               <div class="shortcut-list">
-                <div style="margin-bottom: 0.5em; font-weight: bold;">Captured for terminal:</div>
+                <div style="margin-bottom: 0.5em; font-weight: bold;">${t('keyboardCapture.captured')}</div>
                 ${this.getOSSpecificShortcuts().map(
                   ({ key, desc }) => html`
                   <div class="shortcut-item">
@@ -221,23 +228,19 @@ export class KeyboardCaptureIndicator extends LitElement {
             "
           >
             <div>
-              <strong>Keyboard Capture ${this.active ? 'ON' : 'OFF'}</strong>
+              <strong>${this.active ? t('keyboardCapture.on') : t('keyboardCapture.off')}</strong>
             </div>
             <div style="margin-top: 0.5em;">
-              ${
-                this.active
-                  ? 'Terminal receives priority for shortcuts'
-                  : 'Browser shortcuts work normally'
-              }
+              ${this.active ? t('keyboardCapture.activeHint') : t('keyboardCapture.inactiveHint')}
             </div>
             <div style="margin-top: 0.5em;">
-              Double-tap <strong>Escape</strong> to toggle
+              ${toggleHint[0]}<strong>Escape</strong>${toggleHint[1]}
             </div>
             ${
               this.active
                 ? html`
               <div style="margin-top: 0.5em; padding-top: 0.5em; border-top: 1px solid #333;">
-                <div style="margin-bottom: 0.5em; font-weight: bold;">Captured for terminal:</div>
+                <div style="margin-bottom: 0.5em; font-weight: bold;">${t('keyboardCapture.captured')}</div>
                 ${this.getOSSpecificShortcuts().map(
                   ({ key, desc }) => html`
                   <div style="display: flex; justify-content: space-between; gap: 1em; margin: 0.25em 0; font-family: monospace;">

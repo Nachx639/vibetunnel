@@ -1,3 +1,5 @@
+import { type MessageKey, t } from '../i18n/index.js';
+
 interface QuickKeyAttributes {
   key: string;
   label: string;
@@ -193,6 +195,30 @@ export function getQuickKeyDefinition(key: QuickKeyId): QuickKeyDefinition {
     throw new Error(`Unknown quick key: ${key}`);
   }
   return definition;
+}
+
+/** Keys whose label is a word get translated; key caps (Esc, Tab, Ctrl, PgUp, Del...) stay as is. */
+const WORD_LABEL_KEYS: Partial<Record<string, MessageKey>> = {
+  Paste: 'quickKeys.paste',
+  Home: 'quickKeys.home',
+  End: 'quickKeys.end',
+};
+
+/** The label to show for a quick key in the active language. */
+export function getQuickKeyDisplayLabel(key: string, label: string): string {
+  const messageKey = WORD_LABEL_KEYS[key];
+  return messageKey ? t(messageKey) : label;
+}
+
+const PRESET_NAME_KEYS: Partial<Record<string, MessageKey>> = {
+  default: 'quickKeys.preset.default',
+  compact: 'quickKeys.preset.compact',
+};
+
+/** Preset name in the active language. */
+export function getQuickKeysPresetName(preset: { id: string; name: string }): string {
+  const messageKey = PRESET_NAME_KEYS[preset.id];
+  return messageKey ? t(messageKey) : preset.name;
 }
 
 export function getHiddenQuickKeys(layout: QuickKeysLayout): QuickKeyDefinition[] {

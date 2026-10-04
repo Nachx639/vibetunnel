@@ -1,9 +1,12 @@
 import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import {
   DEFAULT_QUICK_KEYS_LAYOUT,
   getHiddenQuickKeys,
   getQuickKeyDefinition,
+  getQuickKeyDisplayLabel,
+  getQuickKeysPresetName,
   loadQuickKeysLayout,
   QUICK_KEYS_PRESETS,
   type QuickKeyId,
@@ -24,6 +27,7 @@ export class QuickKeysEditor extends LitElement {
   @state() private draftLayout: QuickKeysLayout = [];
   @state() private selectedKey: QuickKeyId | null = null;
   @state() private saveError = false;
+  protected readonly i18n = new LocaleController(this);
 
   protected willUpdate(changedProperties: PropertyValues) {
     if (changedProperties.has('visible') && this.visible) {
@@ -141,7 +145,11 @@ export class QuickKeysEditor extends LitElement {
   private renderKey(key: QuickKeyId, rowIndex?: number) {
     const definition = getQuickKeyDefinition(key);
     const selected = this.selectedKey === key;
-    const location = rowIndex === undefined ? 'Hidden' : `Row ${rowIndex + 1}`;
+    const label = getQuickKeyDisplayLabel(key, definition.label);
+    const location =
+      rowIndex === undefined
+        ? t('quickKeys.editor.hidden')
+        : t('quickKeys.editor.row', { n: rowIndex + 1 });
 
     return html`
       <button
@@ -152,14 +160,14 @@ export class QuickKeysEditor extends LitElement {
             : 'border-border bg-bg-tertiary text-text-muted hover:border-primary/60 hover:text-primary'
         }"
         aria-pressed=${selected ? 'true' : 'false'}
-        aria-label="${definition.label}, ${location}"
+        aria-label="${label}, ${location}"
         data-key=${key}
         @click=${() => {
           this.selectedKey = key;
           this.saveError = false;
         }}
       >
-        ${definition.label}
+        ${label}
       </button>
     `;
   }
@@ -170,7 +178,7 @@ export class QuickKeysEditor extends LitElement {
     const position = this.getSelectedPosition();
     if (!position) {
       return html`
-        <div class="flex flex-wrap gap-2" aria-label="Add selected key">
+        <div class="flex flex-wrap gap-2" aria-label=${t('quickKeys.editor.addSelected')}>
           ${this.draftLayout.map(
             (row, rowIndex) => html`
               <button
@@ -179,7 +187,7 @@ export class QuickKeysEditor extends LitElement {
                 ?disabled=${row.length >= MAX_KEYS_PER_ROW}
                 @click=${() => this.moveSelectedToRow(rowIndex)}
               >
-                Add to row ${rowIndex + 1}
+                ${t('quickKeys.editor.addToRow', { n: rowIndex + 1 })}
               </button>
             `
           )}
@@ -189,14 +197,14 @@ export class QuickKeysEditor extends LitElement {
 
     const row = this.draftLayout[position.row];
     return html`
-      <div class="flex flex-wrap gap-2" aria-label="Reorder selected key">
+      <div class="flex flex-wrap gap-2" aria-label=${t('quickKeys.editor.reorderSelected')}>
         <button
           type="button"
           class="btn-secondary text-xs px-3 py-2"
           ?disabled=${position.index === 0}
           @click=${() => this.moveSelectedWithinRow(-1)}
         >
-          Move earlier
+          ${t('quickKeys.editor.moveEarlier')}
         </button>
         <button
           type="button"
@@ -204,7 +212,7 @@ export class QuickKeysEditor extends LitElement {
           ?disabled=${position.index === row.length - 1}
           @click=${() => this.moveSelectedWithinRow(1)}
         >
-          Move later
+          ${t('quickKeys.editor.moveLater')}
         </button>
         ${this.draftLayout.map((target, rowIndex) =>
           rowIndex === position.row
@@ -216,7 +224,7 @@ export class QuickKeysEditor extends LitElement {
                   ?disabled=${row.length === 1 || target.length >= MAX_KEYS_PER_ROW}
                   @click=${() => this.moveSelectedToRow(rowIndex)}
                 >
-                  Move to row ${rowIndex + 1}
+                  ${t('quickKeys.editor.moveToRow', { n: rowIndex + 1 })}
                 </button>
               `
         )}
@@ -226,7 +234,7 @@ export class QuickKeysEditor extends LitElement {
           ?disabled=${row.length === 1}
           @click=${this.hideSelected}
         >
-          Hide
+          ${t('quickKeys.editor.hide')}
         </button>
       </div>
     `;
@@ -261,16 +269,16 @@ export class QuickKeysEditor extends LitElement {
           <div class="p-4 border-b border-border/50 flex items-center justify-between">
             <div>
               <h2 id="quick-keys-editor-title" class="text-primary text-lg font-bold">
-                Mobile Quick Keys
+                ${t('settings.quickKeys')}
               </h2>
               <p class="text-muted text-xs mt-1">
-                Stored in this browser. Done remains fixed.
+                ${t('quickKeys.editor.subtitle', { done: t('quickKeys.done') })}
               </p>
             </div>
             <button
               type="button"
               class="min-h-11 min-w-11 text-text-muted hover:text-primary"
-              aria-label="Close quick keys editor"
+              aria-label=${t('quickKeys.editor.close')}
               @click=${this.handleClose}
             >
               ✕
@@ -279,7 +287,7 @@ export class QuickKeysEditor extends LitElement {
 
           <div class="flex-1 overflow-y-auto p-4 space-y-5">
             <div>
-              <h3 class="text-sm font-medium text-primary mb-2">Presets</h3>
+              <h3 class="text-sm font-medium text-primary mb-2">${t('quickKeys.editor.presets')}</h3>
               <div class="flex flex-wrap gap-2">
                 ${QUICK_KEYS_PRESETS.map(
                   (preset) => html`
@@ -288,7 +296,7 @@ export class QuickKeysEditor extends LitElement {
                       class="btn-secondary text-xs px-3 py-2"
                       @click=${() => this.applyPreset(preset.layout.map((row) => [...row]))}
                     >
-                      ${preset.name}
+                      ${getQuickKeysPresetName(preset)}
                     </button>
                   `
                 )}
@@ -300,7 +308,7 @@ export class QuickKeysEditor extends LitElement {
                 (row, rowIndex) => html`
                   <section class="p-3 bg-bg rounded-lg border border-border/50">
                     <div class="flex items-center justify-between mb-2">
-                      <h3 class="text-sm font-medium text-primary">Row ${rowIndex + 1}</h3>
+                      <h3 class="text-sm font-medium text-primary">${t('quickKeys.editor.row', { n: rowIndex + 1 })}</h3>
                       <span class="text-xs text-muted">${row.length}/${MAX_KEYS_PER_ROW}</span>
                     </div>
                     <div class="flex flex-wrap gap-1.5">
@@ -309,7 +317,7 @@ export class QuickKeysEditor extends LitElement {
                         rowIndex === 1
                           ? html`<span
                             class="min-h-11 px-3 py-2 rounded border border-dashed border-border text-xs text-muted flex items-center"
-                            >Done</span
+                            >${t('quickKeys.done')}</span
                           >`
                           : ''
                       }
@@ -326,7 +334,7 @@ export class QuickKeysEditor extends LitElement {
                         class="btn-secondary text-xs px-3 py-2"
                         @click=${this.addRow}
                       >
-                        Add third row
+                        ${t('quickKeys.editor.addRow')}
                       </button>
                     `
                     : html`
@@ -335,7 +343,7 @@ export class QuickKeysEditor extends LitElement {
                         class="btn-secondary text-xs px-3 py-2"
                         @click=${this.removeThirdRow}
                       >
-                        Remove third row
+                        ${t('quickKeys.editor.removeRow')}
                       </button>
                     `
                 }
@@ -346,20 +354,20 @@ export class QuickKeysEditor extends LitElement {
               <h3 class="text-sm font-medium text-primary mb-2">
                 ${
                   selectedDefinition
-                    ? html`Selected: <span class="font-mono">${selectedDefinition.label}</span>`
-                    : 'Select a key'
+                    ? html`${t('quickKeys.editor.selected')} <span class="font-mono">${getQuickKeyDisplayLabel(selectedDefinition.key, selectedDefinition.label)}</span>`
+                    : t('quickKeys.editor.selectKey')
                 }
               </h3>
               ${this.renderSelectedControls()}
             </div>
 
             <div>
-              <h3 class="text-sm font-medium text-primary mb-2">Hidden keys</h3>
+              <h3 class="text-sm font-medium text-primary mb-2">${t('quickKeys.editor.hiddenKeys')}</h3>
               <div class="flex flex-wrap gap-1.5 min-h-11">
                 ${
                   hiddenKeys.length > 0
                     ? hiddenKeys.map(({ key }) => this.renderKey(key))
-                    : html`<span class="text-xs text-muted">All keys are visible.</span>`
+                    : html`<span class="text-xs text-muted">${t('quickKeys.editor.allVisible')}</span>`
                 }
               </div>
             </div>
@@ -368,7 +376,7 @@ export class QuickKeysEditor extends LitElement {
               this.saveError
                 ? html`
                   <p class="text-sm text-status-error" role="alert">
-                    Could not save this layout. Check browser storage permissions.
+                    ${t('quickKeys.editor.saveError')}
                   </p>
                 `
                 : ''
@@ -381,7 +389,7 @@ export class QuickKeysEditor extends LitElement {
               class="btn-secondary text-xs px-3 py-2"
               @click=${() => this.applyPreset(DEFAULT_QUICK_KEYS_LAYOUT)}
             >
-              Reset draft
+              ${t('quickKeys.editor.resetDraft')}
             </button>
             <div class="flex gap-2">
               <button
@@ -389,14 +397,14 @@ export class QuickKeysEditor extends LitElement {
                 class="btn-secondary text-xs px-3 py-2"
                 @click=${this.handleClose}
               >
-                Cancel
+                ${t('common.cancel')}
               </button>
               <button
                 type="button"
                 class="btn-primary text-xs px-4 py-2"
                 @click=${this.handleSave}
               >
-                Apply
+                ${t('quickKeys.editor.apply')}
               </button>
             </div>
           </div>

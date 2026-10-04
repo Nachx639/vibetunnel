@@ -12,6 +12,7 @@ import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { createRef, ref } from 'lit/directives/ref.js';
 import type { Session } from '../../shared/types.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 import { Z_INDEX } from '../utils/constants.js';
 import {
@@ -85,6 +86,8 @@ export class FileBrowser extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Boolean }) visible = false;
   @property({ type: String }) mode: 'browse' | 'select' = 'browse';
@@ -183,13 +186,13 @@ export class FileBrowser extends LitElement {
         // Clear any previous error message on successful load
         this.errorMessage = '';
       } else {
-        let errorMessage = 'Failed to load directory';
+        let errorMessage = t('files.error.load');
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
         } catch {
           // If response isn't JSON, use default message
-          errorMessage = `Failed to load directory (${response.status})`;
+          errorMessage = t('files.error.loadStatus', { status: response.status });
         }
 
         logger.error(`failed to load directory: ${response.status}`, new Error(errorMessage));
@@ -197,7 +200,7 @@ export class FileBrowser extends LitElement {
       }
     } catch (error) {
       logger.error('error loading directory:', error);
-      this.showErrorMessage('Network error loading directory');
+      this.showErrorMessage(t('files.error.network'));
     } finally {
       this.loading = false;
     }
@@ -406,7 +409,7 @@ export class FileBrowser extends LitElement {
     if (this.previewLoading) {
       return html`
         <div class="flex items-center justify-center h-full text-text-muted">
-          Loading preview...
+          ${t('files.loadingPreview')}
         </div>
       `;
     }
@@ -419,7 +422,7 @@ export class FileBrowser extends LitElement {
       return html`
         <div class="flex flex-col items-center justify-center h-full text-text-muted">
           ${UIIcons.preview}
-          <div>Select a file to preview</div>
+          <div>${t('files.selectToPreview')}</div>
         </div>
       `;
     }
@@ -453,10 +456,10 @@ export class FileBrowser extends LitElement {
         return html`
           <div class="flex flex-col items-center justify-center h-full text-text-muted">
             ${UIIcons.binary}
-            <div class="text-lg mb-2">Binary File</div>
-            <div class="text-sm">${this.preview.humanSize || `${this.preview.size} bytes`}</div>
+            <div class="text-lg mb-2">${t('files.binary')}</div>
+            <div class="text-sm">${this.preview.humanSize || t('files.bytes', { size: this.preview.size })}</div>
             <div class="text-sm text-text-muted mt-2">
-              ${this.preview.mimeType || 'Unknown type'}
+              ${this.preview.mimeType || t('files.unknownType')}
             </div>
           </div>
         `;
@@ -468,7 +471,7 @@ export class FileBrowser extends LitElement {
     if (!this.diffContent && !this.diff?.diff) {
       return html`
         <div class="flex items-center justify-center h-full text-text-muted">
-          No changes in this file
+          ${t('files.noChanges')}
         </div>
       `;
     }
@@ -553,7 +556,7 @@ export class FileBrowser extends LitElement {
                     d="M15 19l-7-7 7-7"
                   ></path>
                 </svg>
-                <span>Back</span>
+                <span>${t('files.back')}</span>
               </button>
               <div class="text-primary min-w-0 flex-1 overflow-hidden flex items-center gap-2">
                 ${
@@ -567,18 +570,18 @@ export class FileBrowser extends LitElement {
                         @keydown=${this.handlePathKeyDown}
                         @blur=${this.handlePathBlur}
                         class="bg-bg border border-border/50 rounded px-2 py-1 text-status-info text-xs sm:text-sm font-mono w-full min-w-0 focus:outline-none focus:border-primary"
-                        placeholder="Enter path and press Enter"
+                        placeholder=${t('files.pathPlaceholder')}
                       />
                     `
                     : html`
                       <div
                         class="text-status-info text-xs sm:text-sm overflow-hidden text-ellipsis whitespace-nowrap font-mono cursor-pointer hover:bg-light rounded px-1 py-1 -mx-1"
-                        title="${
-                          this.currentFullPath || this.currentPath || 'File Browser'
-                        } (click to edit)"
+                        title=${t('files.clickToEdit', {
+                          path: this.currentFullPath || this.currentPath || t('files.title'),
+                        })}
                         @click=${this.handlePathClick}
                       >
-                        ${formatPathForDisplay(this.currentFullPath || this.currentPath || 'File Browser')}
+                        ${formatPathForDisplay(this.currentFullPath || this.currentPath || t('files.title'))}
                       </div>
                     `
                 }
@@ -626,18 +629,18 @@ export class FileBrowser extends LitElement {
                       this.gitFilter === 'changed' ? 'bg-primary text-bg' : ''
                     }"
                     @click=${this.toggleGitFilter}
-                    title="Show only Git changes"
+                    title=${t('files.gitChanges.title')}
                   >
-                    Git Changes
+                    ${t('files.gitChanges')}
                   </button>
                   <button
                     class="btn-secondary text-xs px-2 py-1 font-mono ${
                       this.showHidden ? 'bg-primary text-bg' : ''
                     }"
                     @click=${this.toggleHidden}
-                    title="Show hidden files"
+                    title=${t('files.hidden.title')}
                   >
-                    Hidden Files
+                    ${t('files.hidden')}
                   </button>
                 </div>
               </div>
@@ -650,7 +653,7 @@ export class FileBrowser extends LitElement {
                   this.loading
                     ? html`
                       <div class="flex items-center justify-center h-full text-text-muted">
-                        Loading...
+                        ${t('files.loading')}
                       </div>
                     `
                     : html`
@@ -702,7 +705,7 @@ export class FileBrowser extends LitElement {
                               class="flex-1 text-sm whitespace-nowrap ${
                                 file.type === 'directory' ? 'text-status-info' : 'text-text'
                               }"
-                              title="${file.name}${file.isSymlink ? ' (symlink)' : ''}"
+                              title=${file.isSymlink ? t('files.symlinkTitle', { name: file.name }) : file.name}
                               >${file.name}</span
                             >
                             <span class="flex-shrink-0"
@@ -739,7 +742,7 @@ export class FileBrowser extends LitElement {
                                   this.mobileView = 'list';
                                 }}
                                 class="text-text-muted hover:text-primary transition-colors flex-shrink-0"
-                                title="Back to files"
+                                title=${t('files.backToFiles')}
                               >
                                 <svg
                                   class="w-5 h-5"
@@ -796,9 +799,9 @@ export class FileBrowser extends LitElement {
                                 @click=${() =>
                                   this.selectedFile &&
                                   this.handleCopyToClipboard(this.selectedFile.path)}
-                                title="Copy path to clipboard (⌘C)"
+                                title=${`${t('files.copyPath.title')} (⌘C)`}
                               >
-                                Copy Path
+                                ${t('files.copyPath')}
                               </button>
                               ${
                                 this.mode === 'browse'
@@ -806,9 +809,9 @@ export class FileBrowser extends LitElement {
                                     <button
                                       class="btn-primary text-xs px-2 py-1 font-mono"
                                       @click=${this.insertPathIntoTerminal}
-                                      title="Insert path into terminal (Enter)"
+                                      title=${`${t('files.insertPath.title')} (Enter)`}
                                     >
-                                      Insert Path
+                                      ${t('files.insertPath')}
                                     </button>
                                   `
                                   : ''
@@ -831,7 +834,7 @@ export class FileBrowser extends LitElement {
                                 }"
                                 @click=${this.toggleDiff}
                               >
-                                ${this.showDiff ? 'View File' : 'View Diff'}
+                                ${this.showDiff ? t('files.viewFile') : t('files.viewDiff')}
                               </button>
                             `
                             : ''
@@ -850,10 +853,10 @@ export class FileBrowser extends LitElement {
               ? html`
                 <div class="p-4 border-t border-border/50 flex gap-4">
                   <button class="btn-ghost font-mono flex-1" @click=${this.handleCancel}>
-                    Cancel
+                    ${t('common.cancel')}
                   </button>
                   <button class="btn-primary font-mono flex-1" @click=${this.handleSelect}>
-                    Select Directory
+                    ${t('files.selectDirectory')}
                   </button>
                 </div>
               `

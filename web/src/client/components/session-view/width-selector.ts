@@ -6,6 +6,7 @@
  */
 import { html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { LocaleController, type MessageKey, t } from '../../i18n/index.js';
 import { Z_INDEX } from '../../utils/constants.js';
 import { createLogger } from '../../utils/logger.js';
 import {
@@ -17,12 +18,40 @@ import { getTextColorEncoded } from '../../utils/theme-utils.js';
 
 const logger = createLogger('terminal-settings-modal');
 
+/** Generic theme names (Auto, Dark, Light) are translated; named themes (Dracula, Nord) are not. */
+const GENERIC_THEME_KEYS: Partial<Record<string, MessageKey>> = {
+  auto: 'appearance.auto',
+  dark: 'theme.dark',
+  light: 'theme.light',
+};
+
+function terminalThemeName(theme: { id: string; name: string }): string {
+  const key = GENERIC_THEME_KEYS[theme.id];
+  return key ? t(key) : theme.name;
+}
+
+/** Descriptions of the common widths in COMMON_TERMINAL_WIDTHS. */
+const WIDTH_DESCRIPTION_KEYS: Partial<Record<number, MessageKey>> = {
+  80: 'terminalSettings.width.80',
+  100: 'terminalSettings.width.100',
+  120: 'terminalSettings.width.120',
+  132: 'terminalSettings.width.132',
+  160: 'terminalSettings.width.160',
+};
+
+function widthDescription(width: { value: number; description: string }): string {
+  const key = WIDTH_DESCRIPTION_KEYS[width.value];
+  return key ? t(key) : width.description;
+}
+
 @customElement('terminal-settings-modal')
 export class TerminalSettingsModal extends LitElement {
   // Disable shadow DOM to use Tailwind
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   connectedCallback() {
     super.connectedCallback();
@@ -153,12 +182,12 @@ export class TerminalSettingsModal extends LitElement {
       >
         <div class="p-6">
           <div class="flex items-center justify-between mb-6">
-            <h2 id="terminal-settings-title" class="text-lg font-semibold text-text-bright">Terminal Settings</h2>
+            <h2 id="terminal-settings-title" class="text-lg font-semibold text-text-bright">${t('terminalSettings.title')}</h2>
             <button
               class="text-text-muted hover:text-primary transition-colors p-1"
               @click=${() => this.handleClose()}
-              title="Close"
-              aria-label="Close terminal settings"
+              title=${t('common.close')}
+              aria-label=${t('terminalSettings.close')}
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -170,7 +199,7 @@ export class TerminalSettingsModal extends LitElement {
           <div class="space-y-4">
             <!-- Width setting -->
             <div class="grid grid-cols-[120px_1fr] gap-4 items-center">
-              <label class="text-sm font-medium text-text-bright text-right">Width</label>
+              <label class="text-sm font-medium text-text-bright text-right">${t('terminalSettings.width')}</label>
               <select
                 id="width-select"
                 class="w-full bg-bg-secondary border border-border rounded-md pl-4 pr-10 py-3 text-sm font-mono text-text focus:border-primary focus:shadow-glow-sm cursor-pointer appearance-none"
@@ -191,15 +220,15 @@ export class TerminalSettingsModal extends LitElement {
                   }
                 }}
               >
-                <option value="0">Fit to Window</option>
+                <option value="0">${t('terminalSettings.fitToWindow')}</option>
                 ${COMMON_TERMINAL_WIDTHS.slice(1).map(
                   (width) => html`
                     <option value=${width.value}>
-                      ${width.description} (${width.value})
+                      ${widthDescription(width)} (${width.value})
                     </option>
                   `
                 )}
-                <option value="custom">Custom...</option>
+                <option value="custom">${t('terminalSettings.custom')}</option>
               </select>
             </div>
             
@@ -214,7 +243,7 @@ export class TerminalSettingsModal extends LitElement {
                     type="number"
                     min="20"
                     max="500"
-                    placeholder="Enter width (20-500)"
+                    placeholder=${t('terminalSettings.customPlaceholder')}
                     .value=${this.customWidth}
                     @input=${this.handleCustomWidthInput}
                     @keydown=${this.handleCustomWidthKeydown}
@@ -238,7 +267,7 @@ export class TerminalSettingsModal extends LitElement {
                       Number.parseInt(this.customWidth, 10) > 500
                     }
                   >
-                    Set
+                    ${t('terminalSettings.set')}
                   </button>
                 </div>
               </div>
@@ -248,7 +277,7 @@ export class TerminalSettingsModal extends LitElement {
           
             <!-- Font size setting -->
             <div class="grid grid-cols-[120px_1fr] gap-4 items-center">
-              <label class="text-sm font-medium text-text-bright text-right">Font Size</label>
+              <label class="text-sm font-medium text-text-bright text-right">${t('terminalSettings.fontSize')}</label>
               <div class="flex items-center gap-3 bg-bg-secondary border border-border rounded-md px-4 py-2">
                 <button
                   class="w-8 h-8 rounded-md border transition-all duration-200 flex items-center justify-center
@@ -259,7 +288,7 @@ export class TerminalSettingsModal extends LitElement {
                     }"
                   @click=${() => this.onFontSizeChange?.(this.terminalFontSize - 1)}
                   ?disabled=${this.terminalFontSize <= 8}
-                  title="Decrease font size"
+                  title=${t('terminalSettings.decreaseFont')}
                 >
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
@@ -277,7 +306,7 @@ export class TerminalSettingsModal extends LitElement {
                     }"
                   @click=${() => this.onFontSizeChange?.(this.terminalFontSize + 1)}
                   ?disabled=${this.terminalFontSize >= 32}
-                  title="Increase font size"
+                  title=${t('terminalSettings.increaseFont')}
                 >
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/>
@@ -289,7 +318,7 @@ export class TerminalSettingsModal extends LitElement {
             
             <!-- Theme setting -->
             <div class="grid grid-cols-[120px_1fr] gap-4 items-center">
-              <label class="text-sm font-medium text-text-bright text-right">Theme</label>
+              <label class="text-sm font-medium text-text-bright text-right">${t('terminalSettings.theme')}</label>
               <select
                 id="theme-select"
                 class="w-full bg-bg-secondary border border-border rounded-md pl-4 pr-10 py-3 text-sm font-mono text-text focus:border-primary focus:shadow-glow-sm cursor-pointer appearance-none"
@@ -309,7 +338,7 @@ export class TerminalSettingsModal extends LitElement {
                   this.onThemeChange?.(value);
                 }}
               >
-                ${TERMINAL_THEMES.map((t) => html`<option value=${t.id}>${t.name}</option>`)}
+                ${TERMINAL_THEMES.map((theme) => html`<option value=${theme.id}>${terminalThemeName(theme)}</option>`)}
               </select>
             </div>
             

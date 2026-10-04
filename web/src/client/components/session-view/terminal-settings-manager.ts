@@ -8,6 +8,7 @@
  * - Settings persistence via TerminalPreferencesManager
  */
 import type { Session } from '../../../shared/types.js';
+import { t } from '../../i18n/index.js';
 import { clearCharacterWidthCache } from '../../utils/cursor-position.js';
 import { createLogger } from '../../utils/logger.js';
 import {
@@ -142,7 +143,9 @@ export class TerminalSettingsManager {
   }
 
   getWidthTooltip(): string {
-    if (!this.callbacks) return 'Terminal width: Unlimited';
+    if (!this.callbacks) {
+      return t('terminalSettings.widthTooltip', { width: t('terminalSettings.unlimited') });
+    }
 
     const terminal = this.callbacks.getTerminalElement();
     const userOverrideWidth = terminal?.userOverrideWidth || false;
@@ -154,9 +157,16 @@ export class TerminalSettingsManager {
 
     // If no manual selection and we have initial dimensions that are limiting (only for tunneled sessions)
     if (this.terminalMaxCols === 0 && initialCols > 0 && !userOverrideWidth && isTunneledSession) {
-      return `Terminal width: Limited to native terminal width (${initialCols} columns)`;
+      return t('terminalSettings.widthTooltip', {
+        width: t('terminalSettings.nativeWidth', { n: initialCols }),
+      });
     } else {
-      return `Terminal width: ${this.terminalMaxCols === 0 ? 'Unlimited' : `${this.terminalMaxCols} columns`}`;
+      return t('terminalSettings.widthTooltip', {
+        width:
+          this.terminalMaxCols === 0
+            ? t('terminalSettings.unlimited')
+            : t('terminalSettings.columns', { n: this.terminalMaxCols }),
+      });
     }
   }
 

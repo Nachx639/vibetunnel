@@ -10,6 +10,7 @@
 
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
@@ -29,6 +30,8 @@ interface UploadResponse {
 
 @customElement('file-picker')
 export class FilePicker extends LitElement {
+  protected readonly i18n = new LocaleController(this);
+
   // Disable shadow DOM for Tailwind compatibility
   createRenderRoot() {
     return this;
@@ -94,7 +97,7 @@ export class FilePicker extends LitElement {
       logger.error('Failed to upload file:', error);
       this.dispatchEvent(
         new CustomEvent('file-error', {
-          detail: error instanceof Error ? error.message : 'Failed to upload file',
+          detail: error instanceof Error ? error.message : t('toast.uploadFailed'),
         })
       );
     }
@@ -250,7 +253,7 @@ export class FilePicker extends LitElement {
       <div class="fixed inset-0 bg-bg/80 backdrop-blur-sm flex items-center justify-center animate-fade-in" style="z-index: ${Z_INDEX.FILE_PICKER};" @click=${this.handleCancel}>
         <div class="bg-elevated border border-border/50 rounded-xl shadow-2xl p-8 m-4 max-w-sm w-full animate-scale-in" @click=${(e: Event) => e.stopPropagation()}>
           <h3 class="text-xl font-bold text-primary mb-6">
-            Select File
+            ${t('filePicker.title')}
           </h3>
           
           ${
@@ -258,7 +261,7 @@ export class FilePicker extends LitElement {
               ? html`
             <div class="mb-6">
               <div class="flex items-center justify-between mb-3">
-                <span class="text-sm text-text-muted font-mono">Uploading...</span>
+                <span class="text-sm text-text-muted font-mono">${t('filePicker.uploading')}</span>
                 <span class="text-sm text-primary font-mono font-medium">${Math.round(this.uploadProgress)}%</span>
               </div>
               <div class="w-full bg-bg-secondary rounded-full h-2 overflow-hidden">
@@ -279,7 +282,7 @@ export class FilePicker extends LitElement {
                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-5L9 2H4z" clip-rule="evenodd"/>
                 </svg>
-                <span class="font-mono">Choose File</span>
+                <span class="font-mono">${t('filePicker.choose')}</span>
               </button>
             </div>
           `
@@ -292,7 +295,7 @@ export class FilePicker extends LitElement {
               class="w-full bg-bg-secondary border border-border/50 text-primary font-mono py-3 px-6 rounded-lg transition-all duration-200 hover:bg-surface hover:border-primary active:scale-95"
               ?disabled=${this.uploading}
             >
-              Cancel
+              ${t('common.cancel')}
             </button>
           </div>
         </div>

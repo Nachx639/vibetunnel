@@ -1,5 +1,6 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('terminal-chat-view');
@@ -380,6 +381,7 @@ export class TerminalChatView extends LitElement {
   private lastInputTime = 0;
 
   @state() private messages: ChatMessage[] = [];
+  protected readonly i18n = new LocaleController(this);
 
   @query('#chat-input-field')
   private inputElement!: HTMLInputElement;
@@ -884,17 +886,17 @@ export class TerminalChatView extends LitElement {
     // Detect yes/no questions
     if (/\(y\/n\)|\[y\/n\]|yes\/no/i.test(content)) {
       return [
-        { label: 'Yes', response: 'y' },
-        { label: 'No', response: 'n' },
+        { label: t('chat.option.yes'), response: 'y' },
+        { label: t('chat.option.no'), response: 'n' },
       ];
     }
 
     // Detect "Allow execution" prompts
     if (/Allow execution of/i.test(content)) {
       return [
-        { label: 'Yes, allow once', response: '1' },
-        { label: 'Yes, allow always', response: '2' },
-        { label: 'No', response: '3' },
+        { label: t('chat.option.allowOnce'), response: '1' },
+        { label: t('chat.option.allowAlways'), response: '2' },
+        { label: t('chat.option.no'), response: '3' },
       ];
     }
 
@@ -971,7 +973,7 @@ export class TerminalChatView extends LitElement {
 
     // If nothing remains, return a default prompt
     if (cleanLines.length === 0) {
-      return 'Choose an option:';
+      return t('chat.chooseOption');
     }
 
     return cleanLines.join('\n');
@@ -1018,7 +1020,7 @@ export class TerminalChatView extends LitElement {
             ${isCommand ? '💬' : isError ? '❌' : options ? '❓' : '🤖'}
           </span>
           <span class="message-sender">
-            ${isCommand ? 'You' : 'System'}
+            ${isCommand ? t('chat.sender.you') : t('chat.sender.system')}
           </span>
           ${
             path
@@ -1086,11 +1088,8 @@ export class TerminalChatView extends LitElement {
               ? html`
                 <div class="empty-state">
                   <div class="empty-state-icon">💬</div>
-                  <div class="empty-state-title">Chat Mode Active</div>
-                  <div class="empty-state-description">
-                    Type your commands below and press Enter to send them.
-                    Responses will appear here as chat messages.
-                  </div>
+                  <div class="empty-state-title">${t('chat.terminal.emptyTitle')}</div>
+                  <div class="empty-state-description">${t('chat.terminal.emptyDescription')}</div>
                 </div>
               `
               : this.messages.map((msg) => this.renderMessage(msg))
@@ -1108,7 +1107,7 @@ export class TerminalChatView extends LitElement {
             id="chat-input-field"
             type="text"
             class="chat-input"
-            placeholder="Type a command..."
+            placeholder=${t('chat.commandPlaceholder')}
             autocomplete="off"
             autocorrect="on"
             autocapitalize="off"
@@ -1121,7 +1120,7 @@ export class TerminalChatView extends LitElement {
           <button
             class="keyboard-dismiss-button"
             @click=${this.handleDismissKeyboard}
-            title="Hide keyboard"
+            title=${t('chat.hideKeyboard')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/>

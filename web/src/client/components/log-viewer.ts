@@ -1,6 +1,7 @@
 import { html, LitElement, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { HttpMethod } from '../../shared/types.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 
 interface LogEntry {
@@ -13,6 +14,8 @@ interface LogEntry {
 
 @customElement('log-viewer')
 export class LogViewer extends LitElement {
+  protected readonly i18n = new LocaleController(this);
+
   // Disable shadow DOM to use Tailwind
   createRenderRoot() {
     return this;
@@ -42,6 +45,12 @@ export class LogViewer extends LitElement {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
+  }
+
+  override updated(): void {
+    // logs.html ships an English <title>: follow the UI language, also after a change.
+    const title = `VibeTunnel - ${t('logs.title')}`;
+    if (document.title !== title) document.title = title;
   }
 
   private async loadLogs(): Promise<void> {
@@ -103,11 +112,11 @@ export class LogViewer extends LitElement {
     const diffHour = Math.floor(diffMin / 60);
 
     if (diffSec < 60) {
-      return `${diffSec}s ago`;
+      return t('time.secondsAgo', { n: diffSec });
     } else if (diffMin < 60) {
-      return `${diffMin}m ago`;
+      return t('time.minutesAgo', { n: diffMin });
     } else if (diffHour < 24) {
-      return `${diffHour}h ago`;
+      return t('time.hoursAgo', { n: diffHour });
     } else {
       // For older logs, show HH:MM:SS
       return date.toLocaleTimeString('en-US', { hour12: false });
@@ -172,7 +181,7 @@ export class LogViewer extends LitElement {
   }
 
   private async clearLogs(): Promise<void> {
-    if (!confirm('Are you sure you want to clear all logs?')) {
+    if (!confirm(t('logs.clearConfirm'))) {
       return;
     }
 
@@ -287,7 +296,7 @@ export class LogViewer extends LitElement {
             <div
               class="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mb-4 mx-auto"
             ></div>
-            <div>Loading logs...</div>
+            <div>${t('logs.loading')}</div>
           </div>
         </div>
       `;
@@ -327,7 +336,7 @@ export class LogViewer extends LitElement {
                 class="text-base font-bold text-primary flex items-center gap-2 flex-shrink-0"
               >
                 <terminal-icon size="20"></terminal-icon>
-                <span>System Logs</span>
+                <span>${t('logs.title')}</span>
               </h1>
 
               <!-- Auto-scroll toggle (mobile position) -->
@@ -341,7 +350,7 @@ export class LogViewer extends LitElement {
                   @click=${() => {
                     this.autoScroll = !this.autoScroll;
                   }}
-                  title="Auto Scroll"
+                  title=${t('logs.autoScroll')}
                 >
                   <svg
                     width="16"
@@ -363,7 +372,7 @@ export class LogViewer extends LitElement {
               <input
                 type="text"
                 class="px-3 py-1.5 bg-bg border border-border/50 rounded text-sm text-primary placeholder-text-muted focus:outline-none focus:border-primary transition-colors w-full"
-                placeholder="Filter logs..."
+                placeholder=${t('logs.filter')}
                 .value=${this.filter}
                 @input=${(e: Event) => {
                   this.filter = (e.target as HTMLInputElement).value;
@@ -389,7 +398,7 @@ export class LogViewer extends LitElement {
                             : 'bg-bg-tertiary text-text-muted border border-border'
                         }"
                         @click=${() => this.toggleLevel(level)}
-                        title="${level} logs"
+                        title=${t('logs.levelTitle', { level })}
                       >
                         ${
                           level === 'error'
@@ -416,7 +425,7 @@ export class LogViewer extends LitElement {
                     @click=${() => {
                       this.showClient = !this.showClient;
                     }}
-                    title="Client logs"
+                    title=${t('logs.clientLogs')}
                   >
                     C
                   </button>
@@ -429,7 +438,7 @@ export class LogViewer extends LitElement {
                     @click=${() => {
                       this.showServer = !this.showServer;
                     }}
-                    title="Server logs"
+                    title=${t('logs.serverLogs')}
                   >
                     S
                   </button>
@@ -457,12 +466,12 @@ export class LogViewer extends LitElement {
               >
                 <path d="M15 18l-6-6 6-6" />
               </svg>
-              Back
+              ${t('logs.back')}
             </button>
 
             <h1 class="text-lg font-bold text-primary flex items-center gap-2 flex-shrink-0">
               <terminal-icon size="24"></terminal-icon>
-              <span>System Logs</span>
+              <span>${t('logs.title')}</span>
             </h1>
 
             <div class="flex-1 flex flex-wrap gap-2 items-center justify-end">
@@ -470,7 +479,7 @@ export class LogViewer extends LitElement {
               <input
                 type="text"
                 class="px-3 py-1.5 bg-bg border border-border rounded text-sm text-primary placeholder-text-muted focus:outline-none focus:border-primary transition-colors flex-1 sm:flex-initial sm:w-64 md:w-80"
-                placeholder="Filter logs..."
+                placeholder=${t('logs.filter')}
                 .value=${this.filter}
                 @input=${(e: Event) => {
                   this.filter = (e.target as HTMLInputElement).value;
@@ -513,7 +522,7 @@ export class LogViewer extends LitElement {
                     this.showClient = !this.showClient;
                   }}
                 >
-                  CLIENT
+                  ${t('logs.clientButton')}
                 </button>
                 <button
                   class="px-2 py-1 text-xs uppercase font-bold rounded transition-colors ${
@@ -525,7 +534,7 @@ export class LogViewer extends LitElement {
                     this.showServer = !this.showServer;
                   }}
                 >
-                  SERVER
+                  ${t('logs.serverButton')}
                 </button>
               </div>
 
@@ -540,7 +549,7 @@ export class LogViewer extends LitElement {
                   this.autoScroll = !this.autoScroll;
                 }}
               >
-                AUTO SCROLL
+                ${t('logs.autoScrollButton')}
               </button>
             </div>
           </div>
@@ -555,7 +564,7 @@ export class LogViewer extends LitElement {
               ? html`
                 <div class="flex items-center justify-center h-full text-text-muted">
                   <div class="text-center">
-                    <div>No logs to display</div>
+                    <div>${t('logs.empty')}</div>
                   </div>
                 </div>
               `
@@ -711,7 +720,7 @@ export class LogViewer extends LitElement {
           class="flex items-center justify-between p-3 bg-bg-secondary border-t border-border text-xs"
         >
           <div class="text-text-muted">
-            ${this.filteredLogs.length} / ${this.logs.length} logs
+            ${t('logs.count', { shown: this.filteredLogs.length, total: this.logs.length })}
             ${this.logSize ? html` <span class="text-text-muted">• ${this.logSize}</span>` : ''}
           </div>
           <div class="flex gap-2">
@@ -719,13 +728,13 @@ export class LogViewer extends LitElement {
               class="px-3 py-1 bg-bg border border-border rounded hover:border-primary hover:text-primary transition-colors"
               @click=${this.downloadLogs}
             >
-              Download
+              ${t('logs.download')}
             </button>
             <button
               class="px-3 py-1 bg-bg border border-status-error text-status-error rounded hover:bg-status-error hover:text-text-bright transition-colors"
               @click=${this.clearLogs}
             >
-              Clear
+              ${t('logs.clear')}
             </button>
           </div>
         </div>

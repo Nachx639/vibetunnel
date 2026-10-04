@@ -11,6 +11,7 @@
 import { FitAddon, Ghostty, Terminal as GhosttyTerminal } from 'ghostty-web';
 import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { KeyboardShortcutLinkProvider } from '../utils/keyboard-shortcut-link-provider.js';
 import { createLogger } from '../utils/logger.js';
 import { TERMINAL_FONT_FAMILY, TERMINAL_IDS } from '../utils/terminal-constants.js';
@@ -39,6 +40,8 @@ export class Terminal extends LitElement {
   createRenderRoot() {
     return this as unknown as HTMLElement;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: String }) sessionId = '';
   @property({ type: String }) sessionStatus = 'running';
@@ -766,7 +769,7 @@ export class Terminal extends LitElement {
         <textarea
           id=${TERMINAL_IDS.TERMINAL_INPUT}
           class="terminal-paste-input"
-          aria-label="Terminal input"
+          aria-label=${t('terminal.input')}
           data-testid="terminal-input"
           tabindex="-1"
           autocapitalize="off"
@@ -785,7 +788,7 @@ export class Terminal extends LitElement {
           !this.hideScrollButton && !this.followCursorEnabled
             ? html`
               <div class="scroll-to-bottom">
-                <button type="button" @click=${this.handleScrollToBottom}>Scroll</button>
+                <button type="button" @click=${this.handleScrollToBottom}>${t('terminal.scroll')}</button>
               </div>
             `
             : null

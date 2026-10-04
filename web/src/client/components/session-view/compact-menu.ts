@@ -8,6 +8,7 @@
 import { html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../../shared/types.js';
+import { LocaleController, t } from '../../i18n/index.js';
 import { Z_INDEX } from '../../utils/constants.js';
 import type { Theme } from '../theme-toggle-icon.js';
 
@@ -28,6 +29,8 @@ export class CompactMenu extends LitElement {
   @property({ type: Function }) onOpenSettings?: () => void;
   @property({ type: String }) currentTheme: Theme = 'system';
   @property({ type: Boolean }) macAppConnected = false;
+
+  protected readonly i18n = new LocaleController(this);
   @property({ type: Function }) onTerminateSession?: () => void;
   @property({ type: Function }) onClearSession?: () => void;
   @property({ type: Boolean }) hasGitRepo = false;
@@ -121,7 +124,14 @@ export class CompactMenu extends LitElement {
   }
 
   private getThemeLabel() {
-    return this.currentTheme.charAt(0).toUpperCase() + this.currentTheme.slice(1);
+    switch (this.currentTheme) {
+      case 'light':
+        return t('theme.light');
+      case 'dark':
+        return t('theme.dark');
+      default:
+        return t('theme.system');
+    }
   }
 
   connectedCallback() {
@@ -158,9 +168,7 @@ export class CompactMenu extends LitElement {
       this.showMenu = false;
       this.focusedIndex = -1;
       // Focus the menu button
-      const button = this.querySelector(
-        'button[aria-label="More actions menu"]'
-      ) as HTMLButtonElement;
+      const button = this.querySelector('button[data-menu-button]') as HTMLButtonElement;
       button?.focus();
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       // Add arrow key navigation logic
@@ -219,8 +227,9 @@ export class CompactMenu extends LitElement {
           class="w-11 h-11 p-0 md:w-auto md:h-auto md:p-2 flex items-center justify-center bg-bg-tertiary border ${this.showMenu ? 'text-primary border-primary' : 'text-primary border-border'} hover:border-primary hover:text-primary hover:bg-surface-hover rounded-lg transition-all duration-200"
           @click=${this.toggleMenu}
           @keydown=${this.handleMenuButtonKeyDown}
-          title="More actions"
-          aria-label="More actions menu"
+          title=${t('actionBar.moreActions')}
+          aria-label=${t('menu.moreActionsMenu')}
+          data-menu-button
           aria-expanded=${this.showMenu}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
@@ -251,7 +260,7 @@ export class CompactMenu extends LitElement {
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2Z" clip-rule="evenodd"/>
           </svg>
-          New Session
+          ${t('actionBar.newSession')}
         </button>
         
         <div class="border-t border-border my-1"></div>
@@ -266,7 +275,7 @@ export class CompactMenu extends LitElement {
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M1.75 1h5.5c.966 0 1.75.784 1.75 1.75v1h4c.966 0 1.75.784 1.75 1.75v7.75A1.75 1.75 0 0113 15H3a1.75 1.75 0 01-1.75-1.75V2.75C1.25 1.784 1.784 1 1.75 1zM2.75 2.5v10.75c0 .138.112.25.25.25h10a.25.25 0 00.25-.25V5.5a.25.25 0 00-.25-.25H8.75v-2.5a.25.25 0 00-.25-.25h-5.5a.25.25 0 00-.25.25z"/>
           </svg>
-          Browse Files
+          ${t('menu.browseFiles')}
         </button>
         
         <!-- Upload Image -->
@@ -279,7 +288,7 @@ export class CompactMenu extends LitElement {
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M14.5 2h-13C.67 2 0 2.67 0 3.5v9c0 .83.67 1.5 1.5 1.5h13c.83 0 1.5-.67 1.5-1.5v-9c0-.83-.67-1.5-1.5-1.5zM5.5 5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM13 11H3l2.5-3L7 10l2.5-3L13 11z"/>
           </svg>
-          Upload Image
+          ${t('menu.uploadImage')}
         </button>
         
         <!-- Width Settings -->
@@ -292,7 +301,7 @@ export class CompactMenu extends LitElement {
           <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
             <path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z"/>
           </svg>
-          Width: ${this.widthLabel}
+          ${t('menu.width', { width: this.widthLabel })}
         </button>
         
         <!-- Git Worktree Toggle (only for git repos) -->
@@ -308,7 +317,7 @@ export class CompactMenu extends LitElement {
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811V2.828zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492V2.687zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783z"/>
                 </svg>
-                ${this.viewMode === 'terminal' ? 'Show Worktrees' : 'Show Terminal'}
+                ${this.viewMode === 'terminal' ? t('header.showWorktrees') : t('header.showTerminal')}
               </button>
             `
             : nothing
@@ -324,7 +333,7 @@ export class CompactMenu extends LitElement {
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
             <path d="M2.678 11.894a1 1 0 01.287.801 10.97 10.97 0 01-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 01.71-.074A8.06 8.06 0 008 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 01-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 00.244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 01-2.347-.306c-.52.263-1.639.742-3.468 1.105z"/>
           </svg>
-          ${this.chatMode ? 'Terminal Mode' : 'Chat Mode'}
+          ${this.chatMode ? t('menu.terminalMode') : t('menu.chatMode')}
         </button>
         
         <!-- Theme Toggle -->
@@ -335,7 +344,7 @@ export class CompactMenu extends LitElement {
           tabindex="${this.showMenu ? '0' : '-1'}"
         >
           ${this.getThemeIcon()}
-          Theme: ${this.getThemeLabel()}
+          ${t('menu.theme', { theme: this.getThemeLabel() })}
         </button>
         
         <!-- Settings -->
@@ -348,7 +357,7 @@ export class CompactMenu extends LitElement {
           <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
           </svg>
-          Settings
+          ${t('common.settings')}
         </button>
         
         ${
@@ -369,7 +378,7 @@ export class CompactMenu extends LitElement {
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.5 7.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7z"/>
               </svg>
-              Terminate Session
+              ${t('menu.terminateSession')}
             </button>
           `
               : html`
@@ -383,7 +392,7 @@ export class CompactMenu extends LitElement {
                 <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
                 <path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
               </svg>
-              Clear Session
+              ${t('menu.clearSession')}
             </button>
           `
           }

@@ -7,6 +7,7 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../../shared/types.js';
+import { LocaleController, t } from '../../i18n/index.js';
 import '../clickable-path.js';
 import '../inline-edit.js';
 import '../notification-status.js';
@@ -28,6 +29,8 @@ export class SessionHeader extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) session: Session | null = null;
   @property({ type: Boolean }) showBackButton = true;
@@ -192,8 +195,8 @@ export class SessionHeader extends LitElement {
                 <button
                   class="bg-bg-tertiary border border-border rounded-md w-11 h-11 p-0 md:w-auto md:h-auto md:p-2 text-primary transition-all duration-200 hover:bg-surface-hover hover:border-primary flex items-center justify-center flex-shrink-0"
                   @click=${() => this.onSidebarToggle?.()}
-                  title="Show sidebar (⌘B)"
-                  aria-label="Show sidebar"
+                  title="${t('header.showSidebar')} (⌘B)"
+                  aria-label=${t('header.showSidebar')}
                   aria-expanded="false"
                   aria-controls="sidebar"
                   data-testid="session-sidebar-toggle"
@@ -210,7 +213,7 @@ export class SessionHeader extends LitElement {
                   @click=${() => {
                     window.location.href = '/';
                   }}
-                  title="Go to root"
+                  title=${t('header.goToRoot')}
                   data-testid="go-to-root-button"
                 >
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
@@ -226,7 +229,7 @@ export class SessionHeader extends LitElement {
                 <button
                   class="hidden sm:flex bg-bg-tertiary border border-border text-primary rounded-md p-2 transition-all duration-200 hover:bg-surface-hover hover:border-primary flex-shrink-0"
                   @click=${() => this.onCreateSession?.()}
-                  title="Create New Session (⌘K)"
+                  title="${t('header.createSession')} (⌘K)"
                   data-testid="create-session-button"
                 >
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
@@ -252,7 +255,7 @@ export class SessionHeader extends LitElement {
                 <button
                   class="bg-bg-tertiary border border-border rounded-md w-11 h-11 p-0 md:w-auto md:h-auto md:px-3 md:py-1.5 flex items-center justify-center font-mono text-xs text-primary transition-all duration-200 hover:bg-surface-hover hover:border-primary flex-shrink-0"
                   @click=${() => this.onBack?.()}
-                  aria-label="Back"
+                  aria-label=${t('header.back')}
                   data-testid="session-back-button"
                 >
                   ${
@@ -262,7 +265,7 @@ export class SessionHeader extends LitElement {
                           <path d="M12.707 15.707a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5a1 1 0 011.414 1.414L8.414 10l4.293 4.293a1 1 0 010 1.414z"/>
                         </svg>
                       `
-                      : 'Back'
+                      : t('header.back')
                   }
                 </button>
               `
@@ -298,7 +301,7 @@ export class SessionHeader extends LitElement {
                           e.stopPropagation();
                           this.handleMagicButton();
                         }}
-                        title="Send prompt to update terminal title"
+                        title=${t('header.updateTitle')}
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                           <!-- Wand -->
@@ -380,8 +383,8 @@ export class SessionHeader extends LitElement {
                 <button
                   class="bg-bg-tertiary border border-border rounded-md w-11 h-11 p-0 md:w-auto md:h-auto md:p-2 text-primary transition-all duration-200 hover:bg-surface-hover hover:border-primary flex items-center justify-center flex-shrink-0 ${this.chatMode ? 'bg-primary text-white border-primary' : ''}"
                   @click=${() => this.onToggleChatMode?.()}
-                  title="${this.chatMode ? 'Switch to Terminal Mode' : 'Switch to Chat Mode'}"
-                  aria-label="${this.chatMode ? 'Switch to Terminal Mode' : 'Switch to Chat Mode'}"
+                  title="${this.chatMode ? t('header.switchToTerminal') : t('header.switchToChat')}"
+                  aria-label="${this.chatMode ? t('header.switchToTerminal') : t('header.switchToChat')}"
                   data-testid="chat-mode-toggle-button-compact"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -422,7 +425,7 @@ export class SessionHeader extends LitElement {
                       <button
                         class="bg-bg-tertiary border border-border rounded-md p-2 text-primary transition-all duration-200 hover:bg-surface-hover hover:border-primary flex-shrink-0"
                         @click=${() => this.onToggleViewMode?.()}
-                        title="${this.viewMode === 'terminal' ? 'Show Worktrees' : 'Show Terminal'}"
+                        title="${this.viewMode === 'terminal' ? t('header.showWorktrees') : t('header.showTerminal')}"
                         data-testid="worktree-toggle-button"
                       >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -437,7 +440,7 @@ export class SessionHeader extends LitElement {
                 <button
                   class="bg-bg-tertiary border border-border rounded-md p-2 text-primary transition-all duration-200 hover:bg-surface-hover hover:border-primary flex-shrink-0 ${this.chatMode ? 'bg-primary text-white border-primary' : ''}"
                   @click=${() => this.onToggleChatMode?.()}
-                  title="${this.chatMode ? 'Switch to Terminal Mode' : 'Switch to Chat Mode'}"
+                  title="${this.chatMode ? t('header.switchToTerminal') : t('header.switchToChat')}"
                   data-testid="chat-mode-toggle-button"
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">

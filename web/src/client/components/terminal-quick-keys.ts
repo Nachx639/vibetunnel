@@ -1,8 +1,10 @@
 import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { Z_INDEX } from '../utils/constants.js';
 import {
   getQuickKeyDefinition,
+  getQuickKeyDisplayLabel,
   loadQuickKeysLayout,
   type QuickKeyDefinition,
   type QuickKeysLayout,
@@ -30,7 +32,7 @@ const FUNCTION_KEYS = Array.from({ length: 12 }, (_, i) => ({
 }));
 
 // Done button - always visible
-const DONE_BUTTON = { key: 'Done', label: 'Done', special: true };
+const DONE_BUTTON = { key: 'Done', special: true };
 
 @customElement('terminal-quick-keys')
 export class TerminalQuickKeys extends LitElement {
@@ -51,6 +53,7 @@ export class TerminalQuickKeys extends LitElement {
   @state() private showCtrlKeys = false;
   @state() private isLandscape = false;
   @state() private quickKeysLayout: QuickKeysLayout = loadQuickKeysLayout();
+  protected readonly i18n = new LocaleController(this);
 
   private keyRepeatInterval: number | null = null;
   private keyRepeatTimeout: number | null = null;
@@ -339,7 +342,8 @@ export class TerminalQuickKeys extends LitElement {
   }
 
   private renderQuickKey(definition: QuickKeyDefinition) {
-    const { key, label, modifier, combo, arrow, toggle } = definition;
+    const { key, modifier, combo, arrow, toggle } = definition;
+    const label = getQuickKeyDisplayLabel(key, definition.label);
     const activeToggle =
       toggle &&
       ((key === 'CtrlExpand' && this.showCtrlKeys) || (key === 'F' && this.showFunctionKeys));
@@ -424,11 +428,12 @@ export class TerminalQuickKeys extends LitElement {
   }
 
   private renderDoneButton() {
+    const doneLabel = t('quickKeys.done');
     return html`
       <button
         type="button"
         tabindex="-1"
-        class="quick-key-btn ${this.getButtonFontClass(DONE_BUTTON.label)} min-w-0 ${this.getButtonSizeClass(DONE_BUTTON.label)} bg-bg-tertiary text-primary font-mono rounded border border-border hover:bg-surface hover:border-primary transition-all whitespace-nowrap special-key"
+        class="quick-key-btn ${this.getButtonFontClass(doneLabel)} min-w-0 ${this.getButtonSizeClass(doneLabel)} bg-bg-tertiary text-primary font-mono rounded border border-border hover:bg-surface hover:border-primary transition-all whitespace-nowrap special-key"
         data-key=${DONE_BUTTON.key}
         data-special
         @mousedown=${(event: Event) => {
@@ -446,7 +451,7 @@ export class TerminalQuickKeys extends LitElement {
           }
         }}
       >
-        ${DONE_BUTTON.label}
+        ${doneLabel}
       </button>
     `;
   }

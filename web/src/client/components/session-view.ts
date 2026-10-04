@@ -16,6 +16,7 @@
 import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
+import { LocaleController, t } from '../i18n/index.js';
 import './clickable-path.js';
 import './session-view/session-header.js';
 import './worktree-manager.js';
@@ -68,6 +69,8 @@ export class SessionView extends LitElement {
   createRenderRoot() {
     return this;
   }
+
+  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Object }) session: Session | null = null;
   @property({ type: Boolean }) showBackButton = true;
@@ -1087,7 +1090,7 @@ export class SessionView extends LitElement {
               this.directKeyboardManager.handleQuickKeyPress('Done', false, true);
             }}
           >
-            Done
+            ${t('quickKeys.done')}
           </button>
         </div>
       `;
@@ -1177,7 +1180,7 @@ export class SessionView extends LitElement {
         <div class="fixed inset-0 bg-bg flex items-center justify-center">
           <div class="text-primary font-mono text-center">
             <div class="text-2xl mb-2">${this.loadingAnimationManager.getLoadingText()}</div>
-            <div class="text-sm text-text-muted">Waiting for session...</div>
+            <div class="text-sm text-text-muted">${t('session.waiting')}</div>
           </div>
         </div>
       `;
@@ -1480,7 +1483,7 @@ export class SessionView extends LitElement {
                 >
                   <div class="text-primary font-mono text-center">
                     <div class="text-2xl mb-3 text-primary animate-pulse-primary">${this.loadingAnimationManager.getLoadingText()}</div>
-                    <div class="text-sm text-text-muted">Connecting to session...</div>
+                    <div class="text-sm text-text-muted">${t('session.connecting')}</div>
                   </div>
                 </div>
               `
@@ -1713,14 +1716,14 @@ export class SessionView extends LitElement {
               <button
                 class="font-mono text-sm transition-all cursor-pointer w-16 quick-start-btn"
                 @click=${() => this.fileOperationsManager.openFilePicker()}
-                title="Upload file"
+                title=${t('session.uploadFile')}
               >
                 📷
               </button>
               <button
                 class="font-mono text-sm transition-all cursor-pointer w-16 quick-start-btn"
                 @click=${this.toggleDirectKeyboard}
-                title="Switch to direct keyboard mode"
+                title=${t('session.directKeyboard')}
               >
                 ⌨️
               </button>
