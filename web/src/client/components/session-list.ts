@@ -123,6 +123,8 @@ export class SessionList extends LitElement {
   @property({ type: String }) activeSessionId: string | null = null;
   /** Dev-server previews are on for this server (`--preview-port`): their section shows. */
   @property({ type: Boolean }) previewsEnabled = false;
+  /** Previews are on, but this page can't reach them (proxy, tunnel, other address). */
+  @property({ type: Boolean }) previewsUnreachable = false;
   /** Persistent previews (GET /api/previews), fetched by the app with the sessions. */
   @property({ attribute: false }) previews: PreviewItem[] = [];
 
@@ -239,7 +241,14 @@ export class SessionList extends LitElement {
   @state() private previewsExpanded = false;
 
   private renderPreviewSection(query = '') {
-    if (!this.previewsEnabled) return nothing;
+    if (!this.previewsEnabled) {
+      // One line instead of a section whose previews would point at an unreachable port.
+      return this.previewsUnreachable && !query.trim()
+        ? html`<p class="pvr-unreachable" data-testid="preview-unreachable">
+            ${t('previewRows.unreachable')}
+          </p>`
+        : nothing;
+    }
     const q = query.trim().toLowerCase();
     const all = sortPreviews(this.previews ?? []).filter(
       (item) => !this.deletedPreviews.has(item.id)

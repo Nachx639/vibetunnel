@@ -953,6 +953,8 @@ export const ptBR: Messages = {
   'previewRows.from': 'de: {name}',
   'previewRows.goToSession': 'Ir para a sessão',
   'previewRows.heading': 'Pré-visualizações',
+  'previewRows.unreachable':
+    'As prévias estão ocultas aqui: elas precisam de uma conexão direta com este computador, sem proxy nem túnel.',
   'previewRows.live': 'ativa',
   'previewRows.noServers': 'Nenhum servidor rodando neste computador',
   'previewRows.open': 'Abrir {name}',

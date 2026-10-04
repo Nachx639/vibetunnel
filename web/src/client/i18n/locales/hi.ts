@@ -927,6 +927,7 @@ export const hi: Messages = {
   'previewRows.from': 'से: {name}',
   'previewRows.goToSession': 'सेशन पर जाएँ',
   'previewRows.heading': 'प्रीव्यू',
+  'previewRows.unreachable': 'यहाँ प्रीव्यू छिपे हैं: इन्हें इस कंप्यूटर से सीधा कनेक्शन चाहिए, प्रॉक्सी या टनल नहीं।',
   'previewRows.live': 'चालू',
   'previewRows.noServers': 'इस कंप्यूटर पर कोई सर्वर नहीं चल रहा',
   'previewRows.open': '{name} खोलें',

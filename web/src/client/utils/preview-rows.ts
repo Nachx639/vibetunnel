@@ -61,18 +61,24 @@ export interface PreviewConfig {
   enabled: boolean;
   port: number | null;
   origin: string | null;
+  /**
+   * Previews are on, but this page came through a proxy, a tunnel or another address/port,
+   * from where the preview origin can't be reached. `enabled` is then false.
+   */
+  unreachable?: boolean;
 }
 
 /**
- * Asks once whether previews are on. Off (the default), or when the server can't say, every
- * preview control stays hidden and nothing else is requested.
+ * Asks once whether previews are on. Off (the default), unreachable from this page, or when
+ * the server can't say, every preview control stays hidden and nothing else is requested.
  */
 export async function fetchPreviewConfig(authHeader: AuthHeader): Promise<PreviewConfig> {
   const off: PreviewConfig = { enabled: false, port: null, origin: null };
   try {
     const response = await fetch('/api/preview/config', { headers: authHeader });
     if (!response.ok) return off;
-    const body = (await response.json()) as Partial<PreviewConfig>;
+    const body = (await response.json()) as Partial<PreviewConfig> & { reachable?: boolean };
+    if (body.enabled === true && body.reachable === false) return { ...off, unreachable: true };
     return body.enabled === true
       ? {
           enabled: true,

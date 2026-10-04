@@ -17,6 +17,7 @@ import {
   foreignApiRequestReason,
   isFromPreviewOrigin,
   mainOriginPreviewGuard,
+  previewUnreachableReason,
   resolvePreviewPort,
 } from './preview-server.js';
 
@@ -33,6 +34,42 @@ describe('preview listener config', () => {
     expect(resolvePreviewPort('7020', undefined, 7020).port).toBeNull();
     expect(resolvePreviewPort('7020', undefined, 7020).error).toMatch(/differ/);
     expect(resolvePreviewPort('abc', undefined, 7020).error).toMatch(/invalid/);
+  });
+
+  it('hides previews from pages that reach the server through a proxy, a tunnel or a mapping', () => {
+    const lan = new Set(['192.168.1.20', 'fe80::1']);
+    const opts = (bindAddress?: string) => ({
+      mainPort: 7020,
+      bindAddress,
+      isLocalAddress: (address: string) => lan.has(address),
+      machineName: 'studio',
+    });
+    const reason = (host: string, bind?: string, extra: Record<string, string> = {}) =>
+      previewUnreachableReason({ host, ...extra }, opts(bind));
+    // Direct: loopback, the bind address, an address or the name of this machine.
+    expect(reason('localhost:7020')).toBeNull();
+    expect(reason('127.0.0.1:7020')).toBeNull();
+    expect(reason('[::1]:7020')).toBeNull();
+    expect(reason('192.168.1.20:7020')).toBeNull();
+    expect(reason('[fe80::1]:7020')).toBeNull();
+    expect(reason('studio.local:7020')).toBeNull();
+    expect(reason('Studio:7020')).toBeNull();
+    expect(reason('10.0.0.5:7020', '10.0.0.5')).toBeNull();
+    expect(reason('localhost:7020', '127.0.0.1')).toBeNull();
+    // A reverse proxy or tunnel (Serve-style HTTPS front end, ngrok, nginx).
+    expect(reason('localhost:7020', undefined, { 'x-forwarded-for': '203.0.113.5' })).toBe('proxy');
+    expect(reason('localhost:7020', undefined, { forwarded: 'for=1.2.3.4' })).toBe('proxy');
+    expect(reason('localhost:7020', undefined, { 'x-forwarded-host': 'vt.example' })).toBe('proxy');
+    expect(reason('mac.example.net')).toBe('port');
+    expect(reason('abc.ngrok.app:443')).toBe('port');
+    // A port mapping (Docker -p 8080:7020) or a host that isn't this machine.
+    expect(reason('localhost:8080')).toBe('port');
+    expect(reason('vt.example.com:7020')).toBe('host');
+    expect(reason('203.0.113.9:7020')).toBe('host');
+    // Bound to one address: a different host can't be served by the preview listener.
+    expect(reason('192.168.1.20:7020', '127.0.0.1')).toBe('host');
+    expect(reason('localhost:7020', '10.0.0.5')).toBe('host');
+    expect(reason('')).toBe('host');
   });
 
   it('recognizes requests coming from the preview origin', () => {
@@ -254,7 +291,22 @@ describe('preview origin end to end', () => {
     const config = await request(mainPort, '/api/preview/config', {
       headers: { authorization: 'Bearer good' },
     });
-    expect(JSON.parse(config.body)).toEqual({ enabled: true, port: previewPort, origin: null });
+    expect(JSON.parse(config.body)).toEqual({
+      enabled: true,
+      port: previewPort,
+      origin: null,
+      reachable: true,
+    });
+    const proxied = await request(mainPort, '/api/preview/config', {
+      headers: { authorization: 'Bearer good', 'x-forwarded-for': '203.0.113.5' },
+    });
+    expect(JSON.parse(proxied.body)).toEqual({
+      enabled: true,
+      port: previewPort,
+      origin: null,
+      reachable: false,
+      unreachableReason: 'proxy',
+    });
     const anon = await request(mainPort, '/api/preview/ticket', {
       method: 'POST',
       headers: { origin: parentOrigin },

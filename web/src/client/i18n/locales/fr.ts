@@ -964,6 +964,8 @@ export const fr: Messages = {
   'previewRows.from': 'de : {name}',
   'previewRows.goToSession': 'Aller à la session',
   'previewRows.heading': 'Aperçus',
+  'previewRows.unreachable':
+    'Les aperçus sont masqués ici : ils exigent une connexion directe à cet ordinateur, sans proxy ni tunnel.',
   'previewRows.live': 'actif',
   'previewRows.noServers': 'Aucun serveur actif sur cet ordinateur',
   'previewRows.open': 'Ouvrir {name}',

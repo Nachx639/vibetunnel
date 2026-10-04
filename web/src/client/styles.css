@@ -3465,7 +3465,13 @@ body.preview-split-open session-view .session-header-area {
   gap: 8px;
   margin: 4px 0 6px;
 }
-.pvr-header .pvr-heading {
+.pvr-header .pvr-unreachable {
+  margin: 12px 16px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.pvr-heading {
   margin: 0;
 }
 /* "+ Add preview": a quiet text button on the section heading. */

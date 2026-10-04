@@ -20,6 +20,7 @@ import {
   type PreviewRegistry,
   parseOpenTarget,
 } from '../services/preview-registry.js';
+import { previewUnreachableReason } from '../services/preview-server.js';
 
 interface PreviewRoutesConfig {
   previewProxy: PreviewProxy;
@@ -29,6 +30,8 @@ interface PreviewRoutesConfig {
   getPreviewPort: () => number | null;
   /** Public preview origin when it isn't "same host, preview port" (VIBETUNNEL_PREVIEW_ORIGIN). */
   previewOrigin?: string | null;
+  /** The address both listeners bind to (`--bind`), for the reachability check. */
+  getBindAddress?: () => string | undefined;
   sessionExists: (sessionId: string) => boolean;
   /** The session still runs ("from: <session>" is a link to it only then). */
   sessionRunning?: (sessionId: string) => boolean;
@@ -119,9 +122,24 @@ export function createPreviewRoutes(config: PreviewRoutesConfig): Router {
   });
 
   // Where previews live: same host, another port (a separate origin, see preview-proxy.ts).
-  router.get('/preview/config', (_req, res) => {
+  // `reachable: false` when the page asking came through a proxy, a tunnel or another
+  // address/port, where that origin can't be reached: the app then hides previews.
+  router.get('/preview/config', (req, res) => {
     const port = config.getPreviewPort();
-    res.json({ enabled: port !== null, port, origin: config.previewOrigin ?? null });
+    const unreachable =
+      port === null || config.previewOrigin
+        ? null
+        : previewUnreachableReason(req.headers, {
+            mainPort: config.getOwnPort(),
+            bindAddress: config.getBindAddress?.(),
+          });
+    res.json({
+      enabled: port !== null,
+      port,
+      origin: config.previewOrigin ?? null,
+      reachable: unreachable === null,
+      ...(unreachable ? { unreachableReason: unreachable } : {}),
+    });
   });
 
   // The preview origin has its own auth: a 60 s single-use ticket for one port, redeemed by

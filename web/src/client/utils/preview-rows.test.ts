@@ -154,6 +154,21 @@ describe('preview items', () => {
     expect(await fetchPreviewConfig({})).toEqual(off);
   });
 
+  it('treats previews the page cannot reach (proxy, tunnel) as off, and says so', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ enabled: true, port: 4120, origin: null, reachable: false })
+      )
+    );
+    expect(await fetchPreviewConfig({})).toEqual({
+      enabled: false,
+      port: null,
+      origin: null,
+      unreachable: true,
+    });
+  });
+
   it('remembers whether previews are on and tells the page when it changes', () => {
     const seen = vi.fn();
     window.addEventListener(PREVIEWS_AVAILABILITY_EVENT, seen);

@@ -929,6 +929,8 @@ export const bn: Messages = {
   'previewRows.from': 'থেকে: {name}',
   'previewRows.goToSession': 'সেশনে যান',
   'previewRows.heading': 'প্রিভিউ',
+  'previewRows.unreachable':
+    'এখানে প্রিভিউ লুকানো আছে: এগুলোর জন্য এই কম্পিউটারের সঙ্গে সরাসরি সংযোগ দরকার, প্রক্সি বা টানেল নয়।',
   'previewRows.live': 'চালু',
   'previewRows.noServers': 'এই কম্পিউটারে কোনো সার্ভার চালু নেই',
   'previewRows.open': '{name} খুলুন',

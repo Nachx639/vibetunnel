@@ -926,6 +926,8 @@ export const ar: Messages = {
   'previewRows.from': 'من: {name}',
   'previewRows.goToSession': 'الانتقال إلى الجلسة',
   'previewRows.heading': 'المعاينات',
+  'previewRows.unreachable':
+    'المعاينات مخفية هنا: فهي تحتاج إلى اتصال مباشر بهذا الكمبيوتر، لا عبر وكيل أو نفق.',
   'previewRows.live': 'تعمل',
   'previewRows.noServers': 'لا يوجد خادم يعمل على هذا الكمبيوتر',
   'previewRows.open': 'فتح {name}',

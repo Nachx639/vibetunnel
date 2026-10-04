@@ -65,6 +65,26 @@ describe('session list: previews section', () => {
     expect(list.querySelectorAll('preview-row').length).toBe(1);
   });
 
+  it('previews it cannot reach: no section, one line saying why', async () => {
+    const list = await fixture<SessionList>(
+      html`<session-list
+        .sessions=${[session]}
+        .previews=${[preview()]}
+        .previewsEnabled=${false}
+        .previewsUnreachable=${true}
+        .authClient=${{ getAuthHeader: () => ({}) } as unknown as AuthClient}
+      ></session-list>`
+    );
+    expect(list.querySelector('[data-testid="preview-rows-heading"]')).toBeNull();
+    expect(list.querySelector('preview-row')).toBeNull();
+    expect(list.querySelector('[data-testid="preview-unreachable"]')?.textContent).toMatch(
+      /direct connection/
+    );
+    // Plain off: nothing at all.
+    const off = await mount([session], [preview()], false, false);
+    expect(off.querySelector('[data-testid="preview-unreachable"]')).toBeNull();
+  });
+
   it('a preview stays after its session ended (it comes from /api/previews, not the sessions)', async () => {
     const list = await mount([], [preview({ sessionAlive: false })]);
     const rows = list.querySelectorAll('preview-row');

@@ -6,8 +6,10 @@
  */
 
 import * as http from 'node:http';
+import { hostname as osHostname } from 'node:os';
 import type { Duplex } from 'node:stream';
 import express from 'express';
+import { isLocalMachineAddress } from '../middleware/auth.js';
 import {
   PREVIEW_LOGIN_PATH,
   type PreviewProxy,
@@ -32,6 +34,60 @@ export function resolvePreviewPort(
   if (port === mainPort)
     return { port: null, error: 'preview port must differ from the main port' };
   return { port };
+}
+
+/** Why the preview listener can't serve the page that sent a request (see below). */
+export type PreviewUnreachableReason = 'proxy' | 'host' | 'port';
+
+const FORWARDING_HEADERS = [
+  'forwarded',
+  'x-forwarded-for',
+  'x-forwarded-host',
+  'x-forwarded-proto',
+  'x-forwarded-port',
+  'x-real-ip',
+];
+
+/**
+ * Previews are served on the same host as the page, on the preview port. That only works
+ * when the page reaches this server directly: a reverse proxy, a tunnel (ngrok, a TLS
+ * front end) or a port mapping (Docker) forwards the main port only, so the preview iframe
+ * would point at nothing. Returns why, from the request that loaded the page, or null when
+ * the page's host is the bind address, a loopback name, an address of this machine (only
+ * when listening on all addresses) or this machine's own name, on the main port.
+ * VIBETUNNEL_PREVIEW_ORIGIN names a reachable preview origin and skips this check.
+ */
+export function previewUnreachableReason(
+  headers: http.IncomingHttpHeaders,
+  options: {
+    mainPort: number | null | undefined;
+    bindAddress?: string;
+    isLocalAddress?: (address: string) => boolean;
+    machineName?: string;
+  }
+): PreviewUnreachableReason | null {
+  if (FORWARDING_HEADERS.some((name) => headers[name] !== undefined)) return 'proxy';
+  const hostHeader = typeof headers.host === 'string' ? headers.host : '';
+  let url: URL;
+  try {
+    url = new URL(`http://${hostHeader}`);
+  } catch {
+    return 'host';
+  }
+  if (!hostHeader) return 'host';
+  if (options.mainPort && Number(url.port || 80) !== options.mainPort) return 'port';
+  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const bind = (options.bindAddress ?? '0.0.0.0').toLowerCase();
+  const anyAddress = bind === '0.0.0.0' || bind === '::';
+  if (host === bind) return null;
+  const loopback =
+    host === 'localhost' || host.endsWith('.localhost') || host === '::1' || /^127\./.test(host);
+  const bindIsLoopback = bind === '127.0.0.1' || bind === '::1' || bind === 'localhost';
+  if (loopback) return anyAddress || bindIsLoopback ? null : 'host';
+  if (!anyAddress) return 'host';
+  const machine = (options.machineName ?? osHostname()).toLowerCase().replace(/\.local$/, '');
+  if (machine && (host === machine || host === `${machine}.local`)) return null;
+  return (options.isLocalAddress ?? isLocalMachineAddress)(host) ? null : 'host';
 }
 
 /**

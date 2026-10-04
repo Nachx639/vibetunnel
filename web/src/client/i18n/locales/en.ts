@@ -948,6 +948,8 @@ export const en = {
   'previewRows.from': 'from: {name}',
   'previewRows.goToSession': 'Go to the session',
   'previewRows.heading': 'Previews',
+  'previewRows.unreachable':
+    'Previews are hidden here: they need a direct connection to this computer, not a proxy or tunnel.',
   'previewRows.live': 'live',
   'previewRows.noServers': 'No servers running on this computer',
   'previewRows.open': 'Open {name}',

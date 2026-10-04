@@ -917,6 +917,7 @@ export const zhCN: Messages = {
   'previewRows.from': '来自：{name}',
   'previewRows.goToSession': '前往会话',
   'previewRows.heading': '预览',
+  'previewRows.unreachable': '此处已隐藏预览：预览需要直接连接到这台电脑，而不是通过代理或隧道。',
   'previewRows.live': '运行中',
   'previewRows.noServers': '这台电脑上没有运行中的服务器',
   'previewRows.open': '打开 {name}',

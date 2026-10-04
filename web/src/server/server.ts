@@ -1258,6 +1258,7 @@ export async function createApp(): Promise<AppInstance> {
         getOwnPort: mainListenPort,
         getPreviewPort: previews.listenPort,
         previewOrigin: previews.publicOrigin,
+        getBindAddress: () => config.bind || '0.0.0.0',
         sessionExists: (sessionId) => ptyManager.getSession(sessionId) !== null,
         sessionRunning: (sessionId) => ptyManager.getSession(sessionId)?.status === 'running',
         sessionName: (sessionId) => ptyManager.getSession(sessionId)?.name,

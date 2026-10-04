@@ -130,6 +130,8 @@ export class VibeTunnelApp extends LitElement {
   private previewHistoryLength = 0;
   /** The server runs with dev-server previews on (GET /api/preview/config). */
   @state() private previewsEnabled = false;
+  /** Previews are on, but not reachable from this page (proxy, tunnel, other address). */
+  @state() private previewsUnreachable = false;
   private previewConfigLoad: Promise<void> | null = null;
   /** Persistent previews (GET /api/previews): the phone list's "Previews", the chips. */
   @state() private previews: PreviewItem[] = [];
@@ -1880,6 +1882,7 @@ export class VibeTunnelApp extends LitElement {
   private loadPreviewConfig(): Promise<void> {
     this.previewConfigLoad ??= fetchPreviewConfig(authClient.getAuthHeader()).then((config) => {
       this.previewsEnabled = config.enabled;
+      this.previewsUnreachable = config.unreachable === true;
       setPreviewsAvailable(config.enabled);
     });
     return this.previewConfigLoad;
@@ -2016,7 +2019,9 @@ export class VibeTunnelApp extends LitElement {
   private async showPreviewRoute(route: PreviewRoute) {
     await this.loadPreviewConfig();
     if (!this.previewsEnabled) {
-      this.showError(t('previewView.missing'));
+      this.showError(
+        t(this.previewsUnreachable ? 'previewRows.unreachable' : 'previewView.missing')
+      );
       window.history.replaceState(null, '', '/');
       this.currentView = 'list';
       return;
@@ -2417,6 +2422,7 @@ export class VibeTunnelApp extends LitElement {
               .sessions=${this.sessions}
               .previews=${this.previews}
               .previewsEnabled=${this.previewsEnabled}
+              .previewsUnreachable=${this.previewsUnreachable}
               .loading=${this.loading}
               .hideExited=${this.hideExited}
               .selectedSessionId=${this.selectedSessionId}

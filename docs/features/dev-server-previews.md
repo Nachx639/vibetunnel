@@ -31,6 +31,11 @@ unavailable and logs why.
 Reaching it from a phone: the preview port must be reachable the same way the main port is
 (same bind address). Behind a reverse proxy that serves one hostname (Tailscale Serve, ngrok),
 expose the preview port as its own HTTPS endpoint and set `VIBETUNNEL_PREVIEW_ORIGIN` to it.
+Without `VIBETUNNEL_PREVIEW_ORIGIN`, the app hides every preview control, with one line in
+the session list saying why, when the page didn't reach this server directly: the request
+carries forwarding headers (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`), came in on another
+port than the main one (a Docker port mapping, an HTTPS front end), or names a host that isn't
+the bind address, `localhost`, an address of this machine or its name.
 
 ## Using it
 
