@@ -464,14 +464,14 @@ export class MonacoEditor extends LitElement {
         <div
           class="editor-container"
           ${ref(this.containerRef)}
-          style="width: 100%; height: 100%; position: relative; background: rgb(var(--color-bg-secondary));"
+          style="width: 100%; height: 100%; position: relative; background: var(--color-bg-secondary);"
         >
           ${
             this.isLoading
               ? html`
                 <div
                   class="loading"
-                  style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgb(var(--color-text-muted)); font-family: ui-monospace, monospace;"
+                  style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--color-text-muted); font-family: ui-monospace, monospace;"
                 >
                   ${t('monaco.loading')}
                 </div>
@@ -483,18 +483,18 @@ export class MonacoEditor extends LitElement {
               ? html`
                 <button
                   class="mode-toggle"
-                  style="position: absolute; top: 10px; right: 10px; z-index: 10; background: rgb(var(--color-surface)); border: 1px solid rgb(var(--color-border)); color: rgb(var(--color-text)); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer;"
+                  style="position: absolute; top: 10px; right: 10px; z-index: 10; background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text); padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer;"
                   @click=${this.toggleDiffMode}
                   title=${t('monaco.toggleDiff')}
                   @mouseenter=${(e: MouseEvent) => {
                     const btn = e.target as HTMLButtonElement;
-                    btn.style.background = 'rgb(var(--color-surface-hover))';
-                    btn.style.borderColor = 'rgb(var(--color-border-focus))';
+                    btn.style.background = 'var(--color-surface-hover)';
+                    btn.style.borderColor = 'var(--color-border-focus)';
                   }}
                   @mouseleave=${(e: MouseEvent) => {
                     const btn = e.target as HTMLButtonElement;
-                    btn.style.background = 'rgb(var(--color-surface))';
-                    btn.style.borderColor = 'rgb(var(--color-border))';
+                    btn.style.background = 'var(--color-surface)';
+                    btn.style.borderColor = 'var(--color-border)';
                   }}
                 >
                   ${this.diffMode === 'inline' ? t('monaco.sideBySide') : t('monaco.inline')}

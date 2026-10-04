@@ -1198,7 +1198,7 @@ export class SessionView extends LitElement {
           box-shadow: none !important;
         }
         session-view:focus {
-          outline: 2px solid rgb(var(--color-primary)) !important;
+          outline: 2px solid var(--color-primary) !important;
           outline-offset: -2px;
         }
         
@@ -1217,7 +1217,7 @@ export class SessionView extends LitElement {
             width: 100%;
             max-width: 100vw;
             position: relative;
-            background-color: rgb(var(--color-bg));
+            background-color: var(--color-bg);
             font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
             overflow: hidden;
             overscroll-behavior: none;
@@ -1238,7 +1238,7 @@ export class SessionView extends LitElement {
             position: -webkit-sticky;
             top: 0;
             z-index: 50;
-            background-color: rgb(var(--color-bg-secondary));
+            background-color: var(--color-bg-secondary);
             transform: translate3d(0, 0, 0);
             -webkit-transform: translate3d(0, 0, 0);
             display: block;
@@ -1300,7 +1300,7 @@ export class SessionView extends LitElement {
             overflow: hidden !important;
             overscroll-behavior: none !important;
             touch-action: none !important;
-            background-color: rgb(var(--color-bg)) !important;
+            background-color: var(--color-bg) !important;
             font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
           }
 
@@ -1319,7 +1319,7 @@ export class SessionView extends LitElement {
             position: sticky !important;
             top: 0 !important;
             z-index: 50 !important;
-            background-color: rgb(var(--color-bg-secondary)) !important;
+            background-color: var(--color-bg-secondary) !important;
             transform: translate3d(0, 0, 0) !important;
             -webkit-transform: translate3d(0, 0, 0) !important;
           }

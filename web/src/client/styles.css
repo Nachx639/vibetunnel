@@ -96,11 +96,11 @@
 @keyframes keyboard-button-pulse {
   0%, 70%, 100% { 
     transform: scale(1);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 8px rgba(var(--color-primary), 0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 8px color-mix(in srgb, var(--color-primary) 30%, transparent);
   }
   35% { 
     transform: scale(1.05);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 12px rgba(var(--color-primary), 0.5);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 12px color-mix(in srgb, var(--color-primary) 50%, transparent);
     backdrop-filter: blur(16px) saturate(2);
     -webkit-backdrop-filter: blur(16px) saturate(2);
   }
@@ -352,9 +352,10 @@
   
 
   /* Default focus styles */
+  /* Default focus styles */
   :focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgb(var(--color-primary) / 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 30%, transparent);
   }
 
   /* iOS Safe Area Support */
@@ -380,7 +381,7 @@
   /* Glowing terminal icon */
   .terminal-icon {
     @apply text-primary;
-    filter: drop-shadow(0 0 10px rgb(var(--color-primary) / 0.6));
+    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--color-primary) 60%, transparent));
   }
 
   /* Input fields with unified style */
@@ -470,7 +471,7 @@
     content: '';
     position: absolute;
     inset: -2px;
-    background: radial-gradient(circle at 50% 50%, transparent 60%, rgb(var(--color-primary) / 0.1) 100%);
+    background: radial-gradient(circle at 50% 50%, transparent 60%, color-mix(in srgb, var(--color-primary) 10%, transparent) 100%);
     opacity: 0;
     transition: opacity 0.3s ease-out;
     pointer-events: none;
@@ -930,7 +931,7 @@ body {
 /* Set body and html background to match quick keys when keyboard is visible */
 html[data-keyboard-visible="true"],
 body[data-keyboard-visible="true"] {
-  background-color: rgb(var(--color-bg-secondary));
+  background-color: var(--color-bg-secondary);
 }
 
 
@@ -1396,8 +1397,8 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 
 /* Enhanced terminal focus indicator */
 .terminal-focused {
-  box-shadow: 0 0 0 2px rgb(var(--color-primary)), 0 0 20px rgb(var(--color-primary) / 0.3);
-  border-color: rgb(var(--color-primary)) !important;
+  box-shadow: 0 0 0 2px var(--color-primary), 0 0 20px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  border-color: var(--color-primary) !important;
   transition: all 0.2s ease-out;
 }
 
@@ -1406,17 +1407,17 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   position: fixed;
   top: 10px;
   right: 10px;
-  background: rgb(var(--color-primary) / 0.1);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
   backdrop-filter: blur(8px);
-  border: 1px solid rgb(var(--color-primary));
-  color: rgb(var(--color-primary));
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   z-index: 1000;
   animation: slideInFromTop 0.3s ease-out;
-  box-shadow: 0 2px 8px rgb(var(--color-primary) / 0.2);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
 @keyframes slideInFromTop {
@@ -1752,7 +1753,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   @apply bg-primary/30 border-primary/60 text-primary;
   backdrop-filter: blur(16px) saturate(2);
   -webkit-backdrop-filter: blur(16px) saturate(2);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 12px rgba(var(--color-primary), 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 12px color-mix(in srgb, var(--color-primary) 40%, transparent);
   
   /* Add subtle pulse animation to make it more noticeable */
   animation: keyboard-button-pulse 4s ease-in-out infinite;
@@ -1780,8 +1781,8 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
     /* Stronger shadow for mobile */
     box-shadow: 
       0 4px 20px rgba(0, 0, 0, 0.6), 
-      0 0 20px rgba(var(--color-primary), 0.5),
-      inset 0 0 10px rgba(var(--color-primary), 0.2);
+      0 0 20px color-mix(in srgb, var(--color-primary) 50%, transparent),
+      inset 0 0 10px color-mix(in srgb, var(--color-primary) 20%, transparent);
   }
   
   /* Make the pulse more noticeable on mobile */
@@ -1790,15 +1791,15 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
       transform: scale(1);
       box-shadow: 
         0 4px 20px rgba(0, 0, 0, 0.6), 
-        0 0 20px rgba(var(--color-primary), 0.5),
-        inset 0 0 10px rgba(var(--color-primary), 0.2);
+        0 0 20px color-mix(in srgb, var(--color-primary) 50%, transparent),
+        inset 0 0 10px color-mix(in srgb, var(--color-primary) 20%, transparent);
     }
     35% { 
       transform: scale(1.08);
       box-shadow: 
         0 6px 24px rgba(0, 0, 0, 0.7), 
-        0 0 30px rgba(var(--color-primary), 0.7),
-        inset 0 0 15px rgba(var(--color-primary), 0.3);
+        0 0 30px color-mix(in srgb, var(--color-primary) 70%, transparent),
+        inset 0 0 15px color-mix(in srgb, var(--color-primary) 30%, transparent);
     }
   }
   
@@ -1811,7 +1812,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 .tap-to-focus-overlay {
   @apply absolute inset-0 z-10;
   @apply flex items-center justify-center;
-  background: rgba(var(--color-bg), 0.85);
+  background: color-mix(in srgb, var(--color-bg) 85%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   
@@ -1957,7 +1958,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: rgb(var(--color-text));
+  color: var(--color-text);
   font-size: 20px;
   transition: all 0.2s ease;
   user-select: none;
@@ -1967,9 +1968,9 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 .fit-toggle:hover {
   background: rgba(26, 26, 26, 1);
   border-color: #10B981;
-  color: rgb(var(--color-primary));
+  color: var(--color-primary);
   transform: translateY(-1px);
-  box-shadow: 0 0 10px rgb(var(--color-primary) / 0.3);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
 .fit-toggle:active {
@@ -1978,8 +1979,8 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 
 .fit-toggle.active {
   border-color: #10B981;
-  color: rgb(var(--color-primary));
-  box-shadow: 0 0 10px rgb(var(--color-primary) / 0.3);
+  color: var(--color-primary);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
 /* View Transitions */
@@ -2339,7 +2340,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   width: 100%;
   position: relative;
   overflow: hidden;
-  background-color: rgb(var(--color-bg));
+  background-color: var(--color-bg);
 }
 
 /* Mobile terminal header - always visible and sticky */
@@ -2348,8 +2349,8 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   position: sticky;
   top: 0;
   z-index: 10;
-  background-color: rgb(var(--color-bg-secondary));
-  border-bottom: 1px solid rgb(var(--color-border));
+  background-color: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
   /* Add safe area support */
   padding-top: env(safe-area-inset-top);
   /* Ensure header is always visible even with keyboard */
@@ -2371,8 +2372,8 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   position: sticky;
   bottom: 0;
   z-index: 10;
-  background-color: rgb(var(--color-bg-secondary));
-  border-top: 1px solid rgb(var(--color-border));
+  background-color: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border);
   /* Add safe area support */
   padding-bottom: env(safe-area-inset-bottom);
   /* Smooth transitions */

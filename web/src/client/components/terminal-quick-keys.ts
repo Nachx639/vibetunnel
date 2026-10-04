@@ -464,7 +464,7 @@ export class TerminalQuickKeys extends LitElement {
         .terminal-quick-keys-container {
           /* position, bottom, left, right are set inline with !important */
           z-index: ${Z_INDEX.TERMINAL_QUICK_KEYS};
-          background-color: rgb(var(--color-bg-secondary) / 0.98);
+          background-color: color-mix(in srgb, var(--color-bg-secondary) 98%, transparent);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
           width: 100%;
@@ -485,7 +485,7 @@ export class TerminalQuickKeys extends LitElement {
         /* The actual bar with buttons */
         .quick-keys-bar {
           background: transparent;
-          border-top: 1px solid rgb(var(--color-border-base) / 0.5);
+          border-top: 1px solid color-mix(in srgb, var(--color-border-base) 50%, transparent);
           padding: 0.25rem 0;
           width: 100%;
           box-sizing: border-box;
@@ -515,23 +515,23 @@ export class TerminalQuickKeys extends LitElement {
         
         /* Modifier key styling */
         .modifier-key {
-          background-color: rgb(var(--color-bg-tertiary));
-          border-color: rgb(var(--color-border-base));
+          background-color: var(--color-bg-tertiary);
+          border-color: var(--color-border-base);
         }
         
         .modifier-key:hover {
-          background-color: rgb(var(--color-bg-secondary));
+          background-color: var(--color-bg-secondary);
         }
         
         /* Active modifier styling */
         .modifier-key.active {
-          background-color: rgb(var(--color-primary));
-          border-color: rgb(var(--color-primary));
-          color: rgb(var(--color-text-bright));
+          background-color: var(--color-primary);
+          border-color: var(--color-primary);
+          color: var(--color-text-bright);
         }
         
         .modifier-key.active:hover {
-          background-color: rgb(var(--color-primary-hover));
+          background-color: var(--color-primary-hover);
         }
         
         /* Arrow key styling */
@@ -556,23 +556,23 @@ export class TerminalQuickKeys extends LitElement {
         
         /* Combo key styling (like ^C, ^Z) */
         .combo-key {
-          background-color: rgb(var(--color-bg-tertiary));
-          border-color: rgb(var(--color-border-accent));
+          background-color: var(--color-bg-tertiary);
+          border-color: var(--color-border-accent);
         }
         
         .combo-key:hover {
-          background-color: rgb(var(--color-bg-secondary));
+          background-color: var(--color-bg-secondary);
         }
         
         /* Special key styling (like ABC) */
         .special-key {
-          background-color: rgb(var(--color-primary));
-          border-color: rgb(var(--color-primary));
-          color: rgb(var(--color-text-bright));
+          background-color: var(--color-primary);
+          border-color: var(--color-primary);
+          color: var(--color-text-bright);
         }
         
         .special-key:hover {
-          background-color: rgb(var(--color-primary-hover));
+          background-color: var(--color-primary-hover);
         }
         
         /* Function key styling */
@@ -604,22 +604,22 @@ export class TerminalQuickKeys extends LitElement {
         
         /* Toggle button styling */
         .toggle-key {
-          background-color: rgb(var(--color-bg-secondary));
-          border-color: rgb(var(--color-border-accent));
+          background-color: var(--color-bg-secondary);
+          border-color: var(--color-border-accent);
         }
         
         .toggle-key:hover {
-          background-color: rgb(var(--color-bg-tertiary));
+          background-color: var(--color-bg-tertiary);
         }
         
         .toggle-key.active {
-          background-color: rgb(var(--color-primary));
-          border-color: rgb(var(--color-primary));
-          color: rgb(var(--color-text-bright));
+          background-color: var(--color-primary);
+          border-color: var(--color-primary);
+          color: var(--color-text-bright);
         }
         
         .toggle-key.active:hover {
-          background-color: rgb(var(--color-primary-hover));
+          background-color: var(--color-primary-hover);
         }
         
         /* Ctrl shortcut button styling */

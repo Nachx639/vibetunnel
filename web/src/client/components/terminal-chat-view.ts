@@ -24,7 +24,7 @@ export class TerminalChatView extends LitElement {
       display: block;
       height: 100%;
       width: 100%;
-      background-color: rgb(var(--color-bg));
+      background-color: var(--color-bg);
       font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
       position: relative;
       z-index: 10;
@@ -170,7 +170,7 @@ export class TerminalChatView extends LitElement {
       gap: 0.375rem;
       margin-bottom: 0.25rem;
       font-size: 0.7rem;
-      color: rgb(var(--color-text-muted));
+      color: var(--color-text-muted);
       padding: 0 0.5rem;
     }
 
@@ -195,7 +195,7 @@ export class TerminalChatView extends LitElement {
     .message-path {
       font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
       opacity: 0.8;
-      color: rgb(var(--color-primary));
+      color: var(--color-primary);
       font-size: 0.65rem;
     }
 
@@ -241,7 +241,7 @@ export class TerminalChatView extends LitElement {
     .chat-message.output .message-bubble,
     .chat-message.prompt .message-bubble {
       background-color: rgb(45 50 55);
-      color: rgb(var(--color-text));
+      color: var(--color-text);
       border-radius: 1.125rem 1.125rem 1.125rem 0.25rem;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     }
@@ -296,16 +296,16 @@ export class TerminalChatView extends LitElement {
     }
 
     .chat-messages-container::-webkit-scrollbar-track {
-      background: rgb(var(--color-bg-secondary));
+      background: var(--color-bg-secondary);
     }
 
     .chat-messages-container::-webkit-scrollbar-thumb {
-      background: rgb(var(--color-border-base));
+      background: var(--color-border);
       border-radius: 4px;
     }
 
     .chat-messages-container::-webkit-scrollbar-thumb:hover {
-      background: rgb(var(--color-text-muted));
+      background: var(--color-text-muted);
     }
 
     /* Interactive options - pill-style bubbles */

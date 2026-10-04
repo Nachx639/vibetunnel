@@ -21,7 +21,7 @@ export const TERMINAL_THEMES: TerminalTheme[] = [
     colors: {
       background: '#1e1e1e',
       foreground: '#d4d4d4',
-      cursor: 'rgb(var(--color-primary))',
+      cursor: 'var(--color-primary)',
       cursorAccent: '#1e1e1e',
       black: '#000000',
       red: '#cd0000',
@@ -48,7 +48,7 @@ export const TERMINAL_THEMES: TerminalTheme[] = [
     colors: {
       background: '#f8f9fa',
       foreground: '#1f2328',
-      cursor: 'rgb(var(--color-primary))',
+      cursor: 'var(--color-primary)',
       cursorAccent: '#f8f9fa',
       black: '#24292f',
       red: '#cf222e',

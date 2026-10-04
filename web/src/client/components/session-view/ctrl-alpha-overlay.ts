@@ -47,7 +47,7 @@ export class CtrlAlphaOverlay extends LitElement {
         <!-- Modal content -->
         <div
           class="bg-surface border-2 border-primary rounded-lg p-4 shadow-xl relative"
-          style="z-index: 1001; background-color: rgb(var(--color-bg-secondary)); max-height: 80vh; overflow-y: auto; max-width: 24rem; width: 100%;"
+          style="z-index: 1001; background-color: var(--color-bg-secondary); max-height: 80vh; overflow-y: auto; max-width: 24rem; width: 100%;"
           @click=${(e: Event) => e.stopPropagation()}
         >
           <div class="text-primary text-center mb-2 font-bold">Ctrl + Key</div>

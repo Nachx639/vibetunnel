@@ -71,8 +71,8 @@ export class InlineEdit extends LitElement {
     }
 
     input {
-      background: rgb(var(--color-bg-tertiary));
-      border: 1px solid rgb(var(--color-border));
+      background: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border);
       color: inherit;
       font: inherit;
       padding: 0.125rem 0.25rem;
@@ -83,7 +83,7 @@ export class InlineEdit extends LitElement {
     }
 
     input:focus {
-      border-color: rgb(var(--color-primary));
+      border-color: var(--color-primary);
     }
 
     @media (max-width: 639px) {
@@ -104,7 +104,7 @@ export class InlineEdit extends LitElement {
       cursor: pointer;
       padding: 0.125rem;
       border-radius: 0.25rem;
-      color: rgb(var(--color-text-muted));
+      color: var(--color-text-muted);
       transition: all 0.2s;
       display: flex;
       align-items: center;
@@ -114,24 +114,24 @@ export class InlineEdit extends LitElement {
     }
 
     button:hover {
-      background: rgb(var(--color-bg-tertiary));
+      background: var(--color-bg-tertiary);
     }
 
     button.save {
-      color: rgb(var(--color-primary));
+      color: var(--color-primary);
     }
 
     button.save:hover {
-      background: rgb(var(--color-primary));
+      background: var(--color-primary);
       background-opacity: 0.2;
     }
 
     button.cancel {
-      color: rgb(var(--color-status-error));
+      color: var(--color-status-error);
     }
 
     button.cancel:hover {
-      background: rgb(var(--color-status-error));
+      background: var(--color-status-error);
       background-opacity: 0.2;
     }
   `;
