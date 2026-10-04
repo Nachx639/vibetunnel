@@ -3679,6 +3679,9 @@ claude-activity-elapsed {
   background: var(--color-bg-secondary);
 }
 .ask-claude-agent button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 28px;
   padding: 2px 10px;
   border-radius: 999px;
@@ -3689,6 +3692,17 @@ claude-activity-elapsed {
 .ask-claude-agent button.selected {
   background: var(--color-primary);
   color: #fff;
+}
+.ask-agent-mark {
+  display: inline-flex;
+}
+/* The folder chip comes first when the row is short: below AGENT_MARKS_BELOW_PX
+   (ask-claude-box.ts) of room left of the row's buttons, the picker renders the agents' marks
+   instead of their names (one or the other, never both); the chosen agent is still spelled out
+   in the placeholder and the send button, and screen readers read the names. */
+.ask-claude-agent.marks button {
+  min-width: 34px;
+  padding: 2px 9px;
 }
 /* It names the folder (not its path): the system font fits a longer name in the room a small
    phone leaves it than a monospace one would. */

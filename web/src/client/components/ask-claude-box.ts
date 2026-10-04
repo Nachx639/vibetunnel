@@ -65,6 +65,25 @@ export function folderName(displayPath: string): string {
   return trimmed.slice(trimmed.lastIndexOf('/') + 1);
 }
 
+/**
+ * The agents' marks, shown instead of their names when the Ask row is short: Claude's sunburst
+ * as on its sessions' avatars (phone-session-row.ts), and code brackets for Codex.
+ */
+const AGENT_MARKS: Record<AskAgent, ReturnType<typeof html>> = {
+  claude: html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+    stroke-width="2.6" stroke-linecap="round"><path d="M12 3.5v6M12 14.5v6M3.5 12h6M14.5 12h6M6 6l4.2 4.2M13.8 13.8L18 18M18 6l-4.2 4.2M10.2 13.8L6 18" /></svg>`,
+  codex: html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+    stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6l-6 6 6 6M16 6l6 6-6 6" /></svg>`,
+};
+
+/**
+ * Below this room (px) left of the row's buttons, the Claude/Codex picker shows the agents'
+ * marks instead of their names, so the folder chip keeps about 11 letters of its name: the
+ * picker is about 125 px with names and 68 with marks, and with names below 236 px the chip
+ * would be left under ~10 letters (picker 125 + gap 6 + chip 37 + ~68 of text).
+ */
+export const AGENT_MARKS_BELOW_PX = 236;
+
 @customElement('ask-claude-box')
 export class AskClaudeBox extends LitElement {
   createRenderRoot() {
@@ -78,6 +97,45 @@ export class AskClaudeBox extends LitElement {
 
   @state() private text = readDraft();
   @state() private agent: AskAgent = readAskAgent();
+  /**
+   * The picker shows the agents' marks, not their names (AGENT_MARKS_BELOW_PX). Decided from the
+   * row's measured room and rendered as one or the other, never both: a stylesheet-only swap
+   * shows the mark stacked over the name whenever the stylesheet and the bundle are not from
+   * the same build.
+   */
+  @state() private agentMarks = false;
+  private startObserver: ResizeObserver | null = null;
+  private observedStart: Element | null = null;
+
+  /** The room left of the row's buttons changed (px): marks below the threshold, names above. */
+  private applyStartWidth(width: number) {
+    if (width <= 0) return;
+    const marks = width < AGENT_MARKS_BELOW_PX;
+    if (marks !== this.agentMarks) this.agentMarks = marks;
+  }
+
+  private observeStart() {
+    const start = this.querySelector('.ask-claude-start');
+    if (start === this.observedStart || typeof ResizeObserver === 'undefined') return;
+    this.startObserver ??= new ResizeObserver((entries) => {
+      for (const entry of entries) this.applyStartWidth(entry.contentRect.width);
+    });
+    if (this.observedStart) this.startObserver.unobserve(this.observedStart);
+    this.observedStart = start;
+    if (start) this.startObserver.observe(start);
+  }
+
+  updated(changedProperties: Map<string | number | symbol, unknown>) {
+    super.updated(changedProperties);
+    this.observeStart();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.startObserver?.disconnect();
+    this.startObserver = null;
+    this.observedStart = null;
+  }
 
   /** iOS: a touch acts on pointerup (a first tap can be eaten as hover); skip its click. */
   private ignoreClickUntil = 0;
@@ -165,6 +223,7 @@ export class AskClaudeBox extends LitElement {
     const codex = this.agent === 'codex';
     const placeholder = t(codex ? 'ask.placeholderCodex' : 'ask.placeholder');
     const sendLabel = t(codex ? 'ask.sendCodex' : 'ask.send');
+    // The mark or the name, never both (agentMarks); the accessible name is the name either way.
     const agentButton = (
       agent: AskAgent,
       label: string,
@@ -174,11 +233,17 @@ export class AskClaudeBox extends LitElement {
         type="button"
         role="radio"
         aria-checked=${this.agent === agent ? 'true' : 'false'}
+        aria-label=${label}
+        title=${label}
         class=${this.agent === agent ? 'selected' : ''}
         data-testid=${`ask-agent-${agent}`}
         @pointerup=${tap.pointerup}
         @click=${tap.click}
-      >${label}</button>`;
+      >${
+        this.agentMarks
+          ? html`<span class="ask-agent-mark" aria-hidden="true">${AGENT_MARKS[agent]}</span>`
+          : html`<span class="ask-agent-name">${label}</span>`
+      }</button>`;
     return html`
       <div class="ask-claude" data-testid="ask-claude">
         <textarea
@@ -193,7 +258,11 @@ export class AskClaudeBox extends LitElement {
         ></textarea>
         <div class="ask-claude-bar">
           <span class="ask-claude-start">
-          <span class="ask-claude-agent" role="radiogroup" aria-label=${t('ask.agent')}>
+          <span
+            class="ask-claude-agent ${this.agentMarks ? 'marks' : ''}"
+            role="radiogroup"
+            aria-label=${t('ask.agent')}
+          >
             ${agentButton('claude', 'Claude', this.claudeTap)}${agentButton('codex', 'Codex', this.codexTap)}
           </span>
           <button

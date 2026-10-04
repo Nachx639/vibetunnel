@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fixture, html } from '@open-wc/testing';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AskClaudeBox } from './ask-claude-box';
+import { AGENT_MARKS_BELOW_PX, type AskClaudeBox } from './ask-claude-box';
 
 describe('ask-claude-box', () => {
   const store = new Map<string, string>();
@@ -132,6 +134,59 @@ describe('ask-claude-box', () => {
     box.remove();
     const again = await fixture<AskClaudeBox>(html`<ask-claude-box></ask-claude-box>`);
     expect((again.querySelector('textarea') as HTMLTextAreaElement).placeholder).toBe('Ask Codex…');
+  });
+
+  // A short row (a 320 pt phone) shows the agents' marks so the folder chip keeps its name
+  // readable. One or the other is rendered, never both: with a stylesheet from another build a
+  // CSS-only swap showed the mark stacked over the name.
+  const setRoom = async (box: AskClaudeBox, width: number) => {
+    (box as unknown as { applyStartWidth(width: number): void }).applyStartWidth(width);
+    await box.updateComplete;
+  };
+
+  it('names each agent, and only names, when the row has room', async () => {
+    const box = await fixture<AskClaudeBox>(html`<ask-claude-box></ask-claude-box>`);
+    for (const width of [AGENT_MARKS_BELOW_PX, 244, 294]) {
+      await setRoom(box, width);
+      expect(box.querySelector('.ask-claude-agent')?.classList.contains('marks')).toBe(false);
+      for (const [agent, name] of [
+        ['claude', 'Claude'],
+        ['codex', 'Codex'],
+      ]) {
+        const button = box.querySelector(`[data-testid="ask-agent-${agent}"]`) as HTMLElement;
+        expect(button.getAttribute('role')).toBe('radio');
+        expect(button.getAttribute('aria-label')).toBe(name);
+        expect(button.querySelector('.ask-agent-name')?.textContent).toBe(name);
+        expect(button.querySelector('.ask-agent-mark')).toBeNull();
+      }
+    }
+  });
+
+  it('shows only the marks when the row leaves the folder chip too little', async () => {
+    const box = await fixture<AskClaudeBox>(html`<ask-claude-box></ask-claude-box>`);
+    await setRoom(box, 191);
+    expect(box.querySelector('.ask-claude-agent')?.classList.contains('marks')).toBe(true);
+    for (const [agent, name] of [
+      ['claude', 'Claude'],
+      ['codex', 'Codex'],
+    ]) {
+      const button = box.querySelector(`[data-testid="ask-agent-${agent}"]`) as HTMLElement;
+      expect(button.getAttribute('aria-label')).toBe(name);
+      expect(button.querySelector('.ask-agent-mark svg')).not.toBeNull();
+      expect(button.querySelector('.ask-agent-mark')?.getAttribute('aria-hidden')).toBe('true');
+      expect(button.querySelector('.ask-agent-name')).toBeNull();
+      expect(button.textContent?.trim()).toBe('');
+    }
+    // And back when the row widens (a rotation).
+    await setRoom(box, 300);
+    expect(box.querySelectorAll('.ask-agent-mark').length).toBe(0);
+    expect(box.querySelectorAll('.ask-agent-name').length).toBe(2);
+  });
+
+  it('leaves the choice to the markup, not to the stylesheet', () => {
+    const css = readFileSync(join(__dirname, '../styles.css'), 'utf8');
+    expect(css).not.toMatch(/@container ask-start/);
+    expect(css).not.toMatch(/\.ask-agent-(mark|name) \{\s*display: none;/);
   });
 
   it('gives the question back when the session could not start', async () => {
