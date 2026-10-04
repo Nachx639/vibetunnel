@@ -81,4 +81,91 @@ describe('session-quick-switcher', () => {
     expect(press().defaultPrevented).toBe(true);
     expect(app.showQuickSwitcher).toBe(true);
   });
+
+  describe('Cmd+K while a terminal has the keyboard', () => {
+    type AppKeys = {
+      isAuthenticated: boolean;
+      showQuickSwitcher: boolean;
+      currentView: string;
+      keyboardCaptureActive: boolean;
+      sessions: ReturnType<typeof createMockSession>[];
+      selectedSessionId: string | null;
+      handleKeyDown(e: KeyboardEvent): void;
+    };
+    const makeApp = (view: string, capture: boolean) => {
+      const app = new VibeTunnelApp() as unknown as AppKeys;
+      app.isAuthenticated = true;
+      app.currentView = view;
+      app.keyboardCaptureActive = capture;
+      app.sessions = [createMockSession({ id: 's1', status: 'running' })];
+      app.selectedSessionId = 's1';
+      return app;
+    };
+    /** Presses Cmd+K with focus on `target` (dispatched, so composedPath() is real). */
+    const pressOn = (app: AppKeys, target: HTMLElement) => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'k',
+        metaKey: true,
+        cancelable: true,
+        bubbles: true,
+        composed: true,
+      });
+      const listener = (e: Event) => app.handleKeyDown(e as KeyboardEvent);
+      document.addEventListener('keydown', listener);
+      target.dispatchEvent(event);
+      document.removeEventListener('keydown', listener);
+      return event;
+    };
+    const placed: HTMLElement[] = [];
+    const place = (el: HTMLElement) => {
+      document.body.appendChild(el);
+      placed.push(el);
+      return el;
+    };
+    beforeEach(() => setQuickSwitcherEnabled(true));
+    afterEach(() => {
+      for (const el of placed.splice(0)) el.remove();
+    });
+
+    it('opens the switcher from the session list', () => {
+      const app = makeApp('list', true);
+      expect(pressOn(app, place(document.createElement('button'))).defaultPrevented).toBe(true);
+      expect(app.showQuickSwitcher).toBe(true);
+    });
+
+    it('leaves Cmd+K to the terminal while keyboard capture is on in a session', () => {
+      const app = makeApp('session', true);
+      const event = pressOn(app, place(document.createElement('button')));
+      expect(event.defaultPrevented).toBe(false);
+      expect(app.showQuickSwitcher).toBe(false);
+    });
+
+    it('leaves Cmd+K to the terminal when focus is in the terminal, even with capture off', () => {
+      const app = makeApp('session', false);
+      const terminal = place(document.createElement('vibe-terminal'));
+      const textarea = document.createElement('textarea');
+      terminal.appendChild(textarea);
+      expect(pressOn(app, textarea).defaultPrevented).toBe(false);
+      expect(app.showQuickSwitcher).toBe(false);
+
+      // The on-screen keyboard's hidden input belongs to the terminal too.
+      const input = place(document.createElement('input'));
+      input.dataset.terminalInput = '';
+      expect(pressOn(app, input).defaultPrevented).toBe(false);
+      expect(app.showQuickSwitcher).toBe(false);
+    });
+
+    it('opens the switcher from the session header while capture is off', () => {
+      const app = makeApp('session', false);
+      expect(pressOn(app, place(document.createElement('button'))).defaultPrevented).toBe(true);
+      expect(app.showQuickSwitcher).toBe(true);
+    });
+
+    it('opens the switcher in an exited session, where nothing is captured', () => {
+      const app = makeApp('session', true);
+      app.sessions = [createMockSession({ id: 's1', status: 'exited' })];
+      expect(pressOn(app, place(document.createElement('button'))).defaultPrevented).toBe(true);
+      expect(app.showQuickSwitcher).toBe(true);
+    });
+  });
 });

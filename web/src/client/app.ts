@@ -236,13 +236,37 @@ export class VibeTunnelApp extends LitElement {
     this.teardownSidebarScrollLock();
   }
 
+  /**
+   * True when a key press belongs to the terminal: keyboard capture is on in a running
+   * session, or focus is inside the terminal or its on-screen keyboard input.
+   */
+  private terminalHasKeyboard(e: KeyboardEvent): boolean {
+    if (
+      this.currentView === 'session' &&
+      this.keyboardCaptureActive &&
+      this.selectedSession?.status !== 'exited'
+    ) {
+      return true;
+    }
+    return e
+      .composedPath()
+      .some(
+        (node) =>
+          node instanceof HTMLElement &&
+          (node.tagName === 'VIBE-TERMINAL' || node.dataset.terminalInput !== undefined)
+      );
+  }
+
   private handleKeyDown = (e: KeyboardEvent) => {
     const isMacOS = navigator.platform.toLowerCase().includes('mac');
 
     // Cmd+K (Mac, iPad keyboard) toggles the session quick switcher, only when turned on in
-    // Settings: many terminals use Cmd+K to clear. Never Ctrl+K (kill-line in the shell).
+    // Settings and never while a terminal has the keyboard: there Cmd+K is the terminal's
+    // (keyboard capture maps it to "delete to end", many terminals clear with it). Never
+    // Ctrl+K (kill-line in the shell).
     if (
       this.isAuthenticated &&
+      !this.terminalHasKeyboard(e) &&
       e.metaKey &&
       !e.ctrlKey &&
       !e.shiftKey &&

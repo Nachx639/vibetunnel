@@ -917,7 +917,7 @@ export const ptBR: Messages = {
   // Quick switcher
   'settings.quickSwitcher': 'Troca de sessão com ⌘K',
   'settings.quickSwitcher.description':
-    'Cmd+K abre uma lista de sessões com busca, também dentro de um terminal. Desativado por padrão: muitos terminais usam Cmd+K para limpar a tela.',
+    'Cmd+K abre uma lista de sessões com busca a partir da lista de sessões e do cabeçalho da sessão. Enquanto um terminal tem o teclado, Cmd+K continua indo para o terminal. Desativado por padrão: muitos terminais usam Cmd+K para limpar a tela.',
   'switcher.quickLabel': 'Troca rápida de sessão',
   'switcher.quickPlaceholder': 'Trocar de sessão… (digite para filtrar)',
   'switcher.noMatches': 'Nenhuma sessão corresponde',

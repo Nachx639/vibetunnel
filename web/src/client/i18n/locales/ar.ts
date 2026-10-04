@@ -891,7 +891,7 @@ export const ar: Messages = {
   // Quick switcher
   'settings.quickSwitcher': 'التبديل بين الجلسات بـ ⌘K',
   'settings.quickSwitcher.description':
-    'يفتح Cmd+K قائمة جلسات قابلة للبحث، حتى داخل الطرفية. معطّل افتراضيًا: كثير من الطرفيات تستخدم Cmd+K لمسح الشاشة.',
+    'يفتح Cmd+K قائمة جلسات قابلة للبحث من قائمة الجلسات وترويسة الجلسة. عندما تكون لوحة المفاتيح مع الطرفية، يبقى Cmd+K للطرفية. معطّل افتراضيًا: كثير من الطرفيات تستخدم Cmd+K لمسح الشاشة.',
   'switcher.quickLabel': 'تبديل سريع للجلسة',
   'switcher.quickPlaceholder': 'تبديل الجلسة… (اكتب للتصفية)',
   'switcher.noMatches': 'لا توجد جلسات مطابقة',

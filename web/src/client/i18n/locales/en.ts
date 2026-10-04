@@ -913,7 +913,7 @@ export const en = {
   // Quick switcher
   'settings.quickSwitcher': '⌘K session switcher',
   'settings.quickSwitcher.description':
-    'Cmd+K opens a searchable list of sessions, also inside a terminal. Off by default: many terminals use Cmd+K to clear the screen.',
+    'Cmd+K opens a searchable list of sessions from the session list and the session header. While a terminal has the keyboard, Cmd+K still goes to the terminal. Off by default: many terminals use Cmd+K to clear the screen.',
   'switcher.quickLabel': 'Quick switch session',
   'switcher.quickPlaceholder': 'Switch session… (type to filter)',
   'switcher.noMatches': 'No matching sessions',

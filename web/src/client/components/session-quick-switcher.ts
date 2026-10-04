@@ -2,11 +2,12 @@
  * Session Quick Switcher
  *
  * A keyboard-driven, fuzzy-filterable session switcher (Cmd+K on Mac/iPad Magic
- * Keyboard). Lets you jump to any session by name/working-dir/command without
- * leaving the terminal. Arrow keys to move, Enter to switch, Escape to close.
+ * Keyboard). Lets you jump to any session by name/working-dir/command from the session
+ * list or the session header. Arrow keys to move, Enter to switch, Escape to close.
  *
  * Opt-in (Settings > Application): Cmd+K also means "clear" in many terminals, so the
- * shortcut is only taken when the user turned it on.
+ * shortcut is only taken when the user turned it on, and never while a terminal has the
+ * keyboard (keyboard capture on, or focus in the terminal): there Cmd+K stays the terminal's.
  *
  * @fires select-session - detail: { sessionId } when a session is chosen
  * @fires close - when dismissed

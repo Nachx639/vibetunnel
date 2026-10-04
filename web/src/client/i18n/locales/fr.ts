@@ -929,7 +929,7 @@ export const fr: Messages = {
   // Quick switcher
   'settings.quickSwitcher': 'Changement de session avec ⌘K',
   'settings.quickSwitcher.description':
-    'Cmd+K ouvre une liste de sessions avec recherche, y compris dans un terminal. Désactivé par défaut : de nombreux terminaux utilisent Cmd+K pour effacer l’écran.',
+    'Cmd+K ouvre une liste de sessions avec recherche depuis la liste des sessions et l’en-tête de session. Quand un terminal a le clavier, Cmd+K reste au terminal. Désactivé par défaut : de nombreux terminaux utilisent Cmd+K pour effacer l’écran.',
   'switcher.quickLabel': 'Changement rapide de session',
   'switcher.quickPlaceholder': 'Changer de session… (tapez pour filtrer)',
   'switcher.noMatches': 'Aucune session ne correspond',

@@ -284,6 +284,8 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
   private createHiddenInput(): void {
     this.hiddenInput = document.createElement('input');
     this.hiddenInput.type = 'text';
+    // Marks the terminal's keyboard input (app.ts leaves Cmd+K to the terminal here).
+    this.hiddenInput.dataset.terminalInput = '';
     this.hiddenInput.style.position = 'absolute';
 
     // Hidden input that receives keyboard focus
