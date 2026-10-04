@@ -3,6 +3,10 @@ import { initializeMonaco } from './utils/monaco-loader.js';
 import './services/push-notification-service.js';
 import './utils/offline-notification-manager.js';
 import './app.js';
+import { lazyViews } from './utils/lazy-views.js';
+
+// logs.html runs this bundle for its <log-viewer>, which is a chunk of its own.
+if (document.querySelector('log-viewer')) void lazyViews.logViewer.require();
 
 // Initialize Monaco Editor on startup
 initializeMonaco().catch(console.error);

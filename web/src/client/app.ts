@@ -1,7 +1,7 @@
 // Install crypto polyfill first - must be before any code that uses crypto.randomUUID()
 import './utils/crypto-polyfill.js';
 
-import { html, LitElement } from 'lit';
+import { html, LitElement, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { keyed } from 'lit/directives/keyed.js';
 
@@ -23,26 +23,32 @@ import { type MediaQueryState, responsiveObserver } from './utils/responsive-uti
 import { triggerTerminalResize } from './utils/terminal-utils.js';
 import { titleManager } from './utils/title-manager.js';
 
-// Import components
+// Import components. The views the session list doesn't show (the session view, the file
+// browser, settings, the create form and the modals) are a separate chunk: see
+// utils/lazy-views.ts.
 import './components/app-header.js';
-import './components/session-create-form.js';
-import './components/multiplexer-modal.js';
 import './components/session-list.js';
-import './components/session-view.js';
 import './components/session-card.js';
-import './components/file-browser.js';
-import './components/log-viewer.js';
-import './components/settings.js';
 import './components/notification-status.js';
 import './components/auth-login.js';
-import './components/ssh-key-manager.js';
 
 import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
+import { type LazyModule, lazyViews, preloadLazyViews } from './utils/lazy-views.js';
 
 const logger = createLogger('app');
+
+/** Elements of the views loaded on demand (utils/lazy-views.ts), by tag. */
+const LAZY_ELEMENTS = {
+  'session-view': lazyViews.sessionView,
+  'file-browser': lazyViews.fileBrowser,
+  'vt-settings': lazyViews.settings,
+  'ssh-key-manager': lazyViews.sshKeyManager,
+  'session-create-form': lazyViews.sessionCreateForm,
+  'multiplexer-modal': lazyViews.multiplexerModal,
+} satisfies Record<string, LazyModule<unknown>>;
 
 // Interface for session view component's stream connection
 interface SessionViewElement extends HTMLElement {
@@ -1780,6 +1786,40 @@ export class VibeTunnelApp extends LitElement {
     return isPortrait;
   }
 
+  updated() {
+    // The list is up: fetch the other views in idle time (utils/lazy-views.ts).
+    if (this.initialLoadComplete && this.isAuthenticated) {
+      preloadLazyViews(() => this.requestUpdate());
+    }
+  }
+
+  /**
+   * Whether a lazily loaded element (utils/lazy-views.ts) is defined and can be rendered. A view
+   * the screen needs now (`wanted`) is fetched and rendered once it arrives. Never rendered before
+   * its definition: properties set on a not-yet-upgraded element can be lost on upgrade.
+   */
+  private lazyElement(tag: keyof typeof LAZY_ELEMENTS, wanted: boolean): boolean {
+    if (customElements.get(tag)) return true;
+    if (wanted) {
+      void LAZY_ELEMENTS[tag].require().then(
+        () => this.requestUpdate(),
+        () => {}
+      );
+    }
+    return false;
+  }
+
+  /** Where a view goes while its chunk is on its way (normally preloaded long before). */
+  private renderViewLoading() {
+    return html`
+      <div class="h-full w-full flex items-center justify-center bg-bg" data-testid="view-loading">
+        <div
+          class="w-6 h-6 rounded-full border-2 border-border border-t-transparent animate-spin"
+        ></div>
+      </div>
+    `;
+  }
+
   render() {
     const showSplitView = this.showSplitView;
     const selectedSession = this.selectedSession;
@@ -1867,7 +1907,9 @@ export class VibeTunnelApp extends LitElement {
             ></auth-login>
           `
           : this.currentView === 'file-browser'
-            ? html`
+            ? !this.lazyElement('file-browser', true)
+              ? this.renderViewLoading()
+              : html`
               <!-- Full page file browser view -->
               <file-browser
                 .visible=${true}
@@ -1960,9 +2002,12 @@ export class VibeTunnelApp extends LitElement {
           showSplitView
             ? html`
               <div class="flex-1 relative sm:static transition-none">
-                ${keyed(
-                  this.selectedSessionId,
-                  html`
+                ${
+                  !this.lazyElement('session-view', true)
+                    ? this.renderViewLoading()
+                    : keyed(
+                        this.selectedSessionId,
+                        html`
                     <session-view
                       .session=${selectedSession}
                       .showBackButton=${false}
@@ -1978,7 +2023,8 @@ export class VibeTunnelApp extends LitElement {
                       @capture-toggled=${this.handleCaptureToggled}
                     ></session-view>
                   `
-                )}
+                      )
+                }
               </div>
             `
             : ''
@@ -1989,7 +2035,9 @@ export class VibeTunnelApp extends LitElement {
 
 
       <!-- Unified Settings Modal -->
-      <vt-settings
+      ${
+        this.lazyElement('vt-settings', this.showSettings)
+          ? html`<vt-settings
         .visible=${this.showSettings}
         .authClient=${authClient}
         @close=${this.handleCloseSettings}
@@ -2001,34 +2049,48 @@ export class VibeTunnelApp extends LitElement {
         }}
         @success=${(e: CustomEvent) => this.showSuccess(e.detail)}
         @error=${(e: CustomEvent) => this.showError(e.detail)}
-      ></vt-settings>
+      ></vt-settings>`
+          : nothing
+      }
 
       <!-- SSH Key Manager Modal -->
-      <ssh-key-manager
+      ${
+        this.lazyElement('ssh-key-manager', this.showSSHKeyManager)
+          ? html`<ssh-key-manager
         .visible=${this.showSSHKeyManager}
         .sshAgent=${authClient.getSSHAgent()}
         @close=${this.handleCloseSSHKeyManager}
-      ></ssh-key-manager>
+      ></ssh-key-manager>`
+          : nothing
+      }
 
       <!-- Session Create Modal -->
-      <session-create-form
+      ${
+        this.lazyElement('session-create-form', this.showCreateModal)
+          ? html`<session-create-form
         .visible=${this.showCreateModal}
         .workingDir=${this.createDialogWorkingDir}
         .authClient=${authClient}
         @session-created=${this.handleSessionCreated}
         @cancel=${this.handleCreateModalClose}
         @error=${this.handleError}
-      ></session-create-form>
+      ></session-create-form>`
+          : nothing
+      }
 
       <!-- Multiplexer Modal (tmux/Zellij) -->
-      <multiplexer-modal
+      ${
+        this.lazyElement('multiplexer-modal', this.showTmuxModal)
+          ? html`<multiplexer-modal
         .open=${this.showTmuxModal}
         @close=${() => {
           this.showTmuxModal = false;
         }}
         @navigate-to-session=${this.handleNavigateToSession}
         @create-session=${this.handleCreateSession}
-      ></multiplexer-modal>
+      ></multiplexer-modal>`
+          : nothing
+      }
 
       ${this.renderReconnecting()}
     `;
