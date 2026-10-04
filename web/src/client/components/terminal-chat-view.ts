@@ -45,7 +45,8 @@ export class TerminalChatView extends LitElement {
       padding: 1rem;
       /* Large top padding to ensure first message clears the header on iPad */
       padding-top: 8rem;
-      scroll-behavior: smooth;
+      /* Never a smooth scroll behaviour: it animated every scrollTop the view sets, so opening a
+         conversation scrolled it from the top to the latest message. */
       -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
       touch-action: pan-y; /* Allow vertical scrolling */
       overscroll-behavior: contain; /* Prevent scroll chaining */

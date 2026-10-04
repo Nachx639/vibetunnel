@@ -25,6 +25,16 @@ describe('TerminalChatView', () => {
     expect(input?.getAttribute('autocapitalize')).toBe('off');
   });
 
+  it('opens a conversation at its latest message without animating down to it', async () => {
+    const container = component.shadowRoot?.querySelector<HTMLElement>('.chat-messages-container');
+    expect(container).not.toBeNull();
+    // A smooth scroll-behavior turned the first scroll to the bottom into a ride through the
+    // whole conversation.
+    expect(container && getComputedStyle(container).scrollBehavior).not.toBe('smooth');
+    const styles = [TerminalChatView.styles].flat() as unknown as Array<{ cssText: string }>;
+    expect(styles.map((sheet) => sheet.cssText).join('')).not.toMatch(/scroll-behavior:\s*smooth/);
+  });
+
   it('reconciles a corrected word with terminal backspaces', () => {
     const onSend = vi.fn();
     component.onSend = onSend;
