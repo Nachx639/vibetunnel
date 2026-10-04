@@ -9,6 +9,7 @@ import { keyed } from 'lit/directives/keyed.js';
 import type { Session } from '../shared/types.js';
 import { HttpMethod } from '../shared/types.js';
 import { LocaleController, t, whenLocaleReady } from './i18n/index.js';
+import { announce, ensureLiveRegion } from './utils/announce.js';
 import { isBrowserShortcut } from './utils/browser-shortcuts.js';
 // Import utilities
 import { BREAKPOINTS, SIDEBAR, TIMING, TRANSITIONS, Z_INDEX } from './utils/constants.js';
@@ -119,6 +120,8 @@ export class VibeTunnelApp extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    // Safari only announces live regions that existed before their text changed.
+    ensureLiveRegion();
     this.setupHotReload();
     this.setupKeyboardShortcuts();
     this.setupNotificationHandlers();
@@ -620,6 +623,7 @@ export class VibeTunnelApp extends LitElement {
     }
 
     this.errorMessage = message;
+    announce(message);
     // Clear error after configured timeout
     this.errorTimeoutId = window.setTimeout(() => {
       this.errorMessage = '';
@@ -635,6 +639,7 @@ export class VibeTunnelApp extends LitElement {
     }
 
     this.successMessage = message;
+    announce(message);
     // Clear success after configured timeout
     this.successTimeoutId = window.setTimeout(() => {
       this.successMessage = '';
