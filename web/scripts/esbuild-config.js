@@ -3,6 +3,7 @@
  */
 const fs = require('fs');
 const { monacoPlugin } = require('./monaco-plugin.js');
+const { clientBuildIdPlugin } = require('./client-build-id.js');
 const { version } = require('../package.json');
 
 const commonOptions = {
@@ -71,6 +72,11 @@ const clientAppBuild = {
   outdir: 'public/bundle',
   splitting: true,
   chunkNames: 'chunks/[name]-[hash]',
+  // Written by the plugin: the bundle gets its build id, the stylesheet build reads it, and no
+  // file is ever half-written (scripts/client-build-id.js). Build the stylesheet after this
+  // build.
+  write: false,
+  plugins: [...commonOptions.plugins, clientBuildIdPlugin],
 };
 
 /** Chunk names carry a content hash: drop the previous build's before writing new ones. */

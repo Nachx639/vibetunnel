@@ -8,14 +8,15 @@ async function buildClient() {
   execSync('node scripts/ensure-dirs.js', { stdio: 'inherit' });
   execSync('node scripts/copy-assets.js', { stdio: 'inherit' });
 
-  execSync('pnpm exec postcss ./src/client/styles.css -o ./public/bundle/styles.css', {
-    stdio: 'inherit',
-  });
-
   cleanClientChunks();
   await esbuild.build({
     ...prodOptions,
     ...clientAppBuild,
+  });
+
+  // After the app build: the stylesheet declares the build id it wrote (postcss-build-id.js).
+  execSync('pnpm exec postcss ./src/client/styles.css -o ./public/bundle/styles.css', {
+    stdio: 'inherit',
   });
 
   await esbuild.build({

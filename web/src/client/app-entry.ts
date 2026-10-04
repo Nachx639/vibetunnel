@@ -4,6 +4,11 @@ import './services/push-notification-service.js';
 import './utils/offline-notification-manager.js';
 import './app.js';
 import { lazyViews } from './utils/lazy-views.js';
+import { startShellBuildCheck } from './utils/shell-build-check.js';
+
+// This bundle and the stylesheet must come from one build; reloads once if not
+// (utils/shell-build-check.ts).
+startShellBuildCheck();
 
 // logs.html runs this bundle for its <log-viewer>, which is a chunk of its own.
 if (document.querySelector('log-viewer')) void lazyViews.logViewer.require();

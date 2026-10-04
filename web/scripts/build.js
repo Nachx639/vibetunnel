@@ -31,10 +31,6 @@ async function build() {
   console.log('Copying assets...');
   execSync('node scripts/copy-assets.js', { stdio: 'inherit' });
 
-  // Build CSS
-  console.log('Building CSS...');
-  execSync('npx --no-install postcss ./src/client/styles.css -o ./public/bundle/styles.css', { stdio: 'inherit' });
-
   // Bundle client JavaScript
   console.log('Bundling client JavaScript...');
 
@@ -45,6 +41,10 @@ async function build() {
       ...prodOptions,
       ...clientAppBuild,
     });
+
+    // After the app build: the stylesheet declares the build id it wrote (postcss-build-id.js).
+    console.log('Building CSS...');
+    execSync('npx --no-install postcss ./src/client/styles.css -o ./public/bundle/styles.css', { stdio: 'inherit' });
 
     // Build test bundle
     await esbuild.build({

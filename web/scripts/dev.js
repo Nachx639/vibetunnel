@@ -109,7 +109,9 @@ for (let i = 0; i < allArgs.length; i++) {
 console.log('Initial build...');
 require('child_process').execSync('node scripts/ensure-dirs.js', { stdio: 'inherit' });
 require('child_process').execSync('node scripts/copy-assets.js', { stdio: 'inherit' });
-require('child_process').execSync('pnpm exec postcss ./src/client/styles.css -o ./public/bundle/styles.css', { stdio: 'inherit' });
+// The stylesheet is built after the first app build below: it declares that build's id.
+const buildStyles = () =>
+  require('child_process').execSync('pnpm exec postcss ./src/client/styles.css -o ./public/bundle/styles.css', { stdio: 'inherit' });
 
 // Build the command parts
 const commands = [
@@ -148,6 +150,12 @@ async function startBuilding() {
       outfile: 'public/sw.js',
       format: 'iife', // Service workers need IIFE format
     });
+
+    // The app first, then the stylesheet with its build id, before anything watches: the CSS
+    // watcher rebuilds when public/bundle/.build-id changes, and a change it hasn't started
+    // watching yet would leave the pair on two ids (scripts/client-build-id.js).
+    await clientContext.rebuild();
+    buildStyles();
 
     // Start watching
     await clientContext.watch();
