@@ -329,7 +329,7 @@ export function createAuthMiddleware(config: AuthConfig) {
       req.path,
       req.ip,
       Date.now(),
-      `${credential}; user-agent: ${req.headers?.['user-agent'] ?? '-'}`
+      `${credential}; user-agent: ${(req.headers?.['user-agent'] ?? '-').slice(0, 120)}`
     );
     if (line) logger.error(line);
     res.setHeader('WWW-Authenticate', 'Bearer realm="VibeTunnel"');

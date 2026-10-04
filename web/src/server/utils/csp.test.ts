@@ -47,6 +47,22 @@ describe('the app pages CSP', () => {
     expect(line?.length).toBeLessThan(220);
   });
 
+  it('keeps control characters from a report out of the log line', () => {
+    const line = cspReportLogLine(
+      {
+        'csp-report': {
+          'violated-directive': 'img-src',
+          'blocked-uri': 'https://a.example/\x1b[2J\x07x',
+        },
+      },
+      9000
+    );
+    expect(line).toContain('https://a.example/[2Jx');
+    expect([...(line ?? '')].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f)).toBe(
+      false
+    );
+  });
+
   it('accepts reports without credentials and answers 204', async () => {
     const log = vi.fn();
     const app = express();

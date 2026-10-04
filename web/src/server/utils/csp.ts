@@ -79,7 +79,14 @@ export function cspReportLogLine(body: unknown, now = Date.now()): string | null
   linesThisHour++;
   if (reported.size >= 200) reported.clear();
   reported.set(key, now);
-  const clip = (text: string, max: number) => text.replace(/\s+/g, ' ').slice(0, max);
+  // Control characters (ESC included) never reach the log: a report could carry terminal
+  // escape sequences that rewrite what someone reading the log in a terminal sees.
+  const clip = (text: string, max: number) =>
+    text
+      .replace(/\s+/g, ' ')
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+      .replace(/[\x00-\x1f\x7f]/g, '')
+      .slice(0, max);
   return `CSP (report-only) would block ${clip(blocked, 120)} [${clip(directive, 40)}]${
     source ? ` at ${clip(source, 120)}:${line || '?'}` : ''
   }${sample ? ` sample: ${clip(sample, 80)}` : ''}`;
