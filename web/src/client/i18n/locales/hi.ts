@@ -300,10 +300,6 @@ export const hi: Messages = {
   'theme.dark': 'डार्क',
   'theme.system': 'सिस्टम',
   'theme.toggle': 'थीम चुनें',
-  'theme.auto': 'ऑटो',
-  'theme.autoSystem': 'ऑटो (सिस्टम)',
-  'theme.tooltip': 'थीम: {current} ({next} के लिए क्लिक करें)',
-  'theme.toggleAria': 'थीम बदलें',
 
   // New session dialog
   'create.error.missingFields': 'कृपया वर्किंग डायरेक्टरी और कमांड दोनों भरें',
@@ -834,4 +830,18 @@ export const hi: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'पेस्ट करने के लिए दबाकर रखें',
   'keyboard.typeHere': 'यहां टाइप करें...',
+
+  // Appearance and color themes
+  'appearance.title': 'रूप-रंग',
+  'appearance.light': 'हल्का',
+  'appearance.dark': 'गहरा',
+  'appearance.color': 'रंग',
+  'theme.emerald': 'पन्ना',
+  'theme.ocean': 'सागर',
+  'theme.violet': 'बैंगनी',
+  'theme.sunset': 'सूर्यास्त',
+  'theme.rose': 'गुलाबी',
+  'theme.cyber': 'साइबर',
+  'theme.gold': 'सुनहरा',
+  'theme.clay': 'मिट्टी',
 };

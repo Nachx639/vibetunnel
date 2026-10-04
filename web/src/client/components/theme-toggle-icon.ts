@@ -1,17 +1,27 @@
 import { html, LitElement } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
+import {
+  ACCENT_THEMES,
+  accentName,
+  applyAccent,
+  getAccent,
+  syncThemeColorMeta,
+} from '../utils/accent-themes.js';
 
 export type Theme = 'light' | 'dark' | 'system';
 
 /**
- * Icon-only theme toggle button component
- * Cycles through light -> dark -> system themes
+ * Appearance button: opens a small panel with light/dark/auto and the color themes.
  */
 @customElement('theme-toggle-icon')
 export class ThemeToggleIcon extends LitElement {
   @property({ type: String })
   theme: Theme = 'system';
+
+  @state() private open = false;
+  protected readonly i18n = new LocaleController(this);
+  @state() private accent = getAccent();
 
   private readonly STORAGE_KEY = 'vibetunnel-theme';
   private mediaQuery?: MediaQueryList;
@@ -20,8 +30,6 @@ export class ThemeToggleIcon extends LitElement {
   createRenderRoot() {
     return this;
   }
-
-  protected readonly i18n = new LocaleController(this);
 
   connectedCallback() {
     super.connectedCallback();
@@ -36,11 +44,57 @@ export class ThemeToggleIcon extends LitElement {
 
     // Apply initial theme
     this.applyTheme();
+    window.addEventListener('theme-changed', this.handleThemeChanged);
+    document.documentElement.setAttribute('data-accent', this.accent);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this.mediaQuery?.removeEventListener('change', this.handleSystemThemeChange);
+    window.removeEventListener('theme-changed', this.handleThemeChanged);
+    document.removeEventListener('click', this.handleOutsideClick, true);
+  }
+
+  /** Theme picked elsewhere (settings, session menu): keep the icon and panel in sync. */
+  private handleThemeChanged = (e: Event) => {
+    const theme = (e as CustomEvent<{ theme?: Theme }>).detail?.theme;
+    if (theme && theme !== this.theme) this.theme = theme;
+  };
+
+  private handleOutsideClick = (e: Event) => {
+    if (!e.composedPath().includes(this)) this.setOpen(false);
+  };
+
+  @state() private panelPosition = '';
+
+  private setOpen(open: boolean) {
+    if (open) {
+      // Fixed position from the button: headers clip overflow, and the button can sit
+      // anywhere from the left edge (phone) to the right (desktop).
+      const rect = this.querySelector('button')?.getBoundingClientRect();
+      if (rect) {
+        const width = 232;
+        const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+        this.panelPosition = `top: ${rect.bottom + 8}px; left: ${left}px;`;
+      }
+    }
+    this.open = open;
+    document.removeEventListener('click', this.handleOutsideClick, true);
+    if (open) document.addEventListener('click', this.handleOutsideClick, true);
+  }
+
+  private selectTheme(theme: Theme) {
+    this.theme = theme;
+    localStorage.setItem(this.STORAGE_KEY, this.theme);
+    this.applyTheme();
+    this.dispatchEvent(
+      new CustomEvent('theme-changed', { detail: { theme }, bubbles: true, composed: true })
+    );
+  }
+
+  private selectAccent(id: string) {
+    this.accent = id;
+    applyAccent(id);
   }
 
   private handleSystemThemeChange = () => {
@@ -63,30 +117,7 @@ export class ThemeToggleIcon extends LitElement {
     root.setAttribute('data-theme', effectiveTheme);
 
     // Update meta theme-color for mobile browsers
-    const metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (metaTheme) {
-      metaTheme.setAttribute('content', effectiveTheme === 'dark' ? '#0a0a0a' : '#fafafa');
-    }
-  }
-
-  private cycleTheme() {
-    // Cycle through: light -> dark -> system
-    const themes: Theme[] = ['light', 'dark', 'system'];
-    const currentIndex = themes.indexOf(this.theme);
-    const nextIndex = (currentIndex + 1) % themes.length;
-    this.theme = themes[nextIndex];
-
-    localStorage.setItem(this.STORAGE_KEY, this.theme);
-    this.applyTheme();
-
-    // Dispatch event for other components that might need to react
-    this.dispatchEvent(
-      new CustomEvent('theme-changed', {
-        detail: { theme: this.theme },
-        bubbles: true,
-        composed: true,
-      })
-    );
+    syncThemeColorMeta();
   }
 
   private getIcon() {
@@ -112,32 +143,66 @@ export class ThemeToggleIcon extends LitElement {
     }
   }
 
-  private getTooltip() {
-    const current =
-      this.theme === 'system'
-        ? t('theme.autoSystem')
-        : this.theme === 'light'
-          ? t('theme.light')
-          : t('theme.dark');
-    const next =
-      this.theme === 'light'
-        ? t('theme.dark')
-        : this.theme === 'dark'
-          ? t('theme.auto')
-          : t('theme.light');
-    return t('theme.tooltip', { current, next });
-  }
-
   render() {
+    const modes: Array<[Theme, string]> = [
+      ['light', t('appearance.light')],
+      ['dark', t('appearance.dark')],
+      ['system', t('appearance.auto')],
+    ];
     return html`
-      <button
-        @click=${this.cycleTheme}
-        class="bg-bg-tertiary border border-border rounded-lg p-2 font-mono text-muted transition-all duration-200 hover:text-primary hover:bg-surface-hover hover:border-primary hover:shadow-sm flex-shrink-0"
-        title="${this.getTooltip()}"
-        aria-label=${t('theme.toggleAria')}
-      >
-        ${this.getIcon()}
-      </button>
+      <div class="relative">
+        <button
+          @click=${() => this.setOpen(!this.open)}
+          class="bg-bg-tertiary border border-border rounded-lg p-2 font-mono text-muted transition-all duration-200 hover:text-primary hover:bg-surface-hover hover:border-primary hover:shadow-sm flex-shrink-0"
+          title=${t('appearance.title')}
+          aria-label=${t('appearance.title')}
+          aria-haspopup="dialog"
+          aria-expanded=${this.open ? 'true' : 'false'}
+        >
+          ${this.getIcon()}
+        </button>
+        ${
+          this.open
+            ? html`
+              <div
+                class="appearance-panel"
+                role="dialog"
+                aria-label=${t('appearance.title')}
+                style=${this.panelPosition}
+              >
+                <div class="appearance-modes">
+                  ${modes.map(
+                    ([mode, label]) => html`
+                      <button
+                        class="appearance-mode ${this.theme === mode ? 'active' : ''}"
+                        aria-pressed=${this.theme === mode ? 'true' : 'false'}
+                        @click=${() => this.selectTheme(mode)}
+                      >
+                        ${label}
+                      </button>
+                    `
+                  )}
+                </div>
+                <div class="appearance-label">${t('appearance.color')}</div>
+                <div class="appearance-swatches">
+                  ${ACCENT_THEMES.map(
+                    (accent) => html`
+                      <button
+                        class="appearance-swatch ${this.accent === accent.id ? 'active' : ''}"
+                        style="--swatch: ${accent.color}"
+                        title=${accentName(accent)}
+                        aria-label=${accentName(accent)}
+                        aria-pressed=${this.accent === accent.id ? 'true' : 'false'}
+                        @click=${() => this.selectAccent(accent.id)}
+                      ></button>
+                    `
+                  )}
+                </div>
+              </div>
+            `
+            : ''
+        }
+      </div>
     `;
   }
 }

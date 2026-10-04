@@ -312,10 +312,6 @@ export const en = {
   'theme.dark': 'Dark',
   'theme.system': 'System',
   'theme.toggle': 'Theme toggle',
-  'theme.auto': 'Auto',
-  'theme.autoSystem': 'Auto (System)',
-  'theme.tooltip': 'Theme: {current} (click for {next})',
-  'theme.toggleAria': 'Toggle theme',
 
   // New session dialog
   'create.error.missingFields': 'Please fill in both working directory and command',
@@ -854,6 +850,20 @@ export const en = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Long-press to paste',
   'keyboard.typeHere': 'Type here...',
+
+  // Appearance and color themes
+  'appearance.title': 'Appearance',
+  'appearance.light': 'Light',
+  'appearance.dark': 'Dark',
+  'appearance.color': 'Color',
+  'theme.emerald': 'Emerald',
+  'theme.ocean': 'Ocean',
+  'theme.violet': 'Violet',
+  'theme.sunset': 'Sunset',
+  'theme.rose': 'Rose',
+  'theme.cyber': 'Cyber',
+  'theme.gold': 'Gold',
+  'theme.clay': 'Clay',
 };
 
 export type MessageKey = keyof typeof en;

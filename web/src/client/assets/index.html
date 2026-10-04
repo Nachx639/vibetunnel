@@ -97,6 +97,12 @@
         
         // Set initial background color
         document.documentElement.style.backgroundColor = effectiveTheme === 'dark' ? '#0a0a0a' : '#fafafa';
+
+        // Color theme (utils/accent-themes.ts) before first paint
+        try {
+          const accent = localStorage.getItem('vibetunnel-accent');
+          if (accent) document.documentElement.setAttribute('data-accent', accent);
+        } catch (_) {}
       })();
     </script>
   </head>

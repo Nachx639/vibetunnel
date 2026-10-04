@@ -299,10 +299,6 @@ export const ar: Messages = {
   'theme.dark': 'داكن',
   'theme.system': 'النظام',
   'theme.toggle': 'اختيار السمة',
-  'theme.auto': 'تلقائي',
-  'theme.autoSystem': 'تلقائي (النظام)',
-  'theme.tooltip': 'السمة: {current} (انقر للتبديل إلى {next})',
-  'theme.toggleAria': 'تبديل السمة',
 
   // New session dialog
   'create.error.missingFields': 'يُرجى إدخال مجلد العمل والأمر معًا',
@@ -833,4 +829,18 @@ export const ar: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'اضغط مطولًا للصق',
   'keyboard.typeHere': 'اكتب هنا...',
+
+  // Appearance and color themes
+  'appearance.title': 'المظهر',
+  'appearance.light': 'فاتح',
+  'appearance.dark': 'داكن',
+  'appearance.color': 'اللون',
+  'theme.emerald': 'زمردي',
+  'theme.ocean': 'محيطي',
+  'theme.violet': 'بنفسجي',
+  'theme.sunset': 'غروب',
+  'theme.rose': 'وردي',
+  'theme.cyber': 'سايبر',
+  'theme.gold': 'ذهبي',
+  'theme.clay': 'طيني',
 };

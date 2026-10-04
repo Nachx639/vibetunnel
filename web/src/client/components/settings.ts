@@ -11,7 +11,9 @@ import {
 } from '../services/push-notification-service.js';
 import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
+import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
 import { createLogger } from '../utils/logger.js';
+import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
 import './language-picker.js';
 import './quick-keys-editor.js';
@@ -42,6 +44,10 @@ export class Settings extends LitElement {
   @state() private isDiscoveringRepositories = false;
   @state() private showQuickKeysEditor = false;
 
+  // Appearance state (shared with the header toggle and the session compact menu)
+  @state() private themeMode: ThemeMode = getThemeMode();
+  @state() private accent = getAccent();
+
   private permissionChangeUnsubscribe?: () => void;
   private subscriptionChangeUnsubscribe?: () => void;
   private repositoryService?: RepositoryService;
@@ -50,6 +56,9 @@ export class Settings extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    window.addEventListener('theme-changed', this.syncAppearance);
+    window.addEventListener('vibetunnel-accent-changed', this.syncAppearance);
+    this.syncAppearance();
     this.initializeNotifications();
     this.loadSettings();
 
@@ -64,6 +73,8 @@ export class Settings extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener('theme-changed', this.syncAppearance);
+    window.removeEventListener('vibetunnel-accent-changed', this.syncAppearance);
     if (this.permissionChangeUnsubscribe) {
       this.permissionChangeUnsubscribe();
     }
@@ -206,6 +217,25 @@ export class Settings extends LitElement {
     } finally {
       this.isDiscoveringRepositories = false;
     }
+  }
+
+  /** Picks up theme/color changes made from the header or the session menu. */
+  private syncAppearance = () => {
+    this.themeMode = getThemeMode();
+    this.accent = getAccent();
+  };
+
+  private selectThemeMode(mode: ThemeMode) {
+    this.themeMode = mode;
+    applyThemeMode(mode);
+    this.dispatchEvent(
+      new CustomEvent('theme-changed', { detail: { theme: mode }, bubbles: true, composed: true })
+    );
+  }
+
+  private selectAccent(id: string) {
+    this.accent = id;
+    applyAccent(id);
   }
 
   private handleKeyDown = (e: KeyboardEvent) => {
@@ -695,10 +725,57 @@ export class Settings extends LitElement {
     `;
   }
 
+  private renderAppearance() {
+    const modes: Array<[ThemeMode, string]> = [
+      ['light', t('theme.light')],
+      ['dark', t('theme.dark')],
+      ['system', t('theme.system')],
+    ];
+    return html`
+      <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-appearance">
+        <label class="text-primary font-medium">${t('appearance.title')}</label>
+        <div class="appearance-modes mt-3" role="group" aria-label=${t('appearance.title')}>
+          ${modes.map(
+            ([mode, label]) => html`
+              <button
+                type="button"
+                class="appearance-mode min-h-[44px] ${this.themeMode === mode ? 'active' : ''}"
+                aria-pressed=${this.themeMode === mode ? 'true' : 'false'}
+                data-testid="settings-theme-${mode}"
+                @click=${() => this.selectThemeMode(mode)}
+              >
+                ${label}
+              </button>
+            `
+          )}
+        </div>
+        <div class="appearance-label">${t('appearance.color')}</div>
+        <div class="appearance-swatches" role="group" aria-label=${t('appearance.color')}>
+          ${ACCENT_THEMES.map(
+            (accent) => html`
+              <button
+                type="button"
+                class="appearance-swatch ${this.accent === accent.id ? 'active' : ''}"
+                style="--swatch: ${accent.color}; width: 44px; height: 44px"
+                title=${accentName(accent)}
+                aria-label=${accentName(accent)}
+                aria-pressed=${this.accent === accent.id ? 'true' : 'false'}
+                data-testid="settings-accent-${accent.id}"
+                @click=${() => this.selectAccent(accent.id)}
+              ></button>
+            `
+          )}
+        </div>
+      </div>
+    `;
+  }
+
   private renderAppSettings() {
     return html`
       <div class="space-y-4">
         <h3 class="text-md font-bold text-primary mb-3">${t('settings.application')}</h3>
+
+        ${this.renderAppearance()}
 
         <!-- Language -->
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">

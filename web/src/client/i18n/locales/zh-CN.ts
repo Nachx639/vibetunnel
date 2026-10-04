@@ -297,10 +297,6 @@ export const zhCN: Messages = {
   'theme.dark': '深色',
   'theme.system': '跟随系统',
   'theme.toggle': '主题切换',
-  'theme.auto': '自动',
-  'theme.autoSystem': '自动（跟随系统）',
-  'theme.tooltip': '主题：{current}（点击切换为{next}）',
-  'theme.toggleAria': '切换主题',
 
   // New session dialog
   'create.error.missingFields': '请填写工作目录和命令',
@@ -825,4 +821,18 @@ export const zhCN: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': '长按以粘贴',
   'keyboard.typeHere': '在此输入...',
+
+  // Appearance and color themes
+  'appearance.title': '外观',
+  'appearance.light': '浅色',
+  'appearance.dark': '深色',
+  'appearance.color': '颜色',
+  'theme.emerald': '翡翠',
+  'theme.ocean': '海洋',
+  'theme.violet': '紫罗兰',
+  'theme.sunset': '日落',
+  'theme.rose': '玫瑰',
+  'theme.cyber': '赛博',
+  'theme.gold': '金色',
+  'theme.clay': '陶土',
 };

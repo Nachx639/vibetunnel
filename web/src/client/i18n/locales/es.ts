@@ -313,10 +313,6 @@ export const es: Messages = {
   'theme.dark': 'Oscuro',
   'theme.system': 'Sistema',
   'theme.toggle': 'Selector de tema',
-  'theme.auto': 'Auto',
-  'theme.autoSystem': 'Auto (sistema)',
-  'theme.tooltip': 'Tema: {current} (clic para {next})',
-  'theme.toggleAria': 'Cambiar tema',
 
   // New session dialog
   'create.error.missingFields': 'Rellena el directorio de trabajo y el comando',
@@ -859,4 +855,18 @@ export const es: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Mantén pulsado para pegar',
   'keyboard.typeHere': 'Escribe aquí...',
+
+  // Appearance and color themes
+  'appearance.title': 'Apariencia',
+  'appearance.light': 'Claro',
+  'appearance.dark': 'Oscuro',
+  'appearance.color': 'Color',
+  'theme.emerald': 'Esmeralda',
+  'theme.ocean': 'Océano',
+  'theme.violet': 'Violeta',
+  'theme.sunset': 'Atardecer',
+  'theme.rose': 'Rosa',
+  'theme.cyber': 'Cyber',
+  'theme.gold': 'Oro',
+  'theme.clay': 'Arcilla',
 };

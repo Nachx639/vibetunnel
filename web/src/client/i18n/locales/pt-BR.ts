@@ -312,10 +312,6 @@ export const ptBR: Messages = {
   'theme.dark': 'Escuro',
   'theme.system': 'Sistema',
   'theme.toggle': 'Seletor de tema',
-  'theme.auto': 'Auto',
-  'theme.autoSystem': 'Auto (sistema)',
-  'theme.tooltip': 'Tema: {current} (clique para {next})',
-  'theme.toggleAria': 'Alternar tema',
 
   // New session dialog
   'create.error.missingFields': 'Preencha o diretório de trabalho e o comando',
@@ -858,4 +854,18 @@ export const ptBR: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Toque e segure para colar',
   'keyboard.typeHere': 'Digite aqui...',
+
+  // Appearance and color themes
+  'appearance.title': 'Aparência',
+  'appearance.light': 'Claro',
+  'appearance.dark': 'Escuro',
+  'appearance.color': 'Cor',
+  'theme.emerald': 'Esmeralda',
+  'theme.ocean': 'Oceano',
+  'theme.violet': 'Violeta',
+  'theme.sunset': 'Pôr do sol',
+  'theme.rose': 'Rosa',
+  'theme.cyber': 'Cyber',
+  'theme.gold': 'Ouro',
+  'theme.clay': 'Argila',
 };

@@ -9,6 +9,13 @@ import { html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../../shared/types.js';
 import { LocaleController, t } from '../../i18n/index.js';
+import {
+  ACCENT_THEMES,
+  accentName,
+  applyAccent,
+  getAccent,
+  syncThemeColorMeta,
+} from '../../utils/accent-themes.js';
 import { Z_INDEX } from '../../utils/constants.js';
 import type { Theme } from '../theme-toggle-icon.js';
 
@@ -28,6 +35,10 @@ export class CompactMenu extends LitElement {
   @property({ type: Function }) onMaxWidthToggle?: () => void;
   @property({ type: Function }) onOpenSettings?: () => void;
   @property({ type: String }) currentTheme: Theme = 'system';
+  @state() private accent = getAccent();
+  private handleAccentChanged = () => {
+    this.accent = getAccent();
+  };
   @property({ type: Boolean }) macAppConnected = false;
 
   protected readonly i18n = new LocaleController(this);
@@ -62,13 +73,8 @@ export class CompactMenu extends LitElement {
     }
   }
 
-  private handleThemeChange() {
-    // Cycle through themes: light -> dark -> system
-    const themes: Theme[] = ['light', 'dark', 'system'];
-    const currentIndex = themes.indexOf(this.currentTheme);
-    const nextIndex = (currentIndex + 1) % themes.length;
-    const newTheme = themes[nextIndex];
-
+  /** Light / dark / system, picked in place: the menu stays open to compare. */
+  private handleThemeChange(newTheme: Theme) {
     // Update theme
     this.currentTheme = newTheme;
     localStorage.setItem('vibetunnel-theme', newTheme);
@@ -87,10 +93,7 @@ export class CompactMenu extends LitElement {
     root.setAttribute('data-theme', effectiveTheme);
 
     // Update meta theme-color
-    const metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (metaTheme) {
-      metaTheme.setAttribute('content', effectiveTheme === 'dark' ? '#0a0a0a' : '#fafafa');
-    }
+    syncThemeColorMeta();
 
     // Dispatch event
     this.dispatchEvent(
@@ -100,10 +103,6 @@ export class CompactMenu extends LitElement {
         composed: true,
       })
     );
-
-    // Close menu
-    this.showMenu = false;
-    this.focusedIndex = -1;
   }
 
   private getThemeIcon() {
@@ -136,6 +135,7 @@ export class CompactMenu extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    window.addEventListener('vibetunnel-accent-changed', this.handleAccentChanged);
     // Close menu when clicking outside
     document.addEventListener('click', this.handleOutsideClick);
     // Add keyboard support
@@ -147,6 +147,7 @@ export class CompactMenu extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener('vibetunnel-accent-changed', this.handleAccentChanged);
     document.removeEventListener('click', this.handleOutsideClick);
     document.removeEventListener('keydown', this.handleKeyDown);
   }
@@ -207,7 +208,12 @@ export class CompactMenu extends LitElement {
     if (!this.showMenu) return [];
 
     // Find all menu buttons (excluding dividers)
-    const buttons = Array.from(this.querySelectorAll('button[data-testid]')) as HTMLButtonElement[];
+    const buttons = Array.from(
+      // Theme and color pickers are touch/mouse targets, not arrow-key menu items.
+      this.querySelectorAll(
+        'button[data-testid]:not([data-testid^="compact-theme-"]):not([data-testid^="compact-accent-"])'
+      )
+    ) as HTMLButtonElement[];
 
     return buttons.filter((btn) => btn.tagName === 'BUTTON');
   }
@@ -336,16 +342,56 @@ export class CompactMenu extends LitElement {
           ${this.chatMode ? t('menu.terminalMode') : t('menu.chatMode')}
         </button>
         
-        <!-- Theme Toggle -->
-        <button
-          class="w-full text-left px-4 py-3 text-sm font-mono text-primary hover:bg-surface-hover hover:text-primary flex items-center gap-3 ${this.focusedIndex === menuItemIndex++ ? 'bg-surface-hover text-primary' : ''}"
-          @click=${() => this.handleThemeChange()}
-          data-testid="compact-theme-toggle"
-          tabindex="${this.showMenu ? '0' : '-1'}"
-        >
+        <!-- Theme: light / dark / system in place -->
+        <div class="flex items-center gap-3 px-4 pt-3 pb-2 text-sm font-mono text-primary">
           ${this.getThemeIcon()}
-          ${t('menu.theme', { theme: this.getThemeLabel() })}
-        </button>
+          <div class="flex flex-1 rounded-lg border border-border overflow-hidden" role="group" aria-label=${t('menu.theme', { theme: this.getThemeLabel() })} data-testid="compact-theme-toggle">
+            ${(
+              [
+                ['light', t('theme.light')],
+                ['dark', t('theme.dark')],
+                ['system', t('theme.system')],
+              ] as Array<[Theme, string]>
+            ).map(
+              ([mode, label]) => html`
+                <button
+                  class="flex-1 px-2 py-1.5 text-xs font-mono ${this.currentTheme === mode ? 'bg-primary text-bg' : 'text-primary hover:bg-surface-hover'}"
+                  aria-pressed=${this.currentTheme === mode ? 'true' : 'false'}
+                  data-testid="compact-theme-${mode}"
+                  tabindex="${this.showMenu ? '0' : '-1'}"
+                  @click=${(e: Event) => {
+                    e.stopPropagation();
+                    this.handleThemeChange(mode);
+                  }}
+                >
+                  ${label}
+                </button>
+              `
+            )}
+          </div>
+        </div>
+
+        <!-- Color themes: pick right here, the menu stays open to compare -->
+        <div class="flex flex-wrap gap-2 px-4 pb-3 pt-1" role="group" aria-label=${t('appearance.color')}>
+          ${ACCENT_THEMES.map(
+            (accent) => html`
+              <button
+                class="w-7 h-7 rounded-full border-2 ${this.accent === accent.id ? 'border-text' : 'border-transparent'}"
+                style="background: ${accent.color}"
+                title=${accentName(accent)}
+                aria-label=${accentName(accent)}
+                aria-pressed=${this.accent === accent.id ? 'true' : 'false'}
+                data-testid="compact-accent-${accent.id}"
+                tabindex="${this.showMenu ? '0' : '-1'}"
+                @click=${(e: Event) => {
+                  e.stopPropagation();
+                  this.accent = accent.id;
+                  applyAccent(accent.id);
+                }}
+              ></button>
+            `
+          )}
+        </div>
         
         <!-- Settings -->
         <button

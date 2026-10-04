@@ -301,10 +301,6 @@ export const bn: Messages = {
   'theme.dark': 'ডার্ক',
   'theme.system': 'সিস্টেম',
   'theme.toggle': 'থিম বাছাই',
-  'theme.auto': 'অটো',
-  'theme.autoSystem': 'অটো (সিস্টেম)',
-  'theme.tooltip': 'থিম: {current} ({next}-এর জন্য ক্লিক করুন)',
-  'theme.toggleAria': 'থিম বদলান',
 
   // New session dialog
   'create.error.missingFields': 'অনুগ্রহ করে ওয়ার্কিং ডিরেক্টরি ও কমান্ড দুটোই পূরণ করুন',
@@ -836,4 +832,18 @@ export const bn: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'পেস্ট করতে চেপে ধরে রাখুন',
   'keyboard.typeHere': 'এখানে লিখুন...',
+
+  // Appearance and color themes
+  'appearance.title': 'চেহারা',
+  'appearance.light': 'হালকা',
+  'appearance.dark': 'গাঢ়',
+  'appearance.color': 'রং',
+  'theme.emerald': 'পান্না',
+  'theme.ocean': 'সমুদ্র',
+  'theme.violet': 'বেগুনি',
+  'theme.sunset': 'সূর্যাস্ত',
+  'theme.rose': 'গোলাপি',
+  'theme.cyber': 'সাইবার',
+  'theme.gold': 'সোনালি',
+  'theme.clay': 'মাটি',
 };
