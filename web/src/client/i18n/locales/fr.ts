@@ -926,4 +926,11 @@ export const fr: Messages = {
   'switcher.title': 'Changer de session',
   'switcher.empty': 'Aucune autre session en cours',
   'switcher.renameCurrent': 'Renommer cette session',
+  // Quick switcher
+  'settings.quickSwitcher': 'Changement de session avec ⌘K',
+  'settings.quickSwitcher.description':
+    'Cmd+K ouvre une liste de sessions avec recherche, y compris dans un terminal. Désactivé par défaut : de nombreux terminaux utilisent Cmd+K pour effacer l’écran.',
+  'switcher.quickLabel': 'Changement rapide de session',
+  'switcher.quickPlaceholder': 'Changer de session… (tapez pour filtrer)',
+  'switcher.noMatches': 'Aucune session ne correspond',
 };

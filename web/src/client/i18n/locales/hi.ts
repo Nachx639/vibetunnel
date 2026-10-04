@@ -889,4 +889,11 @@ export const hi: Messages = {
   'switcher.title': 'सत्र बदलें',
   'switcher.empty': 'कोई अन्य सत्र नहीं चल रहा',
   'switcher.renameCurrent': 'इस सत्र का नाम बदलें',
+  // Quick switcher
+  'settings.quickSwitcher': '⌘K से सत्र बदलें',
+  'settings.quickSwitcher.description':
+    'Cmd+K खोजने योग्य सत्र सूची खोलता है, टर्मिनल के अंदर भी। डिफ़ॉल्ट रूप से बंद: कई टर्मिनल स्क्रीन साफ़ करने के लिए Cmd+K का उपयोग करते हैं।',
+  'switcher.quickLabel': 'सत्र जल्दी बदलें',
+  'switcher.quickPlaceholder': 'सत्र बदलें… (फ़िल्टर करने के लिए लिखें)',
+  'switcher.noMatches': 'कोई सत्र मेल नहीं खाता',
 };

@@ -25,6 +25,7 @@ import './components/app-header.js';
 import './components/session-create-form.js';
 import './components/multiplexer-modal.js';
 import './components/session-list.js';
+import { isQuickSwitcherEnabled } from './components/session-quick-switcher.js';
 import './components/session-view.js';
 import './components/session-card.js';
 import './components/file-browser.js';
@@ -95,6 +96,7 @@ export class VibeTunnelApp extends LitElement {
   @state() private showCreateModal = false;
   @state() private createDialogWorkingDir = '';
   @state() private showTmuxModal = false;
+  @state() private showQuickSwitcher = false;
   @state() private showSSHKeyManager = false;
   @state() private showSettings = false;
   @state() private isAuthenticated = false;
@@ -236,6 +238,28 @@ export class VibeTunnelApp extends LitElement {
 
   private handleKeyDown = (e: KeyboardEvent) => {
     const isMacOS = navigator.platform.toLowerCase().includes('mac');
+
+    // Cmd+K (Mac, iPad keyboard) toggles the session quick switcher, only when turned on in
+    // Settings: many terminals use Cmd+K to clear. Never Ctrl+K (kill-line in the shell).
+    if (
+      this.isAuthenticated &&
+      e.metaKey &&
+      !e.ctrlKey &&
+      !e.shiftKey &&
+      !e.altKey &&
+      e.key.toLowerCase() === 'k' &&
+      isQuickSwitcherEnabled()
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.showQuickSwitcher = !this.showQuickSwitcher;
+      return;
+    }
+
+    // While the quick switcher is open, it handles its own keys.
+    if (this.showQuickSwitcher) {
+      return;
+    }
 
     // Handle Cmd/Ctrl+1234567890 for session switching when keyboard capture is active
     if (this.currentView === 'session' && this.keyboardCaptureActive) {
@@ -2156,6 +2180,19 @@ export class VibeTunnelApp extends LitElement {
       ></multiplexer-modal>
 
       ${this.renderReconnecting()}
+
+      <!-- Session quick switcher (Cmd+K, opt-in) -->
+      <session-quick-switcher
+        .visible=${this.showQuickSwitcher}
+        .sessions=${this.sessions}
+        @select-session=${(e: CustomEvent) => {
+          this.showQuickSwitcher = false;
+          this.handleNavigateToSession(e);
+        }}
+        @close=${() => {
+          this.showQuickSwitcher = false;
+        }}
+      ></session-quick-switcher>
     `;
   }
 }

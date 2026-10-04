@@ -910,6 +910,13 @@ export const en = {
   'switcher.title': 'Switch session',
   'switcher.empty': 'No other sessions running',
   'switcher.renameCurrent': 'Rename this session',
+  // Quick switcher
+  'settings.quickSwitcher': '⌘K session switcher',
+  'settings.quickSwitcher.description':
+    'Cmd+K opens a searchable list of sessions, also inside a terminal. Off by default: many terminals use Cmd+K to clear the screen.',
+  'switcher.quickLabel': 'Quick switch session',
+  'switcher.quickPlaceholder': 'Switch session… (type to filter)',
+  'switcher.noMatches': 'No matching sessions',
 };
 
 export type MessageKey = keyof typeof en;

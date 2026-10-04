@@ -880,4 +880,11 @@ export const zhCN: Messages = {
   'switcher.title': '切换会话',
   'switcher.empty': '没有其他正在运行的会话',
   'switcher.renameCurrent': '重命名此会话',
+  // Quick switcher
+  'settings.quickSwitcher': '⌘K 切换会话',
+  'settings.quickSwitcher.description':
+    'Cmd+K 打开可搜索的会话列表，在终端内也有效。默认关闭：许多终端用 Cmd+K 清屏。',
+  'switcher.quickLabel': '快速切换会话',
+  'switcher.quickPlaceholder': '切换会话…（输入以筛选）',
+  'switcher.noMatches': '没有匹配的会话',
 };

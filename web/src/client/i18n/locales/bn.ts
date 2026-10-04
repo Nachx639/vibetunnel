@@ -891,4 +891,11 @@ export const bn: Messages = {
   'switcher.title': 'সেশন বদলান',
   'switcher.empty': 'আর কোনো সেশন চলছে না',
   'switcher.renameCurrent': 'এই সেশনের নাম বদলান',
+  // Quick switcher
+  'settings.quickSwitcher': '⌘K দিয়ে সেশন বদল',
+  'settings.quickSwitcher.description':
+    'Cmd+K খোঁজা যায় এমন সেশন তালিকা খোলে, টার্মিনালের ভেতরেও। ডিফল্টভাবে বন্ধ: অনেক টার্মিনাল স্ক্রিন পরিষ্কার করতে Cmd+K ব্যবহার করে।',
+  'switcher.quickLabel': 'দ্রুত সেশন বদলান',
+  'switcher.quickPlaceholder': 'সেশন বদলান… (ফিল্টার করতে লিখুন)',
+  'switcher.noMatches': 'কোনো সেশন মেলেনি',
 };

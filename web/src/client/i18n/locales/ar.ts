@@ -888,4 +888,11 @@ export const ar: Messages = {
   'switcher.title': 'تبديل الجلسة',
   'switcher.empty': 'لا توجد جلسات أخرى قيد التشغيل',
   'switcher.renameCurrent': 'إعادة تسمية هذه الجلسة',
+  // Quick switcher
+  'settings.quickSwitcher': 'التبديل بين الجلسات بـ ⌘K',
+  'settings.quickSwitcher.description':
+    'يفتح Cmd+K قائمة جلسات قابلة للبحث، حتى داخل الطرفية. معطّل افتراضيًا: كثير من الطرفيات تستخدم Cmd+K لمسح الشاشة.',
+  'switcher.quickLabel': 'تبديل سريع للجلسة',
+  'switcher.quickPlaceholder': 'تبديل الجلسة… (اكتب للتصفية)',
+  'switcher.noMatches': 'لا توجد جلسات مطابقة',
 };
