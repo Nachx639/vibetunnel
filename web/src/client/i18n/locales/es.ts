@@ -1146,6 +1146,17 @@ export const es: Messages = {
   'macSessions.row.opening': 'Abriendo…',
   'macSessions.section.collapse': 'Ocultar estas sesiones',
   'macSessions.section.expand': 'Mostrar estas sesiones',
+  'macSessions.setting.description':
+    'Muestra las sesiones de tmux y los Claude Code, Codex o Gemini que se ejecutan en otras terminales. Síguelos desde aquí; las sesiones de tmux también se pueden abrir y controlar.',
+  'macSessions.setting.label.computer': 'Mostrar las sesiones de este ordenador',
+  'macSessions.setting.label.mac': 'Mostrar las sesiones de este Mac',
+  'macSessions.setting.locked': 'Fijado al arrancar el servidor ({name}).',
+  'macSessions.setting.openMode': 'Al abrir una sesión de tmux',
+  'macSessions.setting.openMode.control': 'Lista para escribir',
+  'macSessions.setting.openMode.description':
+    'Qué abre un toque en una sesión de tmux. Con «Solo observar», nada de lo que escribes se envía hasta que tomas el control.',
+  'macSessions.setting.openMode.watch': 'Solo observar',
+  'macSessions.setting.saveFailed': 'No se ha podido guardar el ajuste.',
   'macSessions.view.ended': 'Esta sesión ha terminado.',
   'macSessions.view.inTmuxWindow': 'tmux · {name} · ventana {index}',
   'macSessions.view.readOnly': 'Solo lectura',

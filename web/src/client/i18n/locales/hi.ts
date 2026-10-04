@@ -1116,6 +1116,17 @@ export const hi: Messages = {
   'macSessions.row.opening': 'खुल रहा है…',
   'macSessions.section.collapse': 'ये सेशन छिपाएँ',
   'macSessions.section.expand': 'ये सेशन दिखाएँ',
+  'macSessions.setting.description':
+    'tmux सेशन और दूसरे टर्मिनलों में चल रहे Claude Code, Codex या Gemini दिखाता है। उन्हें यहाँ से फ़ॉलो करें; tmux सेशन खोले और नियंत्रित भी किए जा सकते हैं।',
+  'macSessions.setting.label.computer': 'इस कंप्यूटर के सेशन दिखाएँ',
+  'macSessions.setting.label.mac': 'इस Mac के सेशन दिखाएँ',
+  'macSessions.setting.locked': 'सर्वर शुरू करते समय तय किया गया ({name})।',
+  'macSessions.setting.openMode': 'tmux सेशन खोलते समय',
+  'macSessions.setting.openMode.control': 'लिखने के लिए तैयार',
+  'macSessions.setting.openMode.description':
+    'tmux सेशन पर टैप करने से क्या खुलता है। “केवल देखें” में, नियंत्रण लेने तक आपका लिखा कुछ भी नहीं भेजा जाता।',
+  'macSessions.setting.openMode.watch': 'केवल देखें',
+  'macSessions.setting.saveFailed': 'सेटिंग सहेजी नहीं जा सकी।',
   'macSessions.view.ended': 'यह सेशन खत्म हो गया है।',
   'macSessions.view.inTmuxWindow': 'tmux · {name} · विंडो {index}',
   'macSessions.view.readOnly': 'केवल पढ़ने के लिए',

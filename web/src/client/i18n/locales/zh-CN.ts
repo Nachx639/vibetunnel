@@ -1104,6 +1104,17 @@ export const zhCN: Messages = {
   'macSessions.row.opening': '正在打开…',
   'macSessions.section.collapse': '隐藏这些会话',
   'macSessions.section.expand': '显示这些会话',
+  'macSessions.setting.description':
+    '列出 tmux 会话，以及在其他终端中运行的 Claude Code、Codex 或 Gemini。可在这里跟进它们；tmux 会话还可以打开并控制。',
+  'macSessions.setting.label.computer': '显示这台电脑上的会话',
+  'macSessions.setting.label.mac': '显示这台 Mac 上的会话',
+  'macSessions.setting.locked': '在服务器启动时设定（{name}）。',
+  'macSessions.setting.openMode': '打开 tmux 会话时',
+  'macSessions.setting.openMode.control': '可直接输入',
+  'macSessions.setting.openMode.description':
+    '点按 tmux 会话时的打开方式。选择“仅观看”时，在你接管控制之前，输入的内容都不会发送。',
+  'macSessions.setting.openMode.watch': '仅观看',
+  'macSessions.setting.saveFailed': '无法保存设置。',
   'macSessions.view.ended': '此会话已结束。',
   'macSessions.view.inTmuxWindow': 'tmux · {name} · 窗口 {index}',
   'macSessions.view.readOnly': '只读',

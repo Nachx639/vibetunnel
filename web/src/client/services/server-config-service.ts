@@ -21,6 +21,17 @@ export interface ServerConfig {
   notificationPreferences?: NotificationPreferences;
   /** Phone chat view of agent conversations (config.json `agentChat`). */
   agentChat?: boolean;
+  /** "On this computer" in the phone list: the switch, forced or from config.json (default off). */
+  macSessions?: boolean;
+  /** What a tap on a tmux session there opens. */
+  macSessionsOpenMode?: 'control' | 'watch';
+  /** The switch was forced when the server started; macSessionsLockedBy names how. */
+  macSessionsLocked?: boolean;
+  macSessionsLockedBy?: string;
+  /** False where nothing can be listed (not macOS or Linux, HQ mode). */
+  macSessionsSupported?: boolean;
+  /** The server's platform ("darwin", "linux"…). */
+  platform?: string;
 }
 
 export class ServerConfigService {

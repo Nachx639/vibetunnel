@@ -1143,6 +1143,17 @@ export const ptBR: Messages = {
   'macSessions.row.opening': 'Abrindo…',
   'macSessions.section.collapse': 'Ocultar estas sessões',
   'macSessions.section.expand': 'Mostrar estas sessões',
+  'macSessions.setting.description':
+    'Lista as sessões do tmux e o Claude Code, Codex ou Gemini rodando em outros terminais. Acompanhe-os daqui; as sessões do tmux também podem ser abertas e controladas.',
+  'macSessions.setting.label.computer': 'Mostrar sessões deste computador',
+  'macSessions.setting.label.mac': 'Mostrar sessões deste Mac',
+  'macSessions.setting.locked': 'Definido ao iniciar o servidor ({name}).',
+  'macSessions.setting.openMode': 'Ao abrir uma sessão do tmux',
+  'macSessions.setting.openMode.control': 'Pronta para digitar',
+  'macSessions.setting.openMode.description':
+    'O que um toque numa sessão do tmux abre. Com “Apenas observar”, nada do que você digita é enviado até você assumir o controle.',
+  'macSessions.setting.openMode.watch': 'Apenas observar',
+  'macSessions.setting.saveFailed': 'Não foi possível salvar a configuração.',
   'macSessions.view.ended': 'Esta sessão terminou.',
   'macSessions.view.inTmuxWindow': 'tmux · {name} · janela {index}',
   'macSessions.view.readOnly': 'Somente leitura',

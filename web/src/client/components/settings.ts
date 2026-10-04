@@ -1,8 +1,9 @@
-import { html, LitElement, type PropertyValues } from 'lit';
+import { html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
+import { MAC_SESSIONS_CHANGED_EVENT, type MacOpenMode } from '../../shared/mac-sessions.js';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/config.js';
-import { LocaleController, t } from '../i18n/index.js';
+import { LocaleController, t, tAround } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import {
   type NotificationPreferences,
@@ -13,6 +14,7 @@ import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
 import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
 import { createLogger } from '../utils/logger.js';
+import { isMacPlatform, macSessionsPlatform } from '../utils/mac-sessions.js';
 import { getPhoneUi, type PhoneUi, setPhoneUi } from '../utils/phone-ui.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
@@ -45,6 +47,15 @@ export class Settings extends LitElement {
   @state() private repositoryCount = 0;
   @state() private isDiscoveringRepositories = false;
   @state() private showQuickKeysEditor = false;
+  /** "On this computer": off unless turned on (config.json `macSessions`). */
+  @state() private macSessions = false;
+  @state() private macSessionsOpenMode: MacOpenMode = 'control';
+  /** How the server's start forced the switch ("--no-mac-sessions"), or null. */
+  @state() private macSessionsLockedBy: string | null = null;
+  /** Not offered where nothing can be listed (not macOS or Linux, HQ mode). */
+  @state() private macSessionsSupported = false;
+  /** The server's platform: "this Mac" on macOS, "this computer" elsewhere. */
+  @state() private configPlatform = '';
 
   // Appearance state (shared with the header toggle and the session compact menu)
   @state() private themeMode: ThemeMode = getThemeMode();
@@ -185,6 +196,14 @@ export class Settings extends LitElement {
           const serverConfig = await this.serverConfigService.loadConfig(this.visible);
           // Always use server's repository base path
           this.repositoryBasePath = serverConfig.repositoryBasePath || DEFAULT_REPOSITORY_BASE_PATH;
+          this.macSessions = serverConfig.macSessions === true;
+          this.macSessionsOpenMode =
+            serverConfig.macSessionsOpenMode === 'watch' ? 'watch' : 'control';
+          this.macSessionsLockedBy = serverConfig.macSessionsLocked
+            ? (serverConfig.macSessionsLockedBy ?? '')
+            : null;
+          this.macSessionsSupported = serverConfig.macSessionsSupported === true;
+          this.configPlatform = serverConfig.platform ?? '';
           logger.debug('Loaded repository base path:', this.repositoryBasePath);
           // Force update to ensure UI reflects the loaded value
           this.requestUpdate();
@@ -506,6 +525,123 @@ export class Settings extends LitElement {
       ('standalone' in window.navigator &&
         (window.navigator as Navigator & { standalone?: boolean }).standalone === true)
     );
+  }
+
+  private async saveMacSessions(update: {
+    macSessions?: boolean;
+    macSessionsOpenMode?: MacOpenMode;
+  }) {
+    if (!this.serverConfigService) throw new Error('no server config');
+    await this.serverConfigService.updateConfig(update);
+    window.dispatchEvent(new CustomEvent(MAC_SESSIONS_CHANGED_EVENT));
+  }
+
+  private async handleMacSessionsToggle() {
+    if (this.macSessionsLockedBy !== null) return;
+    const next = !this.macSessions;
+    this.macSessions = next;
+    try {
+      await this.saveMacSessions({ macSessions: next });
+    } catch (error) {
+      logger.error('Failed to update Mac sessions:', error);
+      this.macSessions = !next;
+      this.dispatchEvent(new CustomEvent('error', { detail: t('macSessions.setting.saveFailed') }));
+    }
+  }
+
+  private async handleMacOpenModeChange(select: HTMLSelectElement) {
+    const mode: MacOpenMode = select.value === 'watch' ? 'watch' : 'control';
+    const previous = this.macSessionsOpenMode;
+    if (mode === previous) return;
+    this.macSessionsOpenMode = mode;
+    try {
+      await this.saveMacSessions({ macSessionsOpenMode: mode });
+    } catch (error) {
+      logger.error('Failed to update how tmux sessions open:', error);
+      this.macSessionsOpenMode = previous;
+      select.value = previous;
+      this.dispatchEvent(new CustomEvent('error', { detail: t('macSessions.setting.saveFailed') }));
+    }
+  }
+
+  /**
+   * "On this computer": the user's own tmux sessions and the agents running outside VibeTunnel,
+   * listed in the phone list. Off unless turned on; hidden where nothing can be listed.
+   */
+  private renderMacSessions() {
+    if (!this.macSessionsSupported) return nothing;
+    const on = this.macSessions;
+    const locked = this.macSessionsLockedBy !== null;
+    const platform = this.configPlatform || macSessionsPlatform();
+    const label = isMacPlatform(platform)
+      ? t('macSessions.setting.label.mac')
+      : t('macSessions.setting.label.computer');
+    return html`
+      <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-mac-sessions">
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="text-primary font-medium"><span aria-hidden="true">🖥 </span>${label}</label>
+            <p class="text-muted text-xs mt-1">${t('macSessions.setting.description')}</p>
+            ${locked ? this.renderLock(this.macSessionsLockedBy, 'settings-mac-sessions-locked') : nothing}
+          </div>
+          <button
+            role="switch"
+            aria-checked=${on ? 'true' : 'false'}
+            aria-label=${label}
+            ?disabled=${locked}
+            data-testid="settings-mac-sessions-toggle"
+            @click=${this.handleMacSessionsToggle}
+            class="relative flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors before:absolute before:-inset-[10px] before:content-[''] disabled:opacity-50 ${
+              on ? 'bg-primary' : 'bg-border'
+            }"
+          >
+            <span
+              class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+                on ? 'translate-x-5' : 'translate-x-0.5'
+              }"
+            ></span>
+          </button>
+        </div>
+        ${
+          on
+            ? html`
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-4 border-t border-border/50">
+                <div class="min-w-0">
+                  <label class="text-primary font-medium" for="mac-open-mode-select">${t('macSessions.setting.openMode')}</label>
+                  <p class="text-muted text-xs mt-1">${t('macSessions.setting.openMode.description')}</p>
+                </div>
+                <select
+                  id="mac-open-mode-select"
+                  class="input-field py-2 text-sm w-full sm:w-auto"
+                  data-testid="settings-mac-open-mode"
+                  @change=${(e: Event) => this.handleMacOpenModeChange(e.target as HTMLSelectElement)}
+                >
+                  <option value="control" ?selected=${this.macSessionsOpenMode === 'control'}>
+                    ${t('macSessions.setting.openMode.control')}
+                  </option>
+                  <option value="watch" ?selected=${this.macSessionsOpenMode === 'watch'}>
+                    ${t('macSessions.setting.openMode.watch')}
+                  </option>
+                </select>
+              </div>
+            `
+            : nothing
+        }
+      </div>
+    `;
+  }
+
+  /**
+   * How the switch was forced: a command-line flag or an env variable, laid out left to right
+   * on its own (in Arabic the dashes of "--no-mac-sessions" would move to its end).
+   */
+  private renderLock(lockedBy: string | null, testId: string) {
+    const [before, how, after] = tAround(
+      'macSessions.setting.locked',
+      { name: lockedBy ?? '' },
+      'name'
+    );
+    return html`<p class="text-muted text-xs mt-1" data-testid=${testId}>${before}<span dir="ltr">${how}</span>${after}</p>`;
   }
 
   render() {
@@ -898,6 +1034,8 @@ export class Settings extends LitElement {
             </button>
           </div>
         </div>
+
+        ${this.renderMacSessions()}
 
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">
           <div class="flex items-center justify-between gap-4">

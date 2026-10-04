@@ -1138,6 +1138,17 @@ export const en = {
   'macSessions.row.opening': 'Opening…',
   'macSessions.section.collapse': 'Hide these sessions',
   'macSessions.section.expand': 'Show these sessions',
+  'macSessions.setting.description':
+    'Lists tmux sessions and Claude Code, Codex or Gemini running in other terminals. Follow them here; tmux sessions can also be opened and controlled.',
+  'macSessions.setting.label.computer': 'Show sessions from this computer',
+  'macSessions.setting.label.mac': 'Show sessions from this Mac',
+  'macSessions.setting.locked': 'Set when the server was started ({name}).',
+  'macSessions.setting.openMode': 'Opening a tmux session',
+  'macSessions.setting.openMode.control': 'Ready to type',
+  'macSessions.setting.openMode.description':
+    'What a tap on a tmux session opens. With “Watch only”, nothing you type is sent until you take control.',
+  'macSessions.setting.openMode.watch': 'Watch only',
+  'macSessions.setting.saveFailed': 'Couldn’t save the setting.',
   'macSessions.view.ended': 'This session has ended.',
   'macSessions.view.inTmuxWindow': 'tmux · {name} · window {index}',
   'macSessions.view.readOnly': 'Read-only',

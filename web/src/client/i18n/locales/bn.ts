@@ -1117,6 +1117,17 @@ export const bn: Messages = {
   'macSessions.row.opening': 'খোলা হচ্ছে…',
   'macSessions.section.collapse': 'এই সেশনগুলো লুকান',
   'macSessions.section.expand': 'এই সেশনগুলো দেখান',
+  'macSessions.setting.description':
+    'tmux সেশন এবং অন্য টার্মিনালে চলা Claude Code, Codex বা Gemini দেখায়। এখান থেকে এগুলো অনুসরণ করুন; tmux সেশন খোলা ও নিয়ন্ত্রণও করা যায়।',
+  'macSessions.setting.label.computer': 'এই কম্পিউটারের সেশন দেখান',
+  'macSessions.setting.label.mac': 'এই Mac-এর সেশন দেখান',
+  'macSessions.setting.locked': 'সার্ভার চালু করার সময় ঠিক করা হয়েছে ({name})।',
+  'macSessions.setting.openMode': 'tmux সেশন খোলার সময়',
+  'macSessions.setting.openMode.control': 'লেখার জন্য প্রস্তুত',
+  'macSessions.setting.openMode.description':
+    'tmux সেশনে ট্যাপ করলে কী খোলে। “শুধু দেখুন” থাকলে নিয়ন্ত্রণ না নেওয়া পর্যন্ত আপনার লেখা কিছুই পাঠানো হয় না।',
+  'macSessions.setting.openMode.watch': 'শুধু দেখুন',
+  'macSessions.setting.saveFailed': 'সেটিং সংরক্ষণ করা যায়নি।',
   'macSessions.view.ended': 'এই সেশন শেষ হয়ে গেছে।',
   'macSessions.view.inTmuxWindow': 'tmux · {name} · উইন্ডো {index}',
   'macSessions.view.readOnly': 'শুধু পড়া',

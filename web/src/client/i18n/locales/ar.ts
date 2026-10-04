@@ -1115,6 +1115,17 @@ export const ar: Messages = {
   'macSessions.row.opening': 'جارٍ الفتح…',
   'macSessions.section.collapse': 'إخفاء هذه الجلسات',
   'macSessions.section.expand': 'إظهار هذه الجلسات',
+  'macSessions.setting.description':
+    'يعرض جلسات tmux وClaude Code أو Codex أو Gemini العاملة في طرفيات أخرى. تابعها من هنا؛ ويمكن أيضًا فتح جلسات tmux والتحكم فيها.',
+  'macSessions.setting.label.computer': 'إظهار الجلسات من هذا الكمبيوتر',
+  'macSessions.setting.label.mac': 'إظهار الجلسات من جهاز Mac هذا',
+  'macSessions.setting.locked': 'حُدِّد عند تشغيل الخادم ({name}).',
+  'macSessions.setting.openMode': 'عند فتح جلسة tmux',
+  'macSessions.setting.openMode.control': 'جاهزة للكتابة',
+  'macSessions.setting.openMode.description':
+    'ما يفتحه الضغط على جلسة tmux. مع «مشاهدة فقط» لا يُرسَل شيء مما تكتبه حتى تتولى التحكم.',
+  'macSessions.setting.openMode.watch': 'مشاهدة فقط',
+  'macSessions.setting.saveFailed': 'تعذّر حفظ الإعداد.',
   'macSessions.view.ended': 'انتهت هذه الجلسة.',
   'macSessions.view.inTmuxWindow': 'tmux · {name} · النافذة {index}',
   'macSessions.view.readOnly': 'للقراءة فقط',
