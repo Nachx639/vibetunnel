@@ -1039,6 +1039,32 @@ export const en = {
   'dictation.error.no-audio':
     "The microphone isn't picking up any sound. Check it isn't muted or in use by another app, then try again.",
   'dictation.error.failed': 'Dictation failed. Try again.',
+  // Read-aloud and voice mode in the Claude chat (off unless the server enables voice)
+  'chat.readAloud': 'Read aloud',
+  'chat.stopReading': 'Stop reading',
+  'chat.codeOmitted': 'code omitted',
+  'voice.open': 'Talk',
+  'voice.title': 'Talk with Claude',
+  'voice.starting': 'Getting the microphone ready',
+  'voice.listening': 'Listening',
+  'voice.transcribing': 'Transcribing',
+  'voice.thinking': 'Claude is thinking',
+  'voice.speaking': 'Speaking',
+  'voice.permission': 'Claude needs your permission',
+  'voice.permissionHint': 'Answer it in the chat, then tap “Keep talking”',
+  'voice.error': 'Voice mode stopped',
+  'voice.error.mic': 'The microphone can’t be used: allow it for this site and try again',
+  'voice.error.noMic': 'No microphone found',
+  'voice.error.network': 'Can’t reach the server right now',
+  'voice.ended': 'Conversation ended',
+  'voice.hint': 'Talk whenever you like; pause and Claude will answer',
+  'voice.interruptHint': 'Start talking or tap the circle to interrupt',
+  'voice.you': 'You',
+  'voice.interrupt': 'Interrupt',
+  'voice.end': 'End',
+  'voice.resume': 'Keep talking',
+  'voice.engine': 'Voice: {engine}',
+  'voice.codeOmitted': 'code omitted',
 };
 
 export type MessageKey = keyof typeof en;

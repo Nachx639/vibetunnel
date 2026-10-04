@@ -385,7 +385,8 @@ describe('ClaudeChatView', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
-        urls.push(url);
+        // The chat's own requests (the view also asks once for the server's voice status).
+        if (url.includes('/claude-chat')) urls.push(url);
         return { ok: true, json: async () => structuredClone(answer) };
       })
     );
@@ -1132,23 +1133,27 @@ describe('ClaudeChatView polling', () => {
     return view;
   }
 
+  /** The chat's own polls (the view also asks once for the server's voice status). */
+  const chatPolls = (fetchMock: { mock: { calls: unknown[][] } }) =>
+    fetchMock.mock.calls.filter(([url]) => String(url).includes('/claude-chat')).length;
+
   it('stops while the page is hidden and fetches at once when it is shown', async () => {
     const fetchMock = answer('busy');
     vi.stubGlobal('fetch', fetchMock);
     mount();
     await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(chatPolls(fetchMock)).toBe(1);
 
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     setVisibility('hidden');
     await vi.advanceTimersByTimeAsync(10 * 60_000);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(chatPolls(fetchMock)).toBe(1);
     // No poll timer wakes the phone while hidden (it used to every 1.5 s).
     expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 1500)).toHaveLength(0);
 
     setVisibility('visible');
     await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(chatPolls(fetchMock)).toBe(2);
   });
 
   it('keeps 1.5 s while Claude works: 40 requests per minute', async () => {
@@ -1156,7 +1161,7 @@ describe('ClaudeChatView polling', () => {
     vi.stubGlobal('fetch', fetchMock);
     mount();
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(fetchMock).toHaveBeenCalledTimes(41); // first fetch at 0 s, then every 1.5 s
+    expect(chatPolls(fetchMock)).toBe(41); // first fetch at 0 s, then every 1.5 s
   });
 
   it('checks a non-Claude session (a shell in chat mode) only every 5 s', async () => {
@@ -1167,7 +1172,7 @@ describe('ClaudeChatView polling', () => {
     vi.stubGlobal('fetch', fetchMock);
     mount();
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(13);
+    expect(chatPolls(fetchMock)).toBeLessThanOrEqual(13);
   });
 
   it('polls at once after a send, again at about 300 ms and 800 ms, then at the usual pace', async () => {

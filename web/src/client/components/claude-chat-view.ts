@@ -9,13 +9,16 @@
 import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import { LocaleController, type MessageKey, t } from '../i18n/index.js';
+import { detectSpeechLanguage, normalizeSpeechLanguage } from '../../shared/tts-text.js';
+import { getLocale, LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 import { announce } from '../utils/announce.js';
 import { isSwallowingGhostClick, swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { endsADrag } from '../utils/pointer-drag.js';
+import { VoicePlayer } from '../utils/voice-io.js';
 import { closeClaudeModePicker, modeLabel, openClaudeModePicker } from './claude-mode-picker.js';
+import { voiceModeTap } from './claude-voice-mode.js';
 import { openImageLightbox } from './image-lightbox.js';
 
 const logger = createLogger('claude-chat-view');
@@ -361,11 +364,97 @@ function formatDay(date: Date, now = new Date()): string {
   });
 }
 
+/** Plain text to read aloud: markdown markers removed, code blocks replaced by a short note. */
+export function speechText(markdown: string, codeNote: string): string {
+  return (
+    markdown
+      .split(/```[^\n]*\n?/)
+      .map((part, index) => (index % 2 === 1 ? ` (${codeNote}). ` : part))
+      .join('')
+      .replace(/`([^`\n]+)`/g, '$1')
+      .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+      .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1$2')
+      .replace(/^#{1,6} /gm, '')
+      // Tables: no delimiter rows, and each row read as a list of its cells. Flat patterns:
+      // a nested quantifier here backtracked exponentially on a line of dashes followed by
+      // text (ReDoS).
+      .replace(/^[ \t|:-]*$/gm, (line) => (/-{3,}/.test(line) ? '' : line))
+      .replace(
+        /^[ \t]*\|(.*)\|[ \t]*$/gm,
+        (_m, row: string) =>
+          `${row
+            .split('|')
+            .map((cell) => cell.trim())
+            .filter(Boolean)
+            .join(', ')}. `
+      )
+      .replace(/^(\s*)[-*•] /gm, '$1')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+}
+
+/** The voice language for `text`: the UI language unless the text is clearly another one. */
+export function speechLang(text: string, locale: string): string {
+  return detectSpeechLanguage(text, normalizeSpeechLanguage(locale) ?? 'en');
+}
+
+function canSpeak(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    'speechSynthesis' in window &&
+    typeof window.SpeechSynthesisUtterance === 'function'
+  );
+}
+
+interface ServerVoice {
+  /** config.json `"voice": true`: read-aloud and voice mode are offered at all. */
+  enabled: boolean;
+  /** The server has a text-to-speech engine (otherwise the browser's own voice reads). */
+  engine: boolean;
+}
+
+const VOICE_OFF: ServerVoice = { enabled: false, engine: false };
+
+/**
+ * The server's voice switch and engine (GET /api/tts/status), asked once per page while the
+ * answer is "on"; a failed or "off" answer is asked again next time.
+ */
+let serverVoiceCheck: Promise<ServerVoice> | null = null;
+function checkServerVoice(): Promise<ServerVoice> {
+  const check =
+    serverVoiceCheck ??
+    Promise.resolve()
+      .then(() => fetch('/api/tts/status', { headers: authClient.getAuthHeader() }))
+      .then(async (response) => {
+        if (!response?.ok) return VOICE_OFF;
+        const status = (await response.json()) as { enabled?: unknown; engine?: unknown };
+        return {
+          enabled: status.enabled === true,
+          engine: typeof status.engine === 'string' && status.engine !== '',
+        };
+      })
+      .catch(() => VOICE_OFF);
+  serverVoiceCheck = check;
+  void check.then((status) => {
+    if (!status.enabled && serverVoiceCheck === check) serverVoiceCheck = null;
+  });
+  return check;
+}
+
+/** For tests: ask the server again. */
+export function resetServerVoiceCheck(): void {
+  serverVoiceCheck = null;
+}
+
 function canShare(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 }
 
 const SHARE_ICON = html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12" /><path d="M8 7l4-4 4 4" /><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>`;
+
+const SPEAK_ICON = html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4V5z" /><path d="M15.5 8.5a5 5 0 010 7" /><path d="M18.5 5.5a9 9 0 010 13" /></svg>`;
+const STOP_SPEAK_ICON = html`<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>`;
 
 const COPY_ICON = html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1" /></svg>`;
 
@@ -554,6 +643,14 @@ export class ClaudeChatView extends LitElement {
       border: none;
       background: none;
       color: var(--chat-muted);
+    }
+    /* Left of the search button and its 44 px keyboard proxy (they sat on top of each other). */
+    .voice-toggle.beside-search {
+      right: 50px;
+    }
+    /* Two icons on the right: keep the title centred and clear of both. */
+    .top.two-icons .title {
+      padding: 6px 78px;
     }
     .search-toggle::after {
       content: '';
@@ -1299,6 +1396,15 @@ export class ClaudeChatView extends LitElement {
   /** Polls in a row that brought nothing new while Claude was idle. */
   private unchangedPolls = 0;
 
+  /** The answer being read aloud, if any (only one at a time). */
+  @state() private speakingId: string | null = null;
+  /** The server has `"voice": true`: read-aloud and voice mode are offered. */
+  @state() private voiceEnabled = false;
+  /** The server reads answers aloud (see speakWithServer); otherwise the browser's voice. */
+  @state() private serverVoice = false;
+  private voicePlayer: VoicePlayer | null = null;
+  private speakAbort: AbortController | null = null;
+
   connectedCallback() {
     super.connectedCallback();
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
@@ -1308,6 +1414,10 @@ export class ClaudeChatView extends LitElement {
     document.addEventListener('focusin', this.trackFieldFocus, true);
     document.addEventListener('focusout', this.trackFieldFocus, true);
     this.trackFieldFocus();
+    void checkServerVoice().then((status) => {
+      this.voiceEnabled = status.enabled;
+      this.serverVoice = status.enabled && status.engine;
+    });
     this.poll();
   }
 
@@ -1323,6 +1433,7 @@ export class ClaudeChatView extends LitElement {
     this.pollTimer = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.stopSpeaking();
     this.forgetSent();
     for (const url of this.imageUrls.values()) URL.revokeObjectURL(url);
   }
@@ -1361,6 +1472,7 @@ export class ClaudeChatView extends LitElement {
   updated(changed: PropertyValues) {
     if (changed.has('sessionId') && changed.get('sessionId') !== undefined) {
       // A different conversation: forget everything shown for the previous one.
+      this.stopSpeaking();
       this.messages = [];
       this.signature = '';
       this.messagesVersion = null;
@@ -2051,8 +2163,11 @@ export class ClaudeChatView extends LitElement {
     }
     const title = this.conversationTitle;
     if (!title && !this.messages.length) return nothing;
-    return html`<div class="top">
+    // Voice mode types what it hears into the session; only when the server has voice on.
+    const voice = this.voiceEnabled;
+    return html`<div class="top ${voice && this.messages.length ? 'two-icons' : ''}">
       <div class="title" title=${title}>${title}</div>
+      ${voice ? this.renderVoiceButton(this.messages.length > 0) : nothing}
       ${
         this.messages.length
           ? html`<button
@@ -2082,7 +2197,91 @@ export class ClaudeChatView extends LitElement {
     </div>`;
   }
 
-  private renderActions(text: string) {
+  /** Voice mode: hands-free conversation over this chat (see claude-voice-mode.ts). */
+  private renderVoiceButton(besideSearch: boolean) {
+    const tap = voiceModeTap(
+      () => this.renderRoot,
+      () => this.sessionId
+    );
+    return html`<button
+      class="search-toggle voice-toggle ${besideSearch ? 'beside-search' : ''}"
+      aria-label=${t('voice.open')}
+      title=${t('voice.open')}
+      @pointerup=${tap.pointerup}
+      @click=${tap.click}
+    >
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0" /><path d="M12 18v3" /></svg>
+    </button>`;
+  }
+
+  private stopSpeaking() {
+    if (this.speakingId === null) return;
+    this.speakingId = null;
+    this.speakAbort?.abort();
+    this.speakAbort = null;
+    if (canSpeak()) window.speechSynthesis.cancel();
+  }
+
+  /** Read an answer aloud, or stop if it is the one being read. */
+  private toggleSpeak(message: ChatMessage) {
+    const wasSpeaking = this.speakingId === message.id;
+    this.stopSpeaking();
+    if (wasSpeaking) return;
+    const text = speechText(message.text, t('chat.codeOmitted'));
+    if (!text) return;
+    const lang = speechLang(text, getLocale());
+    if (this.serverVoice) this.speakWithServer(message.id, text, lang);
+    else if (canSpeak()) this.speakOnPhone(message.id, text, lang);
+  }
+
+  /**
+   * With the server's voice, through one <audio> element unlocked in this tap: played as
+   * media, so heard on an iPhone in silent mode, which mutes the browser's own speech
+   * synthesis even with the page's audio session set to playback.
+   */
+  private speakWithServer(id: string, text: string, lang: string) {
+    this.voicePlayer ??= new VoicePlayer(() => authClient.getAuthHeader());
+    this.voicePlayer.unlock();
+    const abort = new AbortController();
+    this.speakAbort = abort;
+    this.speakingId = id;
+    this.voicePlayer
+      .speak(text, lang, abort.signal)
+      .catch((error) => logger.warn("read aloud with the server's voice failed", error))
+      .finally(() => {
+        if (abort.signal.aborted) return;
+        if (this.speakAbort === abort) this.speakAbort = null;
+        if (this.speakingId === id) this.speakingId = null;
+      });
+  }
+
+  /** With the browser's own voice, where the server has none (silent in an iPhone's silent mode). */
+  private speakOnPhone(id: string, text: string, lang: string) {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    const base = utterance.lang.split('-')[0];
+    const voices = window.speechSynthesis.getVoices?.() ?? [];
+    const voice =
+      voices.find((v) => v.lang === utterance.lang) ??
+      voices.find((v) => v.lang.split(/[-_]/)[0] === base);
+    if (voice) utterance.voice = voice;
+    const done = () => {
+      if (this.speakingId === id) this.speakingId = null;
+    };
+    utterance.onend = done;
+    utterance.onerror = (event: SpeechSynthesisErrorEvent) => {
+      // A second tap or another message cancels it on purpose.
+      if (event.error !== 'interrupted' && event.error !== 'canceled') {
+        logger.warn(`read aloud failed: ${event.error}`);
+      }
+      done();
+    };
+    this.speakingId = id;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  private renderActions(message: ChatMessage, text: string) {
+    const speaking = this.speakingId === message.id;
     return html`<div class="msg-actions">
       <button
         class="msg-action copy-msg"
@@ -2092,6 +2291,19 @@ export class ClaudeChatView extends LitElement {
       >
         ${COPY_ICON}
       </button>
+      ${
+        this.voiceEnabled && (this.serverVoice || canSpeak())
+          ? html`<button
+              class="msg-action speak-msg ${speaking ? 'active' : ''}"
+              aria-label=${speaking ? t('chat.stopReading') : t('chat.readAloud')}
+              title=${speaking ? t('chat.stopReading') : t('chat.readAloud')}
+              aria-pressed=${String(speaking)}
+              @click=${() => this.toggleSpeak(message)}
+            >
+              ${speaking ? STOP_SPEAK_ICON : SPEAK_ICON}
+            </button>`
+          : nothing
+      }
       ${
         canShare()
           ? html`<button
@@ -2218,7 +2430,7 @@ export class ClaudeChatView extends LitElement {
               : html`<div class="attachment placeholder">📷</div>`;
           })}
           ${text ? html`<div class="md">${unsafeHTML(renderChatMarkdown(text, t('chat.copy')))}</div>` : nothing}
-          ${message.role === 'assistant' && text ? this.renderActions(text) : nothing}
+          ${message.role === 'assistant' && text ? this.renderActions(message, text) : nothing}
           <span class="time">${formatTime(message.timestamp)}${sendState === 'sending' ? CLOCK_ICON : nothing}</span>
           ${
             sendState === 'sending'
