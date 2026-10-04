@@ -92,7 +92,7 @@ describe.skip('Bonjour Discovery Integration - requires actual mDNS support', ()
 async function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
-    server.listen(0, () => {
+    server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as net.AddressInfo).port;
       server.close(() => resolve(port));
     });

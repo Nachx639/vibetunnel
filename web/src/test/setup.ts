@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { webcrypto } from 'crypto';
 import { vi } from 'vitest';
+import { installLoopbackServers } from './loopback-servers';
 import { MockFitAddon, MockTerminal } from './utils/terminal-mocks';
 
 // Mock ghostty-web (WASM/canvas) for unit tests
@@ -270,6 +271,11 @@ if (typeof window === 'undefined' && typeof globalThis.fetch === 'function') {
     return realFetch(input, init);
   }) as typeof fetch;
 }
+
+// Test servers listen on 127.0.0.1 only, supertest's included: on the wildcard, another
+// process's loopback listener on the same port could answer a route test. Client workers too,
+// so a client test that runs server routes through supertest is covered as well.
+installLoopbackServers();
 
 // Configure console to reduce noise in tests
 const originalError = console.error;
