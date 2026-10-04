@@ -59,18 +59,36 @@ describe('session header on a phone', () => {
     expect(navigate.mock.calls[0][0].detail).toEqual({ sessionId: 'b' });
   });
 
-  it('renames the session from the switcher', async () => {
+  it('renames the session in place from the switcher, with no prompt', async () => {
     store.set('vibetunnel_app_preferences', JSON.stringify({ phoneUi: 'compact' }));
-    vi.stubGlobal(
-      'prompt',
-      vi.fn(() => 'api server')
-    );
+    const prompt = vi.fn();
+    vi.stubGlobal('prompt', prompt);
     const header = await renderHeader();
     const rename = vi.fn();
-    header.addEventListener('session-rename', rename);
+    header.addEventListener('session-rename', (e) => {
+      const { done, ...detail } = (e as CustomEvent).detail;
+      rename(detail);
+      e.preventDefault();
+      queueMicrotask(() => done?.({ success: false, error: 'Rename failed: 500' }));
+    });
     (header.querySelector('[data-testid="header-phone-title"]') as HTMLButtonElement).click();
     (document.body.querySelector('[data-testid="switcher-rename"]') as HTMLButtonElement).click();
-    expect(rename.mock.calls[0][0].detail).toEqual({ sessionId: 'a', newName: 'api server' });
+    const input = await vi.waitFor(() => {
+      const el = document.body.querySelector<HTMLInputElement>('[data-testid="rename-input"]');
+      expect(el).not.toBeNull();
+      return el as HTMLInputElement;
+    });
+    expect(input.value).toBe('shell a');
+    input.value = 'api server';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(rename).toHaveBeenCalledWith({ sessionId: 'a', newName: 'api server' });
+    // The view's answer shows in the field, not as a toast.
+    await vi.waitFor(() =>
+      expect(document.body.querySelector('[data-testid="rename-error"]')?.textContent?.trim()).toBe(
+        'Failed to rename session: Rename failed: 500'
+      )
+    );
+    expect(prompt).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });

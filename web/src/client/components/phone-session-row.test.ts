@@ -190,23 +190,37 @@ describe('PhoneSessionRow', () => {
     expect(select).not.toHaveBeenCalled();
   });
 
-  it('renames the session from a prompt that starts with its name', async () => {
+  /** Opens the row's ⋯ sheet and turns its Rename row into the field. */
+  async function startRename(row: PhoneSessionRow) {
+    vi.useFakeTimers();
+    (row.querySelector('.psr-menu') as HTMLButtonElement).click();
+    vi.advanceTimersByTime(600);
+    (document.body.querySelector('[data-testid="psr-rename"]') as HTMLButtonElement).click();
+    vi.useRealTimers();
+    await vi.waitFor(() =>
+      expect(document.body.querySelector('[data-testid="rename-input"]')).not.toBeNull()
+    );
+    return document.body.querySelector('[data-testid="rename-input"]') as HTMLInputElement;
+  }
+
+  it('renames the session in place, from a field that starts with its name', async () => {
     const fetchMock = vi.fn(async () => new Response('{}'));
     vi.stubGlobal('fetch', fetchMock);
-    const prompt = vi.fn(() => 'release build');
+    const prompt = vi.fn();
     vi.stubGlobal('prompt', prompt);
     try {
       const row = await renderRow(session());
       row.authClient = { getAuthHeader: () => ({}) } as never;
       const renamed = vi.fn();
       row.addEventListener('session-renamed', renamed);
-      vi.useFakeTimers();
-      (row.querySelector('.psr-menu') as HTMLButtonElement).click();
-      vi.advanceTimersByTime(600);
-      (document.body.querySelector('[data-testid="psr-rename"]') as HTMLButtonElement).click();
-      vi.useRealTimers();
+      const input = await startRename(row);
+      expect(input.value).toBe('build (~/Projects/app)');
+      expect(document.body.querySelector('[data-testid="psr-rename"]')).toBeNull();
+
+      input.value = 'release build';
+      (document.body.querySelector('[data-testid="rename-ok"]') as HTMLButtonElement).click();
       await vi.waitFor(() => expect(renamed).toHaveBeenCalled());
-      expect(prompt).toHaveBeenCalledWith('New name', 'build (~/Projects/app)');
+      expect(prompt).not.toHaveBeenCalled();
       const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
       expect(url).toBe('/api/sessions/s1');
       expect(JSON.parse(String(init.body))).toEqual({ name: 'release build' });
@@ -214,6 +228,40 @@ describe('PhoneSessionRow', () => {
         sessionId: 's1',
         newName: 'release build',
       });
+      // Saved: the sheet closes.
+      await vi.waitFor(() => expect(document.body.querySelector('.psr-sheet')).toBeNull());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('a failed rename says why in the field; Cancel brings the Rename row back', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { status: 500 }))
+    );
+    try {
+      const row = await renderRow(session());
+      row.authClient = { getAuthHeader: () => ({}) } as never;
+      const renamed = vi.fn();
+      const failed = vi.fn();
+      row.addEventListener('session-renamed', renamed);
+      row.addEventListener('session-rename-error', failed);
+      const input = await startRename(row);
+      input.value = 'release build';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await vi.waitFor(() =>
+        expect(
+          document.body.querySelector('[data-testid="rename-error"]')?.textContent?.trim()
+        ).toMatch(/^Failed to rename session: /)
+      );
+      expect(renamed).not.toHaveBeenCalled();
+      // The field says it: no toast on top.
+      expect(failed).not.toHaveBeenCalled();
+
+      (document.body.querySelector('[data-testid="rename-cancel"]') as HTMLButtonElement).click();
+      expect(document.body.querySelector('[data-testid="rename-input"]')).toBeNull();
+      expect(document.body.querySelector('[data-testid="psr-rename"]')).not.toBeNull();
     } finally {
       vi.unstubAllGlobals();
     }

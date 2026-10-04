@@ -924,4 +924,6 @@ export const ptBR: Messages = {
   'settings.compactList': 'Lista compacta',
   'settings.compactList.description':
     'Cabem mais sessões em um celular pequeno: menos espaçamento, e as seções acima das sessões ocupam menos espaço. Ativada por padrão em telas de até 700 pt de altura.',
+  'common.ok': 'OK',
+  'rename.empty': 'O nome não pode ficar vazio',
 };

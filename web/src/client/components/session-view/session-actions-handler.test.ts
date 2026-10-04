@@ -32,6 +32,25 @@ describe('SessionActionsHandler', () => {
     return handler;
   };
 
+  it('returns a rename failure, toasting it only when the caller does not show it itself', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const events: Event[] = [];
+      const handler = handlerWith((event) => events.push(event) > 0);
+      const first = await handler.handleRename('s1', 'release build');
+      expect(first.success).toBe(false);
+      expect(events.map((event) => event.type)).toEqual(['error']);
+
+      events.length = 0;
+      const second = await handler.handleRename('s1', 'release build', { showError: false });
+      expect(second.success).toBe(false);
+      expect(events).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('tells the app when a session it ended here is gone, and not when that failed', async () => {
     const events: Event[] = [];
     const handler = handlerWith((event) => events.push(event) > 0);

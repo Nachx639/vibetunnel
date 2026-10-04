@@ -899,4 +899,6 @@ export const hi: Messages = {
   'settings.compactList': 'कॉम्पैक्ट सूची',
   'settings.compactList.description':
     'छोटे फ़ोन पर ज़्यादा सेशन दिखते हैं: कम खाली जगह, और सेशन के ऊपर के हिस्से कम जगह लेते हैं। 700 pt तक ऊँची स्क्रीन पर डिफ़ॉल्ट रूप से चालू।',
+  'common.ok': 'ठीक है',
+  'rename.empty': 'नाम खाली नहीं हो सकता',
 };

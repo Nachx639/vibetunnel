@@ -926,4 +926,6 @@ export const es: Messages = {
   'settings.compactList': 'Lista compacta',
   'settings.compactList.description':
     'Caben más sesiones en un móvil pequeño: menos espacio entre elementos y las secciones encima de las sesiones ocupan menos. Activada por defecto en pantallas de hasta 700 pt de alto.',
+  'common.ok': 'OK',
+  'rename.empty': 'El nombre no puede estar vacío',
 };

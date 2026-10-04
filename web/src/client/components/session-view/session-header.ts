@@ -543,31 +543,51 @@ export class SessionHeader extends LitElement {
             composed: true,
           })
         ),
-      onRename:
+      rename:
         session.status === 'exited'
           ? undefined
-          : () => {
-              const current = session.name || session.command?.join(' ') || '';
-              const name = window.prompt(t('sessions.row.renamePrompt'), current)?.trim();
-              if (name && name !== current) this.handleRename(name);
+          : {
+              value: session.name || session.command?.join(' ') || '',
+              save: (name) => this.saveName(name),
             },
     });
   }
 
-  private handleRename(newName: string) {
-    if (!this.session) return;
+  /**
+   * The switcher's inline rename (the inline editor's pencil is too small to hit on a phone).
+   * Resolves to the error to show in the field, if the save failed.
+   */
+  private saveName(name: string): Promise<string | undefined> {
+    return new Promise((resolve) => {
+      const taken = this.handleRename(name, (result) =>
+        resolve(
+          result.success || !result.error
+            ? undefined
+            : t('toast.renameFailed', { error: result.error })
+        )
+      );
+      if (!taken) resolve(undefined);
+    });
+  }
 
-    // Dispatch event to parent component to handle the rename
-    this.dispatchEvent(
-      new CustomEvent('session-rename', {
-        detail: {
-          sessionId: this.session.id,
-          newName: newName,
-        },
-        bubbles: true,
-        composed: true,
-      })
-    );
+  /**
+   * Ask the session view to rename the session. With `done`, the caller shows the outcome
+   * itself (the view then shows no error toast). Returns whether a listener took the request
+   * (it cancels the event), so `done` will be called.
+   */
+  private handleRename(
+    newName: string,
+    done?: (result: { success: boolean; error?: string }) => void
+  ): boolean {
+    if (!this.session) return false;
+    const event = new CustomEvent('session-rename', {
+      detail: { sessionId: this.session.id, newName, done },
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    });
+    this.dispatchEvent(event);
+    return event.defaultPrevented;
   }
 
   private handleMagicButton() {

@@ -13,7 +13,6 @@
  * @fires session-killed - When the session was killed or cleared (detail: { sessionId, session })
  * @fires session-kill-error - When killing failed (detail: { sessionId, error })
  * @fires session-renamed - When the session was renamed (detail: { sessionId, newName })
- * @fires session-rename-error - When renaming failed (detail: { sessionId, error })
  * @fires session-pin-toggle - Pin/Unpin from the action sheet (detail: { sessionId, pinned })
  */
 
@@ -28,6 +27,7 @@ import { formatPathForDisplay } from '../utils/path-utils.js';
 import { endsADrag } from '../utils/pointer-drag.js';
 import { renameSession } from '../utils/session-actions.js';
 import { focusSheet, holdSheetFocus } from '../utils/sheet-a11y.js';
+import './rename-field.js';
 
 const LONG_PRESS_MS = 550;
 /** Width of one swipe action button. */
@@ -327,8 +327,12 @@ export class PhoneSessionRow extends LitElement {
     if (Date.now() - this.sheetOpenedAt > 400) this.closeSheet();
   };
 
+  /** The sheet's Rename row is a field (rename-field.ts). */
+  private renaming = false;
+
   private closeSheet = () => {
     if (!this.sheetHost) return;
+    this.renaming = false;
     render(nothing, this.sheetHost);
     this.sheetHost.remove();
     this.sheetHost = null;
@@ -368,6 +372,25 @@ export class PhoneSessionRow extends LitElement {
         fn();
       },
     });
+    // A step inside the sheet (Rename becomes a field): same touch handling, the sheet stays.
+    const stepAction = (fn: () => void) => ({
+      handleEvent: (e: Event) => {
+        if (Date.now() - this.sheetOpenedAt < 500) return;
+        if (e.type === 'pointerup') {
+          if ((e as PointerEvent).pointerType === 'mouse') return;
+          if (endsADrag(e as PointerEvent)) return;
+          this.sheetActionAt = Date.now();
+          swallowNextClick();
+        } else if (Date.now() - this.sheetActionAt < 700) {
+          return;
+        }
+        fn();
+      },
+    });
+    const startRenaming = () => {
+      this.renaming = true;
+      this.renderSheet();
+    };
     if (confirmKill && !exited) {
       render(
         html`
@@ -400,12 +423,27 @@ export class PhoneSessionRow extends LitElement {
             ${
               exited
                 ? nothing
-                : html`<button
-                    data-testid="psr-rename"
-                    @click=${action(() => void this.promptRename())}
-                  >
-                    ${t('sessions.row.rename')}
-                  </button>`
+                : this.renaming
+                  ? html`<vt-rename-field
+                      data-testid="psr-rename-field"
+                      .value=${this.displayTitle()}
+                      .save=${(name: string) => this.renameTo(name)}
+                      @rename-done=${this.closeSheet}
+                      @rename-cancel=${() => {
+                        this.renaming = false;
+                        this.renderSheet();
+                        this.sheetHost
+                          ?.querySelector<HTMLElement>('[data-testid="psr-rename"]')
+                          ?.focus();
+                      }}
+                    ></vt-rename-field>`
+                  : html`<button
+                      data-testid="psr-rename"
+                      @pointerup=${stepAction(startRenaming)}
+                      @click=${stepAction(startRenaming)}
+                    >
+                      ${t('sessions.row.rename')}
+                    </button>`
             }
             <button
               data-testid="psr-pin"
@@ -450,26 +488,27 @@ export class PhoneSessionRow extends LitElement {
     return this.session.name || this.session.command?.join(' ') || '';
   }
 
-  /** Phones rename through a prompt: an inline editor is too small to hit. */
-  private async promptRename() {
-    const current = this.displayTitle();
-    const input = window.prompt(t('sessions.row.renamePrompt'), current);
-    const name = input?.trim();
-    if (!name || name === current) return;
+  /** The swipe's Rename: the ⋯ sheet, opened on its rename field. */
+  private startRename() {
+    this.renaming = true;
+    this.openSheet();
+  }
+
+  /**
+   * Phones rename inline in the sheet (an inline editor in the row is too small to hit).
+   * Resolves to the error the field shows if the save failed; the field stays open then.
+   */
+  private async renameTo(name: string): Promise<string | undefined> {
     const result = await renameSession(this.session.id, name, this.authClient);
+    if (!result.success) return t('toast.renameFailed', { error: String(result.error) });
     this.dispatchEvent(
-      result.success
-        ? new CustomEvent('session-renamed', {
-            detail: { sessionId: this.session.id, newName: name },
-            bubbles: true,
-            composed: true,
-          })
-        : new CustomEvent('session-rename-error', {
-            detail: { sessionId: this.session.id, error: result.error },
-            bubbles: true,
-            composed: true,
-          })
+      new CustomEvent('session-renamed', {
+        detail: { sessionId: this.session.id, newName: name },
+        bubbles: true,
+        composed: true,
+      })
     );
+    return undefined;
   }
 
   private async kill() {
@@ -558,8 +597,8 @@ export class PhoneSessionRow extends LitElement {
             : html`<button
                 tabindex="-1"
                 style="flex: 1; color: var(--color-text); background: var(--color-bg-tertiary); font-size: 15px"
-                @pointerup=${swipeAction(() => void this.promptRename())}
-                @click=${swipeAction(() => void this.promptRename())}
+                @pointerup=${swipeAction(() => this.startRename())}
+                @click=${swipeAction(() => this.startRename())}
               >
                 ${t('sessions.row.rename')}
               </button>`

@@ -936,4 +936,6 @@ export const fr: Messages = {
   'settings.compactList': 'Liste compacte',
   'settings.compactList.description':
     'Plus de sessions sur un petit téléphone : un espacement réduit, et les sections au-dessus des sessions prennent moins de place. Activée par défaut sur les écrans de 700 pt de haut au plus.',
+  'common.ok': 'OK',
+  'rename.empty': 'Le nom ne peut pas être vide',
 };

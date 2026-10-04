@@ -890,4 +890,6 @@ export const zhCN: Messages = {
   'settings.compactList': '紧凑列表',
   'settings.compactList.description':
     '在小屏手机上显示更多会话：间距更紧凑，会话上方的区域占用更少空间。在高度不超过 700 pt 的屏幕上默认开启。',
+  'common.ok': '确定',
+  'rename.empty': '名称不能为空',
 };

@@ -898,4 +898,6 @@ export const ar: Messages = {
   'settings.compactList': 'قائمة مضغوطة',
   'settings.compactList.description':
     'تتسع لجلسات أكثر على هاتف صغير: مسافات أقل، والأقسام فوق الجلسات تشغل مساحة أقل. مفعّلة افتراضيًا على الشاشات التي لا يزيد ارتفاعها عن 700 pt.',
+  'common.ok': 'موافق',
+  'rename.empty': 'لا يمكن أن يكون الاسم فارغًا',
 };

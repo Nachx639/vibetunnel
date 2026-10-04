@@ -920,6 +920,8 @@ export const en = {
   'settings.compactList': 'Compact list',
   'settings.compactList.description':
     'Fits more sessions on a small phone: tighter spacing, and the sections above the sessions take less room. On by default on screens up to 700 pt tall.',
+  'common.ok': 'OK',
+  'rename.empty': 'The name can’t be empty',
 };
 
 export type MessageKey = keyof typeof en;

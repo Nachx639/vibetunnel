@@ -37,6 +37,8 @@ export function holdSheetFocus(
   const onKeyDown = (e: KeyboardEvent) => {
     if (!sheet.isConnected) return;
     if (e.key === 'Escape') {
+      // A field that handles Escape itself (the inline rename cancels): not the sheet's.
+      if (e.target instanceof Element && e.target.closest('[data-own-escape]')) return;
       e.preventDefault();
       e.stopPropagation();
       onEscape();

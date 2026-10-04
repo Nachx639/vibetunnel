@@ -1442,8 +1442,13 @@ export class SessionView extends LitElement {
               this.uiStateManager.setCustomWidth('');
             }}
             @session-rename=${async (e: CustomEvent) => {
-              const { sessionId, newName } = e.detail;
-              await this.sessionActionsHandler.handleRename(sessionId, newName);
+              // Taken: the header's inline rename waits for `done` (it shows the error itself).
+              e.preventDefault();
+              const { sessionId, newName, done } = e.detail;
+              const result = await this.sessionActionsHandler.handleRename(sessionId, newName, {
+                showError: !done,
+              });
+              done?.(result);
             }}
             @paste-image=${async () => await this.fileOperationsManager.pasteImage()}
             @select-image=${() => this.fileOperationsManager.selectImage()}

@@ -35,11 +35,17 @@ export class SessionActionsHandler {
     this.callbacks = callbacks;
   }
 
-  async handleRename(sessionId: string, newName: string): Promise<void> {
-    if (!this.callbacks) return;
+  /** `showError: false` when the caller shows a failure itself (the inline rename field). */
+  async handleRename(
+    sessionId: string,
+    newName: string,
+    { showError = true }: { showError?: boolean } = {}
+  ): Promise<{ success: boolean; error?: string }> {
+    // No longer the session on screen: nothing saved, nothing to say (as before).
+    if (!this.callbacks) return { success: false };
 
     const session = this.callbacks.getSession();
-    if (!session || sessionId !== session.id) return;
+    if (!session || sessionId !== session.id) return { success: false };
 
     const result = await renameSession(sessionId, newName, authClient);
 
@@ -65,7 +71,7 @@ export class SessionActionsHandler {
       );
 
       logger.log(`Session ${sessionId} renamed to: ${actualName}`);
-    } else {
+    } else if (showError) {
       // Show error to user
       this.callbacks.dispatchEvent(
         new CustomEvent('error', {
@@ -75,6 +81,7 @@ export class SessionActionsHandler {
         })
       );
     }
+    return result;
   }
 
   async handleTerminateSession(): Promise<void> {

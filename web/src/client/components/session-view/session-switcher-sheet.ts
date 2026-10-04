@@ -16,6 +16,8 @@ import { swallowNextClick } from '../../utils/ghost-click.js';
 import { formatPathForDisplay } from '../../utils/path-utils.js';
 import { holdSheetFocus } from '../../utils/sheet-a11y.js';
 import { renderToolAvatar } from '../phone-session-row.js';
+import '../rename-field.js';
+import type { SaveName } from '../rename-field.js';
 
 /** Finger travel that makes a touch a scroll of the list, not a tap on an item. */
 const TAP_SLOP_PX = 10;
@@ -37,7 +39,8 @@ export interface SessionSwitcherOptions {
   current: Session;
   sessions: Session[];
   onSelect: (session: Session) => void;
-  onRename?: () => void;
+  /** Rename the current session in place: the row becomes a field (rename-field.ts). */
+  rename?: { value: string; save: SaveName };
 }
 
 let openHost: HTMLElement | null = null;
@@ -110,10 +113,50 @@ export function openSessionSwitcher(options: SessionSwitcherOptions): void {
       </button>
     `;
   };
-  const rename = options.onRename ? act(options.onRename) : null;
+  // Same touch handling for a step inside the sheet (Rename becomes a field): it stays open.
+  const step = (fn: () => void) => ({
+    handleEvent: (e: Event) => {
+      if (e.type === 'pointerdown') return;
+      if (e.type === 'pointerup') {
+        if ((e as PointerEvent).pointerType === 'mouse') return;
+        touchActedAt = Date.now();
+        swallowNextClick();
+      } else if (Date.now() - touchActedAt < 700) {
+        return;
+      }
+      fn();
+    },
+  });
+  let renaming = false;
+  const setRenaming = (on: boolean) => {
+    renaming = on;
+    draw();
+    if (!on) host.querySelector<HTMLElement>('[data-testid="switcher-rename"]')?.focus();
+  };
+  const renameRow = (rename: NonNullable<SessionSwitcherOptions['rename']>) => {
+    if (renaming) {
+      return html`<vt-rename-field
+        data-testid="switcher-rename-field"
+        .value=${rename.value}
+        .save=${rename.save}
+        @rename-done=${() => closeSessionSwitcher()}
+        @rename-cancel=${() => setRenaming(false)}
+      ></vt-rename-field>`;
+    }
+    const handler = step(() => setRenaming(true));
+    return html`<button
+      data-testid="switcher-rename"
+      @pointerdown=${handler}
+      @pointerup=${handler}
+      @click=${handler}
+    >
+      ${t('switcher.renameCurrent')}
+    </button>`;
+  };
 
-  render(
-    html`
+  const draw = () =>
+    render(
+      html`
       <div
         class="psr-sheet-backdrop"
         @click=${() => {
@@ -131,24 +174,16 @@ export function openSessionSwitcher(options: SessionSwitcherOptions): void {
           }
         </div>
         ${
-          rename
-            ? html`<div class="psr-sheet-group">
-                <button
-                  data-testid="switcher-rename"
-                  @pointerdown=${rename}
-                  @pointerup=${rename}
-                  @click=${rename}
-                >
-                  ${t('switcher.renameCurrent')}
-                </button>
-              </div>`
+          options.rename
+            ? html`<div class="psr-sheet-group">${renameRow(options.rename)}</div>`
             : nothing
         }
         <button class="psr-sheet-cancel" @click=${closeSessionSwitcher}>${t('common.cancel')}</button>
       </div>
     `,
-    host
-  );
+      host
+    );
+  draw();
   releaseFocus = holdSheetFocus(
     host.querySelector<HTMLElement>('.psr-sheet'),
     closeSessionSwitcher

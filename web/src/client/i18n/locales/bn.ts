@@ -901,4 +901,6 @@ export const bn: Messages = {
   'settings.compactList': 'কমপ্যাক্ট তালিকা',
   'settings.compactList.description':
     'ছোট ফোনে আরও সেশন দেখা যায়: কম ফাঁকা জায়গা, আর সেশনের উপরের অংশগুলো কম জায়গা নেয়। 700 pt পর্যন্ত উঁচু স্ক্রিনে ডিফল্টভাবে চালু।',
+  'common.ok': 'ঠিক আছে',
+  'rename.empty': 'নাম খালি রাখা যাবে না',
 };
