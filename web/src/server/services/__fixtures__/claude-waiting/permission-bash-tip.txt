@@ -1,0 +1,21 @@
+✻ Sautéed for 12s · done 3:31 PM
+❯ Run the command touch notes.txt
+  Creating empty file notes.txt
+  ⎿  $ touch notes.txt && ls -l notes.txt
+─────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for
+ you — choose "switch to auto mode" below
+ Create empty file notes.txt
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ touch notes.txt && ls -l notes.txt
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to
+      /Users/alexandra.montgomery.jr/.project
+      s-demo/my-app from this project
+   3. Yes, and switch to auto mode · auto
+      mode handles these prompts for you
+   4. No
+ Esc to cancel · Tab to amend

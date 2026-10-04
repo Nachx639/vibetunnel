@@ -3,14 +3,29 @@ import { Router } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
+import {
+  looseText,
+  type parseScreenChoices,
+  sameMenuKey,
+  takesReply,
+} from '../../shared/claude-screen.js';
 import { cellsToText } from '../../shared/terminal-text-formatter.js';
 import type { ServerStatus, Session, TitleMode } from '../../shared/types.js';
 import { HttpMethod } from '../../shared/types.js';
 import { PtyError, type PtyManager } from '../pty/index.js';
+import { readClaudeStatuses } from '../services/claude-chat.js';
+import {
+  INITIAL_INPUT_MAX_LENGTH,
+  type InitialInputOptions,
+  typeWhenClaudeReady,
+} from '../services/claude-initial-input.js';
+import { menuKeyHash } from '../services/menu-key-hash.js';
 import type { RemoteRegistry } from '../services/remote-registry.js';
+import { createScreenMenu } from '../services/screen-menu.js';
 import { chatAnswer, readSessionChat } from '../services/session-chat.js';
+import { createLastLineReader } from '../services/session-last-line.js';
 import { tailscaleServeService } from '../services/tailscale-serve-service.js';
-import type { TerminalManager } from '../services/terminal-manager.js';
+import { LARGE_REPLAY_MAX_BYTES, type TerminalManager } from '../services/terminal-manager.js';
 import { detectGitInfo } from '../utils/git-info.js';
 import { getDetailedGitStatus } from '../utils/git-status.js';
 import { createLogger } from '../utils/logger.js';
@@ -51,9 +66,133 @@ function resolvePath(inputPath: string, defaultPath: string): string {
   return expanded;
 }
 
+/**
+ * How long a reply waits for Claude to leave its menu (Esc) and show its prompt before the
+ * text is typed. The phone keeps the message until then, so past this it says so instead.
+ */
+const REPLY_TYPE_WAIT_MS = 15_000;
+/** Pause before each terminal warm-up of a long waiting session (see warmTerminal). */
+const WARM_GAP_MS = 250;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export function createSessionRoutes(config: SessionRoutesConfig): Router {
   const router = Router();
   const { ptyManager, terminalManager, remoteRegistry, isHQMode } = config;
+
+  // GET /sessions is polled every second or so by every client; a screen read is only needed
+  // for sessions where Claude waits for an answer, and a couple of seconds of staleness is
+  // fine. Concurrent polls share one read, and a session whose output would be costly to
+  // replay is skipped (no quick answers for it; the session view still works).
+  const choicesCache = new Map<string, { at: number; value: ScreenChoices }>();
+  const choicesInFlight = new Map<string, Promise<ScreenChoices>>();
+  type ScreenChoices = ReturnType<typeof parseScreenChoices>;
+
+  // Read like the phone reads its copy (services/screen-menu.ts): the key of a menu read here
+  // (the list's quick answers, the answer sheet, the check of an answer) and on the phone
+  // covers the same lines, its dialog's top included where it scrolled out of sight.
+  const screenMenu = createScreenMenu({
+    recentText: (sessionId, lines) => terminalManager.getRecentText(sessionId, lines),
+    sendInput: (sessionId, input) => ptyManager.sendInput(sessionId, input),
+  });
+  const readScreenChoices = (sessionId: string): Promise<ScreenChoices> =>
+    screenMenu.read(sessionId);
+
+  // A long session's screen reads cheaply only once its terminal exists, and nothing builds it
+  // before someone opens the session: after a restart a long Claude session waiting for an
+  // answer had no quick answers in the list. Built here, off the request, one at a time with a
+  // pause between: each replay blocks the server (~0.3 s per 20 MB).
+  const warming = new Set<string>();
+  const warmQueue: string[] = [];
+  let warmingNow = false;
+  function warmTerminal(sessionId: string) {
+    if (warming.has(sessionId)) return;
+    if (!terminalManager.canSnapshotCheaply(sessionId, LARGE_REPLAY_MAX_BYTES)) return;
+    warming.add(sessionId);
+    warmQueue.push(sessionId);
+    void drainWarmQueue();
+  }
+  async function drainWarmQueue() {
+    if (warmingNow) return;
+    warmingNow = true;
+    try {
+      for (let sessionId = warmQueue.shift(); sessionId; sessionId = warmQueue.shift()) {
+        // Requests waiting meanwhile go first.
+        await sleep(WARM_GAP_MS);
+        await terminalManager
+          .getBufferSnapshot(sessionId)
+          .catch((error) => logger.debug(`could not build the terminal of ${sessionId}: ${error}`));
+        warming.delete(sessionId);
+      }
+    } finally {
+      warmingNow = false;
+    }
+  }
+
+  async function screenChoices(sessionId: string): Promise<ScreenChoices> {
+    const cached = choicesCache.get(sessionId);
+    if (cached && Date.now() - cached.at < 2000) return cached.value;
+    if (!terminalManager.canSnapshotCheaply(sessionId)) {
+      warmTerminal(sessionId);
+      return null;
+    }
+    let pending = choicesInFlight.get(sessionId);
+    if (!pending) {
+      pending = readScreenChoices(sessionId)
+        .catch((error) => {
+          logger.debug(`[GET /sessions] Could not read screen of ${sessionId}: ${error}`);
+          return null;
+        })
+        .then((value) => {
+          choicesCache.set(sessionId, { at: Date.now(), value });
+          if (choicesCache.size > 100) {
+            choicesCache.delete(choicesCache.keys().next().value as string);
+          }
+          return value;
+        })
+        .finally(() => choicesInFlight.delete(sessionId));
+      choicesInFlight.set(sessionId, pending);
+    }
+    return pending;
+  }
+
+  // Last output line of shells and other non-Claude sessions, for the compact phone list (it
+  // asks with ?lastLine=1). Same cost rules as above: only cheap screens, unchanged screens are
+  // never re-read, and a changing one at most every 2 s.
+  const lastLines = createLastLineReader({
+    canSnapshotCheaply: (sessionId) => terminalManager.canSnapshotCheaply(sessionId),
+    getChangeCount: (sessionId) => terminalManager.getChangeCount(sessionId),
+    outputModifiedAt: (sessionId) => terminalManager.outputModifiedAt(sessionId),
+    readScreenText: async (sessionId) =>
+      cellsToText((await terminalManager.getBufferSnapshot(sessionId)).cells, false),
+  });
+
+  /**
+   * Types `text` into the session once Claude is back at its prompt, resolving to whether it
+   * was typed (a reply waits for Claude to leave its menu).
+   */
+  function typeWhenReady(
+    sessionId: string,
+    text: string,
+    options?: InitialInputOptions
+  ): Promise<boolean> {
+    const running = () => ptyManager.getSession(sessionId)?.status === 'running';
+    return typeWhenClaudeReady(
+      text,
+      {
+        isRunning: running,
+        claudeStatus: async () => {
+          const pid = ptyManager.getSession(sessionId)?.pid;
+          return pid ? (await readClaudeStatuses([pid])).get(pid)?.status : undefined;
+        },
+        dialogOnScreen: async () => (await readScreenChoices(sessionId)) !== null,
+        send: (input) => {
+          if (running()) ptyManager.sendInput(sessionId, input);
+        },
+        onGiveUp: (reason) => logger.warn(`reply for session ${sessionId} not typed: ${reason}`),
+      },
+      options
+    );
+  }
 
   // Server status endpoint
   router.get('/server/status', async (_req, res) => {
@@ -209,8 +348,49 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     }
   });
 
+  /** Claude Code's status, title and preview on each running local session (agent chat). */
+  async function addClaudeStatuses(sessions: Session[]): Promise<void> {
+    try {
+      const runningPids = sessions
+        .filter((session) => session.status === 'running' && session.pid)
+        .map((session) => session.pid as number);
+      const claudeStatuses = await readClaudeStatuses(runningPids);
+      for (const session of sessions) {
+        const claudeStatus =
+          session.status === 'running' && session.pid ? claudeStatuses.get(session.pid) : undefined;
+        if (!claudeStatus) continue;
+        const { sessionId: claudeSessionId, ...status } = claudeStatus;
+        session.claudeStatus = status;
+        if (status.status === 'waiting') {
+          // Quick answers from the list: the menu on screen, if any.
+          const choices = await screenChoices(session.id);
+          if (choices) session.claudeStatus.choices = choices;
+        }
+        if (status.title && session.claudeTitle !== status.title) {
+          try {
+            ptyManager.setClaudeTitle(session.id, status.title);
+            session.claudeTitle = status.title;
+          } catch (error) {
+            logger.debug(`[GET /sessions] Could not save Claude title: ${error}`);
+          }
+        }
+        if (claudeSessionId && session.claudeSessionId !== claudeSessionId) {
+          // A failed save must not drop the statuses of the remaining sessions.
+          try {
+            ptyManager.setClaudeSessionId(session.id, claudeSessionId);
+            session.claudeSessionId = claudeSessionId;
+          } catch (error) {
+            logger.debug(`[GET /sessions] Could not save Claude session id: ${error}`);
+          }
+        }
+      }
+    } catch (error) {
+      logger.debug(`[GET /sessions] Could not read Claude statuses: ${error}`);
+    }
+  }
+
   // List all sessions (aggregate local + remote in HQ mode)
-  router.get('/sessions', async (_req, res) => {
+  router.get('/sessions', async (req, res) => {
     logger.debug('[GET /sessions] Listing all sessions');
     try {
       let allSessions = [];
@@ -255,6 +435,27 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
           };
         })
       );
+
+      // Agent chat on: Claude Code's status per session (working / waiting for the user / idle),
+      // its conversation title and last message, and on a waiting session the menu on screen.
+      // Off, no process tree, transcript or screen is read for this.
+      if (config.agentChatEnabled?.()) {
+        await addClaudeStatuses(localSessionsWithSource as Session[]);
+      }
+      // The compact phone list shows a shell's last line of output instead of a preview.
+      if (req.query?.lastLine === '1') {
+        await Promise.all(
+          (localSessionsWithSource as Session[]).map(async (session) => {
+            if (session.status !== 'running' || session.claudeStatus) return;
+            try {
+              const lastLine = await lastLines.get(session.id);
+              if (lastLine) session.lastLine = lastLine;
+            } catch (error) {
+              logger.debug(`[GET /sessions] Could not read last line of ${session.id}: ${error}`);
+            }
+          })
+        );
+      }
 
       allSessions = [...localSessionsWithSource];
 
@@ -972,6 +1173,220 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       } else {
         res.status(500).json({ error: 'Failed to send input' });
       }
+    }
+  });
+
+  // One answer at a time per session: two taps (or the phone and a push) must not both press
+  // keys into the same menu.
+  const answering = new Set<string>();
+
+  /**
+   * The menu the client showed is the one on screen: same question (one there is), or same
+   * options, compared loosely; and the same key (its lines up to the dialog's top).
+   * Consecutive permission prompts share question and options: without the key, a late tap
+   * approved the next command. A client that sends no key for a menu that has one (an answer
+   * sheet still on a push's choices sends the push's keyHash instead) is not trusted with it;
+   * a yes/no question has none. Nothing of the screen is logged: only lengths.
+   */
+  function sameMenu(
+    sessionId: string,
+    choices: NonNullable<ScreenChoices>,
+    body: { question?: unknown; options?: unknown; key?: unknown; keyHash?: unknown }
+  ): boolean {
+    const question = looseText(choices.question);
+    const sameQuestion =
+      question !== '' && typeof body.question === 'string' && looseText(body.question) === question;
+    const sameOptions =
+      choices.navigate === true &&
+      Array.isArray(body.options) &&
+      body.options.every((option) => typeof option === 'string') &&
+      looseText(body.options.join('')) === looseText(choices.options.join(''));
+    if (!sameQuestion && !sameOptions) return false;
+    if (!choices.key) return true;
+    if (typeof body.key !== 'string' || !body.key) {
+      if (typeof body.keyHash === 'string' && body.keyHash === menuKeyHash(choices.key)) {
+        return true;
+      }
+      logger.log(`menu key of ${sessionId}: the client sent none`);
+      return false;
+    }
+    if (sameMenuKey(body.key, choices.key)) return true;
+    logger.log(
+      `menu key of ${sessionId} differs (client ${body.key.length} chars, server ${choices.key.length})`
+    );
+    return false;
+  }
+
+  // Answer a menu on screen (phone list quick answers, the chat's question card, the answer
+  // sheet). The client sends the question and options it showed; the screen is re-read and the
+  // answer only given if that menu is still the one waiting, so a stale button can't approve a
+  // newer prompt. Only a user's tap calls this: nothing answers by itself.
+  router.post('/sessions/:sessionId/answer', async (req, res) => {
+    if (!config.agentChatEnabled?.()) {
+      return res.status(403).json({ error: 'Agent chat is disabled', code: 'disabled' });
+    }
+    const { sessionId } = req.params;
+    const { option, question } = req.body ?? {};
+    if (!Number.isInteger(option) || option < 1 || option > 9 || typeof question !== 'string') {
+      return res.status(400).json({ error: 'option (1-9) and question are required' });
+    }
+    const session = ptyManager.getSession(sessionId);
+    if (session?.status !== 'running') {
+      return res.status(404).json({ error: 'Session not found or not running' });
+    }
+    if (answering.has(sessionId)) return res.status(409).json({ error: 'busy' });
+    answering.add(sessionId);
+    try {
+      const choices = await readScreenChoices(sessionId);
+      if (!choices || !sameMenu(sessionId, choices, req.body) || option > choices.options.length) {
+        logger.log(`answer to ${sessionId}: the prompt changed (option ${option})`);
+        return res.status(409).json({ error: 'The prompt changed' });
+      }
+      logger.log(`answer to ${sessionId}: option ${option} of ${choices.options.length}`);
+      choicesCache.delete(sessionId);
+      if (choices.navigate) {
+        // The cursor to the option, verified on screen before any Enter (screen-menu.ts).
+        if (!(await screenMenu.moveCursor(sessionId, choices, option - 1))) {
+          return res.status(409).json({ error: 'The prompt changed' });
+        }
+        ptyManager.sendInput(sessionId, { key: 'enter' });
+        return res.json({ success: true });
+      }
+      if (!choices.keys) return res.status(409).json({ error: 'The prompt changed' });
+      // A "(y/n)" question reads a line: the letter, then Enter (the letter alone left a
+      // shell's "Continue? [Y/n]" waiting).
+      ptyManager.sendInput(sessionId, { text: choices.keys[option - 1] });
+      ptyManager.sendInput(sessionId, { key: 'enter' });
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('error answering prompt:', error);
+      res.status(500).json({ error: 'Failed to answer' });
+    } finally {
+      answering.delete(sessionId);
+    }
+  });
+
+  /** Claude Code's status for a running session, read live (not the list's cached one). */
+  async function liveClaudeStatus(sessionId: string) {
+    const pid = ptyManager.getSession(sessionId)?.pid;
+    return pid ? (await readClaudeStatuses([pid])).get(pid) : undefined;
+  }
+
+  // The answer sheet asks what is waiting right now before it shows its buttons: what it was
+  // opened from may be minutes old.
+  router.get('/sessions/:sessionId/prompt', async (req, res) => {
+    if (!config.agentChatEnabled?.()) {
+      return res.status(403).json({ error: 'Agent chat is disabled', code: 'disabled' });
+    }
+    const { sessionId } = req.params;
+    if (ptyManager.getSession(sessionId)?.status !== 'running') {
+      return res.status(404).json({ error: 'Session not found or not running' });
+    }
+    try {
+      const claude = await liveClaudeStatus(sessionId);
+      const waiting = claude?.status === 'waiting';
+      const choices = waiting ? await readScreenChoices(sessionId) : null;
+      res.json({
+        waiting,
+        waitingFor: waiting ? claude?.waitingFor : undefined,
+        choices: choices
+          ? {
+              question: choices.question,
+              options: choices.options,
+              detail: choices.detail,
+              key: choices.key,
+            }
+          : null,
+      });
+    } catch (error) {
+      logger.error('error reading prompt:', error);
+      res.status(500).json({ error: 'Failed to read prompt' });
+    }
+  });
+
+  // A written answer to Claude waiting on a menu (the answer sheet, the phone composer). Like
+  // /answer, the client sends the menu it showed (null when it saw none) and nothing is typed if
+  // the screen moved on. Esc dismisses the menu first (Claude's own "No, and tell Claude what to
+  // do differently"), then the text is typed once Claude is back at its prompt; the response
+  // waits for that, so the phone keeps the message until it is really typed.
+  router.post('/sessions/:sessionId/reply', async (req, res) => {
+    if (!config.agentChatEnabled?.()) {
+      return res.status(403).json({ error: 'Agent chat is disabled', code: 'disabled' });
+    }
+    const { sessionId } = req.params;
+    const { text, question, options } = req.body ?? {};
+    if (typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+    if (question !== null && typeof question !== 'string') {
+      return res.status(400).json({ error: 'question must be a string or null' });
+    }
+    if (text.length > INITIAL_INPUT_MAX_LENGTH) {
+      return res.status(413).json({ error: 'text is too long' });
+    }
+    const session = ptyManager.getSession(sessionId);
+    if (session?.status !== 'running') {
+      return res.status(404).json({ error: 'Session not found or not running' });
+    }
+    if (answering.has(sessionId)) return res.status(409).json({ error: 'busy' });
+    answering.add(sessionId);
+    try {
+      const claude = await liveClaudeStatus(sessionId);
+      const choices = await readScreenChoices(sessionId);
+      if (claude?.status !== 'waiting') {
+        // A menu Claude does not report (its trust dialog at startup) takes Enter as confirming
+        // its highlighted option: the phone must not type the message there either.
+        if (choices?.navigate) {
+          logger.log(`reply to ${sessionId}: a menu is up while Claude reports nothing`);
+          return res.status(409).json({ error: 'The prompt changed' });
+        }
+        // The phone composer sends here whenever Claude may be waiting; it is not, so the
+        // phone types the message itself, which this case says apart from a changed prompt.
+        logger.log(
+          `reply to ${sessionId}: Claude is ${claude?.status ?? 'not reporting'}, typed as usual`
+        );
+        return res.status(409).json({ error: 'not-waiting' });
+      }
+      // A menu the phone saw must still be the one on screen. With none on either side Claude
+      // waits on something nobody can read, and Esc is its "tell Claude what to do instead".
+      // The phone saw a menu the server no longer finds: Claude moved on, maybe to work its
+      // status file does not show yet, which Esc would interrupt.
+      const phoneSawMenu =
+        typeof question === 'string' || (Array.isArray(options) && options.length > 0);
+      const stale = choices
+        ? !sameMenu(sessionId, choices, req.body) || (choices.navigate && !takesReply(choices))
+        : phoneSawMenu;
+      if (stale) {
+        logger.log(`reply to ${sessionId}: the prompt changed`);
+        return res.status(409).json({ error: 'The prompt changed' });
+      }
+      choicesCache.delete(sessionId);
+      if (choices?.keys) {
+        logger.log(`reply to ${sessionId}: typed (a yes/no question)`);
+        ptyManager.sendInput(sessionId, {
+          text: text.includes('\n') ? `\x1b[200~${text}\x1b[201~` : text,
+        });
+        ptyManager.sendInput(sessionId, { key: 'enter' });
+        return res.json({ success: true });
+      }
+      // Typed straight into the menu, Enter would confirm its highlighted option (a plan
+      // correction would execute the plan).
+      logger.log(`reply to ${sessionId}: Esc, then the text once Claude is back at its prompt`);
+      ptyManager.sendInput(sessionId, { key: 'escape' });
+      const typed = await typeWhenReady(sessionId, text, {
+        timeoutMs: REPLY_TYPE_WAIT_MS,
+        maxWaitMs: REPLY_TYPE_WAIT_MS,
+      });
+      if (!typed) {
+        logger.warn(`reply to ${sessionId}: Claude did not get back to its prompt; not typed`);
+        return res.status(504).json({ error: 'not-delivered' });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('error replying to prompt:', error);
+      res.status(500).json({ error: 'Failed to reply' });
+    } finally {
+      answering.delete(sessionId);
     }
   });
 

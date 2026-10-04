@@ -1305,6 +1305,26 @@ export class PtyManager extends EventEmitter {
   /**
    * Update session name
    */
+  /** Remember the Claude Code conversation running in a session (agent chat on). */
+  setClaudeSessionId(sessionId: string, claudeSessionId: string): void {
+    const info = this.sessionManager.loadSessionInfo(sessionId);
+    if (!info || info.claudeSessionId === claudeSessionId) return;
+    info.claudeSessionId = claudeSessionId;
+    this.sessionManager.saveSessionInfo(sessionId, info);
+    const memorySession = this.sessions.get(sessionId);
+    if (memorySession?.sessionInfo) memorySession.sessionInfo.claudeSessionId = claudeSessionId;
+  }
+
+  /** Remember Claude's conversation title, so it still names the session once it exits. */
+  setClaudeTitle(sessionId: string, claudeTitle: string): void {
+    const info = this.sessionManager.loadSessionInfo(sessionId);
+    if (!info || info.claudeTitle === claudeTitle) return;
+    info.claudeTitle = claudeTitle;
+    this.sessionManager.saveSessionInfo(sessionId, info);
+    const memorySession = this.sessions.get(sessionId);
+    if (memorySession?.sessionInfo) memorySession.sessionInfo.claudeTitle = claudeTitle;
+  }
+
   updateSessionName(sessionId: string, name: string): string {
     logger.debug(
       `[PtyManager] updateSessionName called for session ${sessionId} with name: ${name}`

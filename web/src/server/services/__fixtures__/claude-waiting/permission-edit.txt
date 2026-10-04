@@ -1,0 +1,16 @@
+─────────────────────────────────────────────
+ Edit file
+ todo.txt
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ 3  END
+ 4  extra
+ 5  five
+ 6 +six
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to make this edit to todo.txt?
+ ❯ 1. Yes
+   2. Yes, and switch to accept edits
+      (auto-approve file edits and common
+      file commands) for this session
+   3. Nohift+tab)
+ Esc to cancel · Tab to amend

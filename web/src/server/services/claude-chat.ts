@@ -47,6 +47,13 @@ export interface ClaudeChat {
   waitingFor?: string;
   /** Title Claude Code generated for the conversation. */
   title?: string;
+  /** While busy: what Claude is doing right now. */
+  activity?: ClaudeActivity;
+  /**
+   * Busy, but the reply is over: Claude Code stays "busy" while background agents or tasks
+   * run, so this tells "waiting for background work" apart from a turn still in progress.
+   */
+  waitingForBackground?: boolean;
   messages: ClaudeChatMessage[];
 }
 
@@ -55,6 +62,8 @@ interface ClaudeSessionFile {
   cwd?: string;
   status?: string;
   waitingFor?: string;
+  /** Epoch ms of the last status change (Claude Code writes it with the status). */
+  statusUpdatedAt?: number;
 }
 
 interface TranscriptCache {
@@ -65,8 +74,34 @@ interface TranscriptCache {
   title?: string;
   /** The read position is mid-line (tail start or an oversized line): skip to the next line. */
   skipPartialLine?: boolean;
+  /** Last step Claude took in the conversation, for the live activity line. */
+  lastStep?: TranscriptStep;
   /** The latest prompt's id and its text message, to add the images that follow it. */
   lastPrompt?: { promptId?: string; index: number };
+  /** The main thread's last turn ended (and when): nothing has started another since. */
+  turnEnded?: TurnEnd;
+}
+
+/** A finished turn of the main thread: `at` is when its reply ended (epoch ms). */
+interface TurnEnd {
+  at?: number;
+}
+
+/** What the end of the transcript says Claude is doing. */
+type TranscriptStep =
+  | { kind: 'thinking' | 'writing'; at?: number }
+  | { kind: 'tool'; tool: ClaudeChatMessage };
+
+/** Live activity of a working Claude: structured, the client words it in its own language. */
+export interface ClaudeActivity {
+  /** "thinking", "writing" or "tool". */
+  kind: 'thinking' | 'writing' | 'tool';
+  /** Tool name while a tool call has no result yet (e.g. "Bash", "Edit"). */
+  tool?: string;
+  /** Short subject of the tool call: command, file name, pattern, host… (≤ 60 chars). */
+  target?: string;
+  /** When this step began (epoch ms). */
+  since?: number;
 }
 
 const MAX_MESSAGES = 400;
@@ -552,7 +587,8 @@ function readTranscript(transcriptPath: string): TranscriptCache {
           }
           const images = parseImageSources(line);
           if (images) attachImageSources(cache, images);
-          for (const message of parseTranscriptLine(line)) {
+          const messages = parseTranscriptLine(line);
+          for (const message of messages) {
             cache.messages.push(message);
             if (message.toolUseId) cache.tools.set(message.toolUseId, message);
             if (message.role === 'user') {
@@ -562,13 +598,22 @@ function readTranscript(transcriptPath: string): TranscriptCache {
               };
             }
           }
-          for (const result of parseToolResults(line)) {
+          const results = parseToolResults(line);
+          for (const result of results) {
             const tool = cache.tools.get(result.toolUseId);
             if (tool) {
               tool.result = result.text;
               tool.isError = result.isError;
             }
           }
+          cache.lastStep = nextStep(
+            cache.lastStep,
+            line,
+            messages,
+            results.length > 0,
+            cache.messages
+          );
+          cache.turnEnded = turnAfter(cache.turnEnded, line);
         }
         cache.offset += lastNewline - start + 1;
         if (cache.messages.length > MAX_MESSAGES) {
@@ -593,7 +638,181 @@ function readTranscript(transcriptPath: string): TranscriptCache {
   return cache;
 }
 
+function lineTime(line: string): number | undefined {
+  const match = line.match(/"timestamp":"([^"]+)"/);
+  const at = match ? Date.parse(match[1]) : Number.NaN;
+  return Number.isNaN(at) ? undefined : at;
+}
+
+/** The step a transcript line moves Claude to (lines with nothing to say keep the last one). */
+function nextStep(
+  previous: TranscriptStep | undefined,
+  line: string,
+  messages: ClaudeChatMessage[],
+  hasResults: boolean,
+  conversation: ClaudeChatMessage[]
+): TranscriptStep | undefined {
+  const last = messages[messages.length - 1];
+  if (last?.role === 'tool') return { kind: 'tool', tool: last };
+  if (last?.role === 'assistant') return { kind: 'writing', at: lineTime(line) };
+  if (hasResults) {
+    // Parallel calls resolve one by one: show one still running, if any.
+    for (let i = conversation.length - 1; i >= 0 && conversation[i].role === 'tool'; i--) {
+      if (conversation[i].result === undefined) return { kind: 'tool', tool: conversation[i] };
+    }
+  }
+  // A prompt or a tool result: Claude is working out what to do next.
+  if (last?.role === 'user' || hasResults) return { kind: 'thinking', at: lineTime(line) };
+  // Thinking blocks are not chat messages; a cheap check avoids parsing every line again.
+  if (line.includes('"type":"thinking"') && line.includes('"type":"assistant"')) {
+    return { kind: 'thinking', at: lineTime(line) };
+  }
+  return previous;
+}
+
+/**
+ * User entries that Claude Code writes without starting a turn: a local slash command and its
+ * output (`/model`, `/effort`), a `!` shell command. A skill's `<command-message>` line is
+ * followed by its prompt as a meta entry, and that one does start the turn.
+ */
+const NOT_A_TURN =
+  /^\s*<(command-name|command-message|local-command-|bash-input|bash-stdout|bash-stderr)/;
+
+/** The text a user entry starts with, if any. */
+function userText(content: unknown): string | undefined {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return undefined;
+  const first = content[0] as { type?: string; text?: unknown } | undefined;
+  return first?.type === 'text' && typeof first.text === 'string' ? first.text : undefined;
+}
+
+/**
+ * Whether the main thread's turn is over after a transcript line. Claude Code keeps its
+ * status "busy" for as long as any background agent or task runs, even after its reply; the
+ * session file can't tell the two apart, so the transcript does (otherwise the phone said
+ * "Working…" for an hour while Claude was waiting for the user). The turn is over at a main
+ * thread reply that ended with `end_turn` (or an interrupt), and open again at anything that
+ * starts one: a prompt, a peer or task-notification message, a tool result, a queued command.
+ * Subagent (sidechain) entries and bookkeeping lines leave it as it was.
+ */
+function turnAfter(previous: TurnEnd | undefined, line: string): TurnEnd | undefined {
+  // Most lines are bookkeeping (titles, modes, hooks): skip them without parsing.
+  if (
+    !line.includes('"type":"assistant"') &&
+    !line.includes('"type":"user"') &&
+    !line.includes('"queued_command"')
+  ) {
+    return previous;
+  }
+  let entry: {
+    type?: string;
+    isSidechain?: boolean;
+    timestamp?: string;
+    attachment?: { type?: string };
+    message?: { stop_reason?: unknown; content?: unknown };
+  };
+  try {
+    entry = JSON.parse(line);
+  } catch {
+    return previous;
+  }
+  if (entry.isSidechain) return previous;
+  const at = entry.timestamp ? Date.parse(entry.timestamp) : Number.NaN;
+  const ended = { at: Number.isNaN(at) ? undefined : at };
+  if (entry.type === 'assistant') {
+    return entry.message?.stop_reason === 'end_turn' ? ended : undefined;
+  }
+  if (entry.type === 'user') {
+    const text = userText(entry.message?.content);
+    if (text !== undefined && /^\[Request interrupted by user/.test(text)) return ended;
+    if (text !== undefined && NOT_A_TURN.test(text)) return previous;
+    return undefined;
+  }
+  if (entry.type === 'attachment' && entry.attachment?.type === 'queued_command') return undefined;
+  return previous;
+}
+
+/** Whether these transcript lines end with the main thread's turn over (exported for tests). */
+export function turnEndedFromLines(lines: string[]): boolean {
+  let turn: TurnEnd | undefined;
+  for (const line of lines) turn = turnAfter(turn, line);
+  return turn !== undefined;
+}
+
+/**
+ * Busy only because of background work: the turn ended after Claude became busy. A turn that
+ * ended before then is the previous one, still the transcript's tail for a moment after a new
+ * prompt (and up to PREVIEW_TTL_MS in the cached summaries).
+ */
+function waitingForBackground(session: ClaudeSessionFile, turnEnded: TurnEnd | undefined): boolean {
+  if (session.status !== 'busy' || !turnEnded) return false;
+  const busySince = session.statusUpdatedAt;
+  return typeof busySince !== 'number' || turnEnded.at === undefined || turnEnded.at >= busySince;
+}
+
+const ACTIVITY_TARGET_MAX = 60;
+
+function activityTarget(tool: ClaudeChatMessage): string | undefined {
+  let target = tool.text;
+  if (tool.tool === 'WebFetch' && target) {
+    try {
+      target = new URL(target).host || target;
+    } catch {
+      // not a URL: keep the text
+    }
+  }
+  if (tool.tool === 'TodoWrite') return undefined;
+  target = target.replace(/\s+/g, ' ').trim();
+  if (!target) return undefined;
+  return target.length > ACTIVITY_TARGET_MAX
+    ? `${target.slice(0, ACTIVITY_TARGET_MAX - 1)}…`
+    : target;
+}
+
+function activityOf(step: TranscriptStep | undefined): ClaudeActivity | undefined {
+  if (!step) return undefined;
+  if (step.kind !== 'tool') return { kind: step.kind, since: step.at };
+  const at = step.tool.timestamp ? Date.parse(step.tool.timestamp) : Number.NaN;
+  const since = Number.isNaN(at) ? undefined : at;
+  // The result arrived but no later line yet (should not last): Claude reads it.
+  if (step.tool.result !== undefined) return { kind: 'thinking', since };
+  return { kind: 'tool', tool: step.tool.tool, target: activityTarget(step.tool), since };
+}
+
+/** Live activity at the end of these transcript lines (exported for tests). */
+export function activityFromLines(lines: string[]): ClaudeActivity | undefined {
+  const tools = new Map<string, ClaudeChatMessage>();
+  const conversation: ClaudeChatMessage[] = [];
+  let step: TranscriptStep | undefined;
+  for (const line of lines) {
+    const messages = parseTranscriptLine(line);
+    conversation.push(...messages);
+    for (const message of messages) if (message.toolUseId) tools.set(message.toolUseId, message);
+    const results = parseToolResults(line);
+    for (const result of results) {
+      const tool = tools.get(result.toolUseId);
+      if (tool) tool.result = result.text;
+    }
+    step = nextStep(step, line, messages, results.length > 0, conversation);
+  }
+  return activityOf(step);
+}
+
 /** Read the Claude Code conversation running inside the process tree of `rootPid`. */
+/**
+ * Right after Claude turns busy the transcript may still end with the previous turn's last
+ * step: don't time it from then ("Writing… · 2h 5m"); start from when Claude became busy.
+ */
+function currentTurn<T extends { since?: number }>(
+  activity: T | undefined,
+  busySince: number | undefined
+): T | undefined {
+  if (!activity || typeof busySince !== 'number') return activity;
+  return activity.since !== undefined && activity.since < busySince
+    ? { ...activity, since: busySince }
+    : activity;
+}
+
 export async function readClaudeChat(
   rootPid: number,
   claudeDir = claudeConfigDir()
@@ -604,13 +823,161 @@ export async function readClaudeChat(
     if (!session?.sessionId || !session.cwd) continue;
     const transcriptPath = cachedFindTranscript(claudeDir, session.cwd, session.sessionId);
     const transcript = transcriptPath ? readTranscript(transcriptPath) : null;
+    const background = waitingForBackground(session, transcript?.turnEnded);
     return {
       available: true,
       status: session.status,
       waitingFor: session.status === 'waiting' ? session.waitingFor : undefined,
       title: transcript?.title,
+      activity:
+        session.status === 'busy' && !background
+          ? currentTurn(activityOf(transcript?.lastStep), session.statusUpdatedAt)
+          : undefined,
+      ...(background ? { waitingForBackground: true } : {}),
       messages: transcript?.messages ?? [],
     };
   }
   return { available: false, messages: [] };
+}
+
+export interface ClaudeStatus {
+  status: string;
+  waitingFor?: string;
+  /** Claude Code conversation id (kept in session.json as claudeSessionId). */
+  sessionId?: string;
+  /** Conversation title Claude Code generated (ai-title). */
+  title?: string;
+  /** Last user or assistant message, one line, for session list previews. */
+  preview?: { role: 'user' | 'assistant'; text: string };
+  /** When the current status began (epoch ms): tells two identical prompts apart. */
+  since?: number;
+  /** While busy: what Claude is doing right now (from the transcript tail). */
+  activity?: ClaudeActivity;
+  /** Busy only because background agents or tasks run: the reply is over (see turnAfter). */
+  waitingForBackground?: boolean;
+}
+
+const PREVIEW_MAX_LENGTH = 160;
+const PREVIEW_TTL_MS = 2500;
+const previewCache = new Map<
+  string,
+  {
+    at: number;
+    title?: string;
+    preview?: ClaudeStatus['preview'];
+    activity?: ClaudeActivity;
+    turnEnded?: TurnEnd;
+  }
+>();
+
+/**
+ * A table's rows as their cells ("C · 1972"), its delimiter row dropped, rows joined by "; ".
+ * Flattened to one line as markdown, a table read "| Language | Year | |---|---| | C | 1972 |"
+ * in the session list and in pushes.
+ */
+function tablesAsText(markdown: string): string {
+  const out: string[] = [];
+  let rows: string[] = [];
+  const flush = () => {
+    if (rows.length > 0) out.push(rows.join('; '));
+    rows = [];
+  };
+  for (const line of markdown.split('\n')) {
+    const row = line.match(/^\s*\|(.*)\|\s*$/);
+    if (!row) {
+      flush();
+      out.push(line);
+    } else if (!/^[\s|:-]*$/.test(row[1])) {
+      const cells = row[1].split('|').map((cell) => cell.trim());
+      rows.push(cells.filter(Boolean).join(' · '));
+    }
+  }
+  flush();
+  return out.join('\n');
+}
+
+/** One line of plain text for a list preview: markdown markup removed, whitespace collapsed. */
+export function plainPreview(markdown: string): string {
+  return tablesAsText(markdown)
+    .replace(/^\s*[-*•+]\s+/gm, '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, '$1$2')
+    .replace(/(^|\s)[*_]([^*_\n]+)[*_](?=\s|$|[.,;:!?])/g, '$1$2')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}(#{1,6}|>)\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Title and last message of a transcript, re-read at most every couple of seconds. */
+function transcriptSummary(transcriptPath: string) {
+  const cached = previewCache.get(transcriptPath);
+  if (cached && Date.now() - cached.at < PREVIEW_TTL_MS) return cached;
+  let transcript: TranscriptCache;
+  try {
+    transcript = readTranscript(transcriptPath);
+  } catch {
+    return cached ?? { at: Date.now() };
+  }
+  let preview: ClaudeStatus['preview'];
+  for (let i = transcript.messages.length - 1; i >= 0; i--) {
+    const message = transcript.messages[i];
+    if ((message.role === 'user' || message.role === 'assistant') && message.text.trim()) {
+      const text = plainPreview(message.text);
+      preview = {
+        role: message.role,
+        text: text.length > PREVIEW_MAX_LENGTH ? `${text.slice(0, PREVIEW_MAX_LENGTH - 1)}…` : text,
+      };
+      break;
+    }
+  }
+  const summary = {
+    at: Date.now(),
+    title: transcript.title,
+    preview,
+    activity: activityOf(transcript.lastStep),
+    turnEnded: transcript.turnEnded,
+  };
+  previewCache.set(transcriptPath, summary);
+  if (previewCache.size > MAX_CACHED_TRANSCRIPTS) {
+    previewCache.delete(previewCache.keys().next().value as string);
+  }
+  return summary;
+}
+
+/** Claude Code status for each session root pid that runs Claude Code. */
+export async function readClaudeStatuses(
+  rootPids: number[],
+  claudeDir = claudeConfigDir()
+): Promise<Map<number, ClaudeStatus>> {
+  const statuses = new Map<number, ClaudeStatus>();
+  const { starts } = await processTable();
+  for (const rootPid of rootPids) {
+    for (const pid of await processTree(rootPid)) {
+      const session = readSessionFile(claudeDir, pid, starts);
+      if (!session?.status) continue;
+      const transcriptPath =
+        session.sessionId && session.cwd
+          ? cachedFindTranscript(claudeDir, session.cwd, session.sessionId)
+          : null;
+      const summary = transcriptPath ? transcriptSummary(transcriptPath) : undefined;
+      const background = waitingForBackground(session, summary?.turnEnded);
+      statuses.set(rootPid, {
+        status: session.status,
+        waitingFor: session.status === 'waiting' ? session.waitingFor : undefined,
+        sessionId: session.sessionId,
+        title: summary?.title,
+        preview: summary?.preview,
+        since: typeof session.statusUpdatedAt === 'number' ? session.statusUpdatedAt : undefined,
+        activity:
+          session.status === 'busy' && !background
+            ? currentTurn(summary?.activity, session.statusUpdatedAt)
+            : undefined,
+        ...(background ? { waitingForBackground: true } : {}),
+      });
+      break;
+    }
+  }
+  return statuses;
 }

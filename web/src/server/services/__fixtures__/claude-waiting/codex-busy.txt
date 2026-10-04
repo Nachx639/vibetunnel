@@ -1,0 +1,29 @@
+test │
+╰────────────────────────────────────────────
+─────╯
+
+╭───────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.155.1)                │
+│                                           │
+│ model:       gpt-5-codex xhigh   /model … │
+│ directory:   ~/.projects-demo/codex-demo  │
+│ permissions: YOLO mode                    │
+╰───────────────────────────────────────────╯
+
+  Tip: New Use /fast to enable our fastest
+  inference with increased plan usage.
+
+• You have 2 usage limit resets available.
+Run /usage to use one.
+
+
+› count slowly from 1 to 5, one line per
+  number
+
+
+• Working (1s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  gpt-5-codex xhigh · ~/.projects-demo/codex…

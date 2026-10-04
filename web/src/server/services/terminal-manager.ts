@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import * as fs from 'fs';
-import { CellFlags, Ghostty, type GhosttyTerminal } from 'ghostty-web';
+import { CellFlags, Ghostty, type GhosttyCell, type GhosttyTerminal } from 'ghostty-web';
 import { createRequire } from 'module';
 import * as path from 'path';
 import type { SessionInfo } from '../../shared/types.js';
@@ -98,6 +98,8 @@ interface SessionTerminal {
   terminal: GhosttyTerminal;
   watcher?: fs.FSWatcher;
   lastUpdate: number;
+  /** Bumped whenever output or a resize reaches the terminal; lets readers skip re-reading. */
+  changeCount?: number;
   isPaused?: boolean;
   pendingLines?: string[];
   pausedAt?: number;
@@ -170,6 +172,12 @@ interface BufferSnapshot {
  * @see web/src/server/services/buffer-aggregator.ts - Aggregates buffer updates
  * @see web/src/server/pty/asciinema-writer.ts - Writes asciinema streams
  */
+/**
+ * Largest recording worth replaying for a one-off screen read outside a poll: about 85 MB/s,
+ * and the terminal it builds then reads in about a millisecond.
+ */
+export const LARGE_REPLAY_MAX_BYTES = 64 * 1024 * 1024;
+
 export class TerminalManager {
   private terminals: Map<string, SessionTerminal> = new Map();
   private controlDir: string;
@@ -196,6 +204,38 @@ export class TerminalManager {
   /**
    * Get or create a terminal for a session
    */
+  /** When the session's output file last changed (ms), undefined if it can't be read. */
+  outputModifiedAt(sessionId: string): number | undefined {
+    try {
+      return fs.statSync(path.join(this.controlDir, sessionId, 'stdout')).mtimeMs;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Whether a screen snapshot is cheap: a terminal already exists, or the session's output is
+   * small enough to replay. Creating a terminal replays the whole stream file synchronously,
+   * which on a long session would stall the server inside a list poll.
+   */
+  canSnapshotCheaply(sessionId: string, maxReplayBytes = 2 * 1024 * 1024): boolean {
+    if (this.terminals.has(sessionId)) return true;
+    try {
+      return fs.statSync(path.join(this.controlDir, sessionId, 'stdout')).size <= maxReplayBytes;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * How many times the session's screen has changed since its terminal was created, or
+   * undefined when no terminal exists yet. Equal counts mean the screen is unchanged.
+   */
+  getChangeCount(sessionId: string): number | undefined {
+    const sessionTerminal = this.terminals.get(sessionId);
+    return sessionTerminal ? (sessionTerminal.changeCount ?? 0) : undefined;
+  }
+
   async getTerminal(sessionId: string): Promise<GhosttyTerminal> {
     let sessionTerminal = this.terminals.get(sessionId);
 
@@ -647,6 +687,7 @@ export class TerminalManager {
       // Handle asciinema header
       if (data.version && data.width && data.height) {
         sessionTerminal.terminal.resize(data.width, data.height);
+        sessionTerminal.changeCount = (sessionTerminal.changeCount ?? 0) + 1;
         this.notifyBufferChange(sessionId);
         return;
       }
@@ -677,6 +718,7 @@ export class TerminalManager {
             const cols = Number.parseInt(match[1], 10);
             const rows = Number.parseInt(match[2], 10);
             sessionTerminal.terminal.resize(cols, rows);
+            sessionTerminal.changeCount = (sessionTerminal.changeCount ?? 0) + 1;
             this.notifyBufferChange(sessionId);
           }
         }
@@ -738,6 +780,45 @@ export class TerminalManager {
       bufferUtilization: Math.round(bufferUtilization * 100),
       maxBufferLines: maxLines,
     };
+  }
+
+  /**
+   * The last `maxLines` lines, scrollback included, one character per cell (its first code
+   * point; an empty cell is a space), the way the phone reads its own copy (terminal.ts
+   * getScreenText). A menu's key read here and on the phone then covers the same lines: the
+   * snapshot below has only the visible rows and whole character clusters. With the layout
+   * that reads its menus right: the width, which lines go on from the one above
+   * (soft-wrapped; never known in the scrollback) and the visible rows.
+   */
+  async getRecentText(
+    sessionId: string,
+    maxLines = 60
+  ): Promise<{ text: string; rows: number; cols: number; wrappedRows: boolean[] }> {
+    const terminal = await this.getTerminal(sessionId);
+    terminal.update();
+    const { rows, cols } = terminal;
+    const text = (cells: GhosttyCell[] | null | undefined) => {
+      let line = '';
+      for (const cell of cells ?? []) {
+        if (!cell || cell.width === 0) continue;
+        line += cell.codepoint ? String.fromCodePoint(cell.codepoint) : ' ';
+      }
+      return line.trimEnd();
+    };
+    const lines: string[] = [];
+    const wrappedRows: boolean[] = [];
+    const fromScreen = Math.min(rows, maxLines);
+    const scrollback = terminal.getScrollbackLength();
+    for (let i = Math.max(0, scrollback - (maxLines - fromScreen)); i < scrollback; i++) {
+      lines.push(text(terminal.getScrollbackLine(i)));
+      wrappedRows.push(false);
+    }
+    const viewport = terminal.getViewport();
+    for (let row = rows - fromScreen; row < rows; row++) {
+      lines.push(text(viewport.slice(row * cols, (row + 1) * cols)));
+      wrappedRows.push(terminal.isRowWrapped(row));
+    }
+    return { text: lines.join('\n'), rows, cols, wrappedRows };
   }
 
   /**
@@ -1235,6 +1316,7 @@ export class TerminalManager {
     const combinedData = batch.join('');
 
     try {
+      sessionTerminal.changeCount = (sessionTerminal.changeCount ?? 0) + 1;
       sessionTerminal.terminal.write(combinedData);
     } catch (error) {
       // Use error deduplicator to prevent log spam

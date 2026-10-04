@@ -1,0 +1,7 @@
+⏺ Done: the test passes.
+
+─────────────────────────────────────────────
+❯ write another test for the empty case
+  and one more for capital letters
+─────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
