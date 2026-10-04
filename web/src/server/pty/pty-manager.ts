@@ -29,6 +29,12 @@ import type {
 import { TitleMode } from '../../shared/types.js';
 import { ProcessTreeAnalyzer } from '../services/process-tree-analyzer.js';
 import type { SessionMonitor } from '../services/session-monitor.js';
+import {
+  type AttachedMode,
+  clientMode,
+  TmuxAttachTracker,
+  type TmuxClient,
+} from '../services/tmux-attach-tracker.js';
 import { TitleSequenceFilter } from '../utils/ansi-title-filter.js';
 import { createLogger } from '../utils/logger.js';
 import {
@@ -36,6 +42,7 @@ import {
   generateTitleSequence,
   shouldInjectTitle,
 } from '../utils/terminal-title.js';
+import { tmuxEnv } from '../utils/tmux-binary.js';
 import { WriteQueue } from '../utils/write-queue.js';
 import { VERSION } from '../version.js';
 import { controlUnixHandler } from '../websocket/control-unix-handler.js';
@@ -148,10 +155,15 @@ export class PtyManager extends EventEmitter {
     }
   >();
 
-  constructor(controlPath?: string) {
+  /** The pane each session attached to a user's tmux session shows (`multiplexer`). */
+  private attachTracker: TmuxAttachTracker;
+
+  constructor(controlPath?: string, options: { attachTracker?: TmuxAttachTracker } = {}) {
     super();
     this.sessionManager = new SessionManager(controlPath);
     this.processTreeAnalyzer = new ProcessTreeAnalyzer();
+    this.attachTracker = options.attachTracker ?? new TmuxAttachTracker();
+    this.attachTracker.onChange((sessionId, client) => this.reconcileAttached(sessionId, client));
     this.setupTerminalResizeDetection();
 
     // Initialize node-pty if not already done
@@ -295,6 +307,8 @@ export class PtyManager extends EventEmitter {
     options: SessionCreateOptions & {
       forwardToStdout?: boolean;
       onExit?: (exitCode: number, signal?: number) => void;
+      /** With `multiplexer`: the pane it opens on, until its tmux client is first listed. */
+      attachSeed?: { panePid: number; paneId: string };
     }
   ): Promise<SessionCreationResult> {
     const sessionId = options.sessionId || uuidv4();
@@ -323,7 +337,11 @@ export class PtyManager extends EventEmitter {
       const paths = this.sessionManager.createSessionDirectory(sessionId);
 
       // Resolve the command using unified resolution logic
-      const resolved = ProcessUtils.resolveCommand(command);
+      // A tmux client attaching to a user's session is spawned as given (an absolute tmux): the
+      // PTY's pid must be that client.
+      const resolved: ReturnType<typeof ProcessUtils.resolveCommand> = options.multiplexer
+        ? { command: command[0], args: command.slice(1), useShell: false }
+        : ProcessUtils.resolveCommand(command);
       const { command: finalCommand, args: finalArgs } = resolved;
       const resolvedCommand = [finalCommand, ...finalArgs];
 
@@ -365,6 +383,7 @@ export class PtyManager extends EventEmitter {
         gitIsWorktree: options.gitIsWorktree,
         gitMainRepoPath: options.gitMainRepoPath,
         attachedViaVT,
+        ...(options.multiplexer ? { multiplexer: options.multiplexer } : {}),
       };
 
       // Save initial session info
@@ -436,7 +455,15 @@ export class PtyManager extends EventEmitter {
           spawnOptions.rows = rows;
         }
 
-        ptyProcess = pty.spawn(finalCommand, finalArgs, spawnOptions);
+        if (options.multiplexer) {
+          // Never inside the tmux this server may have been started from.
+          ptyProcess = pty.spawn(finalCommand, finalArgs, {
+            ...spawnOptions,
+            env: tmuxEnv(ptyEnv),
+          });
+        } else {
+          ptyProcess = pty.spawn(finalCommand, finalArgs, spawnOptions);
+        }
 
         // Add immediate exit handler to catch CI issues
         const exitHandler = (event: { exitCode: number; signal?: number }) => {
@@ -507,6 +534,7 @@ export class PtyManager extends EventEmitter {
 
       // Detect if this is a tmux attachment session
       const isTmuxAttachment =
+        !!options.multiplexer ||
         (resolvedCommand.includes('tmux') &&
           (resolvedCommand.includes('attach-session') ||
             resolvedCommand.includes('attach') ||
@@ -531,6 +559,13 @@ export class PtyManager extends EventEmitter {
       };
 
       this.sessions.set(sessionId, session);
+      if (options.multiplexer) {
+        this.attachTracker.track(sessionId, {
+          socketPath: options.multiplexer.socketPath,
+          clientPid: ptyProcess.pid,
+          seed: options.attachSeed,
+        });
+      }
 
       // Update session info with PID and running status
       sessionInfo.pid = ptyProcess.pid;
@@ -580,6 +615,7 @@ export class PtyManager extends EventEmitter {
       };
     } catch (error) {
       // Cleanup on failure
+      this.attachTracker.untrack(sessionId);
       try {
         this.sessionManager.cleanupSession(sessionId);
       } catch (cleanupError) {
@@ -1427,15 +1463,20 @@ export class PtyManager extends EventEmitter {
     try {
       logger.log(chalk.cyan(`Detaching from tmux session (${sessionId})`));
 
-      const clientTty = await this.findTmuxClientTty(session.ptyProcess.pid);
-      if (!clientTty) {
-        logger.debug(`Could not find tmux client for PTY process ${session.ptyProcess.pid}`);
-        return false;
-      }
+      if (session.sessionInfo.multiplexer) {
+        // On the user's server, by its socket: our client, found again by its pid.
+        await this.attachTracker.detach(sessionId);
+      } else {
+        const clientTty = await this.findTmuxClientTty(session.ptyProcess.pid);
+        if (!clientTty) {
+          logger.debug(`Could not find tmux client for PTY process ${session.ptyProcess.pid}`);
+          return false;
+        }
 
-      // Target the VibeTunnel client only. Using `-s` would detach every client
-      // attached to the same tmux session.
-      await this.execFileAsync('tmux', ['detach-client', '-t', clientTty]);
+        // Target the VibeTunnel client only. Using `-s` would detach every client
+        // attached to the same tmux session.
+        await this.execFileAsync('tmux', ['detach-client', '-t', clientTty]);
+      }
 
       await new Promise((resolve) => setTimeout(resolve, 300));
       if (!ProcessUtils.isProcessRunning(session.ptyProcess.pid)) {
@@ -1443,7 +1484,7 @@ export class PtyManager extends EventEmitter {
         return true;
       }
 
-      logger.debug(`tmux client ${clientTty} remained attached after detach-client`);
+      logger.debug(`tmux client of ${sessionId} remained attached after detach-client`);
       return false;
     } catch (error) {
       logger.error(`Error detaching from tmux: ${error}`);
@@ -1861,6 +1902,68 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
+   * Root of a session's process tree for detecting what runs in it (Claude, Codex): the pane its
+   * client shows for one attached to a user's tmux session, else the session's own pid.
+   */
+  programRootPid(session: Pick<SessionInfo, 'id' | 'pid'>): number | undefined {
+    return this.attachTracker.programPid(session.id) || session.pid;
+  }
+
+  /**
+   * Switches a session attached to a user's tmux session between control and watch, or how its
+   * client sizes the window (`sizing` applies to control). Fields left out stay as they are.
+   * Answers what tmux reports afterwards, which its `multiplexer` then records too. Throws
+   * TmuxAttachError (client-not-found, mode-failed) when tmux can't be asked or didn't take it.
+   */
+  async setAttachedMode(sessionId: string, change: Partial<AttachedMode>): Promise<AttachedMode> {
+    const multiplexer = this.sessions.get(sessionId)?.sessionInfo.multiplexer;
+    if (!multiplexer) {
+      throw new PtyError(
+        `Session ${sessionId} is not attached to a tmux session`,
+        'NOT_ATTACHED',
+        sessionId
+      );
+    }
+    const target: AttachedMode = {
+      mode: change.mode ?? multiplexer.mode,
+      sizing: change.sizing ?? multiplexer.sizing,
+    };
+    return clientMode(await this.attachTracker.setMode(sessionId, target));
+  }
+
+  /** tmux lists an attached session's client differently: keep its mode and folder in step. */
+  private reconcileAttached(sessionId: string, client: TmuxClient): void {
+    const info = this.sessions.get(sessionId)?.sessionInfo;
+    const multiplexer = info?.multiplexer;
+    if (!info || !multiplexer) return;
+    // A key bound to switch-client -r, or a `cd` or another window in the pane.
+    const { mode, sizing } = clientMode(client);
+    const patch: Partial<SessionInfo> = {};
+    if (mode !== multiplexer.mode || sizing !== multiplexer.sizing) {
+      patch.multiplexer = { ...multiplexer, mode, sizing };
+    }
+    if (client.cwd && client.cwd !== info.workingDir) patch.workingDir = client.cwd;
+    if (Object.keys(patch).length > 0) this.patchSessionInfo(sessionId, patch);
+  }
+
+  /** Merges `patch` into a session's session.json and its in-memory info. */
+  private patchSessionInfo(sessionId: string, patch: Partial<SessionInfo>): void {
+    try {
+      const info = this.sessionManager.loadSessionInfo(sessionId);
+      if (!info) return;
+      Object.assign(info, patch);
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) delete (info as unknown as Record<string, unknown>)[key];
+      }
+      this.sessionManager.saveSessionInfo(sessionId, info);
+      const memory = this.sessions.get(sessionId);
+      if (memory) Object.assign(memory.sessionInfo, patch);
+    } catch (error) {
+      logger.warn(`cannot update session.json of ${sessionId}:`, error);
+    }
+  }
+
+  /**
    * Get session manager instance
    */
   getSessionManager(): SessionManager {
@@ -1889,6 +1992,8 @@ export class PtyManager extends EventEmitter {
    * Clean up all resources associated with a session
    */
   private cleanupSessionResources(session: PtySession): void {
+    this.attachTracker.untrack(session.id);
+
     // Clean up resize tracking
     this.sessionResizeSources.delete(session.id);
     this.lastInputTimestamps.delete(session.id);

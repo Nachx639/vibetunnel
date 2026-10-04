@@ -2,6 +2,8 @@
  * Shared type definitions used by both frontend and backend
  */
 
+import type { MacOpenMode, MacSizing } from './mac-sessions.js';
+
 /**
  * HTTP methods enum
  */
@@ -54,6 +56,25 @@ export interface ServerEvent {
 export type SessionStatus = 'starting' | 'running' | 'exited';
 
 /**
+ * A tmux session outside VibeTunnel that a session is attached to: its PTY runs a tmux client
+ * of that session, opened from "On this computer". Disconnecting detaches that client; the tmux
+ * session keeps running.
+ */
+export interface SessionMultiplexer {
+  type: 'tmux';
+  socketPath: string;
+  /** The tmux server process, and its start time in epoch seconds (a restarted one differs). */
+  serverPid: number;
+  serverStartedAt: number;
+  /** tmux's id of the session ("$3"), and its name. */
+  sessionId: string;
+  sessionName: string;
+  mode: MacOpenMode;
+  sizing: MacSizing;
+  source: 'mac-sessions' | 'multiplexer-modal';
+}
+
+/**
  * Core session information stored in session.json
  * Minimal, clean data persisted to disk
  */
@@ -99,6 +120,8 @@ export interface SessionInfo {
   claudeSessionId?: string;
   /** Claude's conversation title, kept after the session exits. */
   claudeTitle?: string;
+  /** Attached to a tmux session outside VibeTunnel. */
+  multiplexer?: SessionMultiplexer;
 }
 
 /**
@@ -197,6 +220,8 @@ export interface SessionCreateOptions {
   gitHasChanges?: boolean;
   gitIsWorktree?: boolean;
   gitMainRepoPath?: string;
+  /** Attach to a tmux session outside VibeTunnel. */
+  multiplexer?: SessionMultiplexer;
 }
 
 /**

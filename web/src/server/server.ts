@@ -23,6 +23,7 @@ import { createFileRoutes } from './routes/files.js';
 import { createFilesystemRoutes } from './routes/filesystem.js';
 import { createGitRoutes } from './routes/git.js';
 import { createLogRoutes } from './routes/logs.js';
+import { createMacSessionsRoutes } from './routes/mac-sessions.js';
 import { createMultiplexerRoutes } from './routes/multiplexer.js';
 import { createPushRoutes } from './routes/push.js';
 import { createRemoteRoutes } from './routes/remotes.js';
@@ -33,12 +34,22 @@ import { createTmuxRoutes } from './routes/tmux.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { AuthService } from './services/auth-service.js';
 import { CastOutputHub } from './services/cast-output-hub.js';
+import { processTable } from './services/claude-chat.js';
 import { ClaudeStatusNotifier } from './services/claude-status-notifier.js';
 import { CloudflareService } from './services/cloudflare-service.js';
 import { ConfigService } from './services/config-service.js';
 import { ControlDirWatcher } from './services/control-dir-watcher.js';
 import { GitStatusHub } from './services/git-status-hub.js';
 import { HQClient } from './services/hq-client.js';
+import { MacAttach } from './services/mac-sessions/attach.js';
+import { MacSessionsScanner } from './services/mac-sessions/scanner.js';
+import {
+  MAC_SESSIONS_CLI_ENABLE_FLAG,
+  MAC_SESSIONS_CLI_FLAG,
+  type MacSessionsStartOptions,
+  macSessionsSettings,
+} from './services/mac-sessions/settings.js';
+import { tmuxVersion } from './services/mac-sessions/tmux-run.js';
 import { mdnsService } from './services/mdns-service.js';
 import { NgrokService } from './services/ngrok-service.js';
 import { PushNotificationService } from './services/push-notification-service.js';
@@ -143,6 +154,10 @@ interface Config {
   ngrokRegion: string | null;
   // Cloudflare tunnel configuration
   enableCloudflare: boolean;
+  /** --no-mac-sessions: "On this computer" is off whatever Settings says. */
+  noMacSessions: boolean;
+  /** --mac-sessions: "On this computer" is on whatever Settings says. */
+  macSessions: boolean;
 }
 
 /**
@@ -218,6 +233,9 @@ Options:
   --local-auth-token <token>  Token for localhost authentication bypass
   --enable-tailscale-serve  Enable Tailscale Serve integration (auto-manages proxy and auth)
   --enable-tailscale-funnel Enable Tailscale Funnel for public internet access (requires --enable-tailscale-serve)
+  --mac-sessions        List this computer's tmux sessions and the agents running outside
+                        VibeTunnel ("On this computer"), whatever Settings says (off by default)
+  --no-mac-sessions     Don't list them, whatever Settings says
   --debug               Enable debug logging
 
 Push Notification Options:
@@ -254,6 +272,13 @@ Environment Variables:
   VIBETUNNEL_USERNAME   Default username if --username not specified
   VIBETUNNEL_PASSWORD   Default password if --password not specified
   VIBETUNNEL_CONTROL_DIR Control directory for session data
+  VIBETUNNEL_MAC_SESSIONS 0 or 1: "On this computer" off or on, whatever Settings says
+                        (--mac-sessions and --no-mac-sessions win)
+  VIBETUNNEL_MAC_SESSIONS_ONLY_IN Comma-separated folders: "On this computer" lists only
+                        what runs inside them
+  VIBETUNNEL_MAC_SESSIONS_HIDE_IN Comma-separated folders: "On this computer" leaves out what
+                        runs inside them (adds to config.json's macSessionsHideIn)
+  VIBETUNNEL_TMUX_BIN   tmux binary to use (default: Homebrew, /usr/bin or PATH)
   PUSH_CONTACT_EMAIL    Contact email for VAPID configuration
   NGROK_AUTHTOKEN       Ngrok auth token (used with --ngrok)
 
@@ -324,6 +349,8 @@ function parseArgs(): Config {
     ngrokRegion: null as string | null,
     // Cloudflare tunnel configuration
     enableCloudflare: false,
+    noMacSessions: false,
+    macSessions: false,
   };
 
   // Check for help flag first
@@ -412,6 +439,10 @@ function parseArgs(): Config {
       i++; // Skip the region value in next iteration
     } else if (args[i] === '--cloudflare') {
       config.enableCloudflare = true;
+    } else if (args[i] === MAC_SESSIONS_CLI_FLAG) {
+      config.noMacSessions = true;
+    } else if (args[i] === MAC_SESSIONS_CLI_ENABLE_FLAG) {
+      config.macSessions = true;
     } else if (args[i].startsWith('--')) {
       // Unknown argument
       logger.error(`Unknown argument: ${args[i]}`);
@@ -683,7 +714,8 @@ export async function createApp(): Promise<AppInstance> {
         ptyManager.listSessions().map((session) => ({
           id: session.id,
           name: session.name,
-          pid: session.pid,
+          // Attached to a user's tmux session: Claude runs in the pane its client shows.
+          pid: ptyManager.programRootPid(session),
           status: session.status,
         })),
       (payload) => {
@@ -1199,6 +1231,22 @@ export async function createApp(): Promise<AppInstance> {
   );
   logger.debug('Mounted authentication routes');
 
+  // What runs on this computer outside VibeTunnel ("On this computer",
+  // docs/features/mac-sessions.md). Off unless turned on: nothing is scanned while it is off.
+  const macSessionsStart: MacSessionsStartOptions = {
+    cliDisabled: config.noMacSessions,
+    cliEnabled: config.macSessions,
+    hqMode: config.isHQMode,
+  };
+  const macSessionsNow = () => macSessionsSettings(configService.getConfig(), macSessionsStart);
+  const macSessionsScanner = new MacSessionsScanner({
+    settings: macSessionsNow,
+    table: processTable,
+    vtSessions: () => ptyManager.listSessions(),
+    tmuxVersion: () => tmuxVersion(),
+    controlPath: CONTROL_DIR,
+  });
+
   // Mount routes
   app.use(
     '/api',
@@ -1211,6 +1259,20 @@ export async function createApp(): Promise<AppInstance> {
     })
   );
   logger.debug('Mounted session routes');
+
+  // "On this computer": the user's own tmux sessions and the agents running outside VibeTunnel,
+  // behind the same login as the rest of /api.
+  app.use(
+    '/api',
+    createMacSessionsRoutes({
+      settings: macSessionsNow,
+      scanner: macSessionsScanner,
+      attach: new MacAttach({ scanner: macSessionsScanner, ptyManager }),
+    })
+  );
+  logger.debug('Mounted Mac sessions routes');
+  // A session that ended may have held a tmux session open (Disconnect): the next poll scans.
+  ptyManager.on('sessionExited', () => macSessionsScanner.invalidate());
 
   app.use(
     '/api',
@@ -1242,6 +1304,7 @@ export async function createApp(): Promise<AppInstance> {
     '/api',
     createConfigRoutes({
       configService,
+      macSessions: macSessionsStart,
     })
   );
   logger.debug('Mounted config routes');

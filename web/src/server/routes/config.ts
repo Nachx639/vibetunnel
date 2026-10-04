@@ -1,13 +1,18 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
+import type { MacOpenMode } from '../../shared/mac-sessions.js';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   type NotificationPreferences,
   type QuickStartCommand,
   type VibeTunnelConfig,
 } from '../../types/config.js';
-import type { ConfigService } from '../services/config-service.js';
+import { type ConfigService, MacOpenModeSchema } from '../services/config-service.js';
+import {
+  type MacSessionsStartOptions,
+  macSessionsSettings,
+} from '../services/mac-sessions/settings.js';
 import { agentChatEnabled } from '../utils/agent-chat.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -40,10 +45,23 @@ export interface AppConfig {
   /** Phone chat view of agent conversations (config.json `agentChat` or VIBETUNNEL_AGENT_CHAT). */
   agentChat: boolean;
   notificationPreferences?: NotificationPreferences;
+  /** "On this computer" in the session list: the switch, forced or from config.json (default off). */
+  macSessions: boolean;
+  /** What a tap on a tmux session there opens (default control: ready to type). */
+  macSessionsOpenMode: MacOpenMode;
+  /** The switch was forced when the server started; macSessionsLockedBy names how. */
+  macSessionsLocked: boolean;
+  macSessionsLockedBy?: string;
+  /** False where nothing can be listed (not macOS or Linux, HQ mode): Settings hides it. */
+  macSessionsSupported: boolean;
+  /** The server's platform ("darwin", "linux"…): the app says "this Mac" only on macOS. */
+  platform: string;
 }
 
 interface ConfigRouteOptions {
   configService: ConfigService;
+  /** How the server was started, for the Mac sessions switch (--[no-]mac-sessions, HQ mode). */
+  macSessions?: MacSessionsStartOptions;
 }
 
 /**
@@ -62,6 +80,7 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
       const vibeTunnelConfig = configService.getConfig();
       const repositoryBasePath =
         vibeTunnelConfig.repositoryBasePath || DEFAULT_REPOSITORY_BASE_PATH;
+      const macSessions = macSessionsSettings(vibeTunnelConfig, options.macSessions);
 
       const config: AppConfig = {
         repositoryBasePath: repositoryBasePath,
@@ -69,6 +88,12 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         quickStartCommands: vibeTunnelConfig.quickStartCommands,
         agentChat: agentChatEnabled(vibeTunnelConfig),
         notificationPreferences: configService.getNotificationPreferences(),
+        macSessions: macSessions.on,
+        macSessionsOpenMode: macSessions.openMode,
+        macSessionsLocked: macSessions.lockedBy !== undefined,
+        ...(macSessions.lockedBy ? { macSessionsLockedBy: macSessions.lockedBy } : {}),
+        macSessionsSupported: macSessions.supported,
+        platform: options.macSessions?.platform ?? process.platform,
       };
 
       logger.debug('[GET /api/config] Returning app config:', config);
@@ -85,8 +110,15 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
    */
   router.put('/config', (req, res) => {
     try {
-      const { quickStartCommands, repositoryBasePath, notificationPreferences } = req.body;
+      const {
+        quickStartCommands,
+        repositoryBasePath,
+        notificationPreferences,
+        macSessions,
+        macSessionsOpenMode,
+      } = req.body;
       const updates: { [key: string]: unknown } = {};
+      let validatedOpenMode: MacOpenMode | undefined;
       let validatedCommands: QuickStartCommand[] | undefined;
       let validatedPath: string | undefined;
       let validatedPrefs: Partial<NotificationPreferences> | undefined;
@@ -143,9 +175,31 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         }
       }
 
+      // Saved even while the server's start forces the switch: it applies once that is gone.
+      if (typeof macSessions === 'boolean') {
+        updates.macSessions = macSessions;
+      }
+
+      if (macSessionsOpenMode !== undefined) {
+        const parsed = MacOpenModeSchema.safeParse(macSessionsOpenMode);
+        if (parsed.success) {
+          validatedOpenMode = parsed.data;
+          updates.macSessionsOpenMode = validatedOpenMode;
+        } else {
+          logger.error('[PUT /api/config] Invalid macSessionsOpenMode:', parsed.error);
+        }
+      }
+
       if (Object.keys(updates).length > 0) {
         const currentConfig = configService.getConfig();
         const updatedConfig: VibeTunnelConfig = { ...currentConfig };
+
+        if (typeof macSessions === 'boolean') {
+          updatedConfig.macSessions = macSessions;
+        }
+        if (validatedOpenMode) {
+          updatedConfig.macSessionsOpenMode = validatedOpenMode;
+        }
 
         if (validatedCommands) {
           updatedConfig.quickStartCommands = validatedCommands;

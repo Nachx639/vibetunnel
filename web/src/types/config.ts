@@ -1,4 +1,5 @@
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../shared/constants.js';
+import type { MacOpenMode } from '../shared/mac-sessions.js';
 
 export interface QuickStartCommand {
   name?: string; // Optional display name (can include emoji), if empty uses command
@@ -35,6 +36,22 @@ export interface VibeTunnelConfig {
    * VIBETUNNEL_AGENT_CHAT=1|0 overrides it.
    */
   agentChat?: boolean;
+  /**
+   * "On this computer" in the phone's list: the tmux sessions on the user's own tmux servers and
+   * the agents running outside VibeTunnel. Missing = off. --mac-sessions, --no-mac-sessions and
+   * VIBETUNNEL_MAC_SESSIONS=0|1 override it (services/mac-sessions/settings.ts).
+   */
+  macSessions?: boolean;
+  /** What a tap on a tmux session there opens. Missing = 'control' (ready to type). */
+  macSessionsOpenMode?: MacOpenMode;
+  /** Also list agents with no terminal, or a Claude not started from its CLI (an SDK client). */
+  macSessionsIncludeHeadless?: boolean;
+  /**
+   * Absolute folders (`~` allowed) whose tmux sessions and agents are not listed, below them
+   * included. VIBETUNNEL_MAC_SESSIONS_HIDE_IN adds to it; VIBETUNNEL_MAC_SESSIONS_ONLY_IN's
+   * folders are listed even when hidden here.
+   */
+  macSessionsHideIn?: string[];
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

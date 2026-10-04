@@ -112,12 +112,29 @@ const INITIAL_TAIL_BYTES = 4 * 1024 * 1024;
 const MAX_READ_BYTES = 8 * 1024 * 1024;
 const transcriptCache = new Map<string, TranscriptCache>();
 
+/** What the extended `ps` columns say about a process besides its parent. */
+export interface ProcInfo {
+  ppid: number;
+  /** Its process group, and the foreground group of its terminal (0 or -1 without one). */
+  pgid: number;
+  tpgid: number;
+  /** Its terminal: "ttys001" on macOS, "pts/3" on Linux; null without one. */
+  tty: string | null;
+  /** `ps` state: "S+", "Ss", "Z" for a zombie… */
+  stat: string;
+  uid: number;
+}
+
 export interface ProcessTable {
   children: Map<number, number[]>;
   /** `ps` lstart per pid, normalized; matches Claude Code's procStart. */
   starts: Map<number, string>;
   /** Command line per pid (`ps` args), to spot agents started inside a shell. */
   args: Map<number, string>;
+  /** Group, terminal, state and owner per pid (Mac Sessions); empty without `extended`. */
+  procs: Map<number, ProcInfo>;
+  /** False when `ps` refused those columns and only pid, ppid, lstart and args were read. */
+  extended: boolean;
 }
 
 let processCache: { at: number; table: ProcessTable } | null = null;
@@ -141,9 +158,20 @@ export async function processTable(): Promise<ProcessTable> {
   return processTableInFlight;
 }
 
-async function runPs(): Promise<string> {
+/**
+ * The `ps -o` columns. The terminal is `tdev` on macOS: `tty` there doubles the time `ps`
+ * takes (47 → 100 ms); Linux only has `tty`.
+ */
+export function processTableColumns(platform: NodeJS.Platform = process.platform): string {
+  const terminal = platform === 'linux' ? 'tty' : 'tdev';
+  return `pid=,ppid=,pgid=,tpgid=,${terminal}=,stat=,uid=,lstart=,args=`;
+}
+
+const LEGACY_COLUMNS = 'pid=,ppid=,lstart=,args=';
+
+async function runPs(columns: string): Promise<string> {
   // Claude Code records procStart as `ps` lstart in UTC; local time never matches.
-  const { stdout } = await execFileAsync('ps', ['-A', '-o', 'pid=,ppid=,lstart=,args='], {
+  const { stdout } = await execFileAsync('ps', ['-A', '-o', columns], {
     env: { ...process.env, TZ: 'UTC' },
     maxBuffer: 32 * 1024 * 1024,
   });
@@ -151,31 +179,70 @@ async function runPs(): Promise<string> {
 }
 
 /**
- * One `ps` of every process. Arguments are never logged: they can hold prompts and secrets.
- * `run` is for tests.
+ * One `ps` of every process. A `ps` that refuses the extended columns gets the basic ones,
+ * and the table says so (`extended: false`). Arguments are never logged: they can hold prompts
+ * and secrets. `run` is for tests.
  */
-export async function readProcessTable(run: () => Promise<string> = runPs): Promise<ProcessTable> {
-  return parseProcessTable(await run());
+export async function readProcessTable(
+  run: (columns: string) => Promise<string> = runPs,
+  platform: NodeJS.Platform = process.platform
+): Promise<ProcessTable> {
+  let stdout: string;
+  try {
+    stdout = await run(processTableColumns(platform));
+  } catch {
+    stdout = await run(LEGACY_COLUMNS);
+  }
+  return parseProcessTable(stdout);
 }
 
-/** `ps -o pid=,ppid=,lstart=,args=` output as a table (exported for tests). */
+// pid, ppid, pgid, tpgid, terminal, state, uid, then lstart, always five words ("Thu Oct  2
+// 10:00:00 2026"), then args.
+const EXTENDED_LINE =
+  /^\s*(\d+)\s+(\d+)\s+(-?\d+)\s+(-?\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)(?:\s+(.*))?$/;
+const LEGACY_LINE = /^\s*(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)(?:\s+(.*))?$/;
+
+/** A `ps` terminal column as a name: macOS's tdev "16/1" is ttys001; "??" or "?" is none. */
+export function terminalName(value: string): string | null {
+  if (value === '??' || value === '?') return null;
+  const pty = /^16\/(\d+)$/.exec(value);
+  return pty ? `ttys${pty[1].padStart(3, '0')}` : value;
+}
+
+/**
+ * `ps` output as a table (exported for tests), with the extended columns or only
+ * `pid=,ppid=,lstart=,args=`: each line is read in whichever of the two shapes it has.
+ */
 export function parseProcessTable(stdout: string): ProcessTable {
   const children = new Map<number, number[]>();
   const starts = new Map<number, string>();
   const args = new Map<number, string>();
+  const procs = new Map<number, ProcInfo>();
   for (const line of stdout.split('\n')) {
-    // lstart is always five words ("Thu Oct  2 10:00:00 2026"); args follow.
-    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)(?:\s+(.*))?$/);
+    const extended = EXTENDED_LINE.exec(line);
+    const match = extended
+      ? [extended[1], extended[2], extended[8], extended[9]]
+      : LEGACY_LINE.exec(line)?.slice(1);
     if (!match) continue;
-    const pid = Number(match[1]);
-    const ppid = Number(match[2]);
+    const pid = Number(match[0]);
+    const ppid = Number(match[1]);
     const list = children.get(ppid) ?? [];
     list.push(pid);
     children.set(ppid, list);
-    starts.set(pid, normalizeStart(match[3]));
-    if (match[4]) args.set(pid, match[4].trim());
+    starts.set(pid, normalizeStart(match[2]));
+    if (match[3]) args.set(pid, match[3].trim());
+    if (extended) {
+      procs.set(pid, {
+        ppid,
+        pgid: Number(extended[3]),
+        tpgid: Number(extended[4]),
+        tty: terminalName(extended[5]),
+        stat: extended[6],
+        uid: Number(extended[7]),
+      });
+    }
   }
-  return { children, starts, args };
+  return { children, starts, args, procs, extended: procs.size > 0 };
 }
 
 /** All descendants of `rootPid` in `table` (breadth first), including itself. */

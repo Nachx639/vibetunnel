@@ -37,6 +37,7 @@ function setup(
   const sendInput = vi.fn();
   const ptyManager = {
     getSession: vi.fn(() => ({ id: 's1', pid: 42, status: 'running', ...session })),
+    programRootPid: (current: { pid?: number }) => current.pid,
     sendInput,
   };
   const terminalManager = {
@@ -494,6 +495,45 @@ describe('answering Claude from the answer sheet', () => {
     });
     expect(res.status).toHaveBeenCalledWith(409);
     expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it('answers nothing for a session watching a tmux session, whose keys tmux drops', async () => {
+    const attached = (mode: string) => ({
+      multiplexer: {
+        type: 'tmux',
+        socketPath: '/tmp/tmux-501/default',
+        serverPid: 90,
+        serverStartedAt: 1_790_000_000,
+        sessionId: '$0',
+        sessionName: 'work',
+        mode,
+        sizing: 'others',
+        source: 'mac-sessions',
+      },
+    });
+    const watching = setup('codex-trust.txt', 'none', attached('watch'));
+    const answer = await watching.call('post', '/sessions/:sessionId/answer', {
+      option: 1,
+      question: 'Do you trust the contents of this directory?',
+    });
+    const reply = await watching.call('post', '/sessions/:sessionId/reply', {
+      text: 'use pnpm instead',
+      question: 'Do you trust the contents of this directory?',
+    });
+    for (const res of [answer, reply]) {
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith({ error: 'read-only' });
+    }
+    expect(watching.sendInput).not.toHaveBeenCalled();
+
+    // In control its client types like any session.
+    const control = setup('codex-trust.txt', 'none', attached('control'));
+    const res = await control.call('post', '/sessions/:sessionId/answer', {
+      option: 1,
+      question: 'Do you trust the contents of this directory?',
+    });
+    expect(res.json).toHaveBeenCalledWith({ success: true });
+    expect(control.sendInput).toHaveBeenCalled();
   });
 
   it('answers, replies and reads nothing while agent chat is off', async () => {

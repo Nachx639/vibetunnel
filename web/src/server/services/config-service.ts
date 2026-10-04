@@ -14,6 +14,9 @@ import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('config-service');
 
+/** What a tap on a tmux session in "On this computer" opens. */
+export const MacOpenModeSchema = z.enum(['control', 'watch']);
+
 // Zod schema for config validation
 const ConfigSchema = z.object({
   version: z.number(),
@@ -25,6 +28,11 @@ const ConfigSchema = z.object({
   ),
   repositoryBasePath: z.string().optional(),
   agentChat: z.boolean().optional(),
+  // Mac sessions: a bad value is dropped and the rest of the file kept.
+  macSessions: z.boolean().optional().catch(undefined),
+  macSessionsOpenMode: MacOpenModeSchema.optional().catch(undefined),
+  macSessionsIncludeHeadless: z.boolean().optional().catch(undefined),
+  macSessionsHideIn: z.array(z.string()).optional().catch(undefined),
   // Extended configuration sections - we parse but don't use most of these yet
   server: z
     .object({

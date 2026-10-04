@@ -4,7 +4,19 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { QuickStartCommand, VibeTunnelConfig } from '../../types/config.js';
 import type { ConfigService } from '../services/config-service.js';
+import type { MacSessionsStartOptions } from '../services/mac-sessions/settings.js';
 import { createConfigRoutes } from './config.js';
+
+// Never the real environment: a developer's VIBETUNNEL_MAC_SESSIONS must not change the answers.
+const macOnly = { env: {}, platform: 'darwin' as const };
+/** "On this computer" is off unless turned on, and opens ready to type. */
+const macSessionsDefaults = {
+  macSessions: false,
+  macSessionsOpenMode: 'control',
+  macSessionsLocked: false,
+  macSessionsSupported: true,
+  platform: 'darwin',
+};
 
 describe('Config Routes', () => {
   let app: Express;
@@ -41,6 +53,7 @@ describe('Config Routes', () => {
     // Create routes
     const configRoutes = createConfigRoutes({
       configService: mockConfigService,
+      macSessions: macOnly,
     });
 
     app.use('/api', configRoutes);
@@ -60,6 +73,7 @@ describe('Config Routes', () => {
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
         agentChat: false,
+        ...macSessionsDefaults,
       });
 
       expect(mockConfigService.getConfig).toHaveBeenCalledOnce();
@@ -79,6 +93,7 @@ describe('Config Routes', () => {
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
         agentChat: false,
+        ...macSessionsDefaults,
       });
     });
 
@@ -348,6 +363,7 @@ describe('Config Routes', () => {
           quickStartCommands: defaultConfig.quickStartCommands,
           agentChat: false,
           notificationPreferences,
+          ...macSessionsDefaults,
         });
       });
 
@@ -437,6 +453,112 @@ describe('Config Routes', () => {
 
         expect(mockConfigService.updateNotificationPreferences).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('Mac sessions', () => {
+    function macApp(config: Partial<VibeTunnelConfig>, macSessions: MacSessionsStartOptions) {
+      const macApp = express();
+      macApp.use(express.json());
+      macApp.use(
+        '/api',
+        createConfigRoutes({
+          configService: {
+            ...mockConfigService,
+            getConfig: () => ({ ...defaultConfig, ...config }),
+          } as unknown as ConfigService,
+          macSessions,
+        })
+      );
+      return macApp;
+    }
+
+    it('are off unless turned on, and open ready to type unless chosen otherwise', async () => {
+      let response = await request(app).get('/api/config');
+      expect(response.body).toMatchObject(macSessionsDefaults);
+      expect(response.body.macSessionsLockedBy).toBeUndefined();
+
+      response = await request(
+        macApp({ macSessions: true, macSessionsOpenMode: 'watch' }, macOnly)
+      ).get('/api/config');
+      expect(response.body).toMatchObject({
+        macSessions: true,
+        macSessionsOpenMode: 'watch',
+        macSessionsLocked: false,
+      });
+    });
+
+    it('a switch forced at start wins over config.json and is reported locked', async () => {
+      const env = { VIBETUNNEL_MAC_SESSIONS: '0' };
+      let response = await request(macApp({ macSessions: true }, { ...macOnly, env })).get(
+        '/api/config'
+      );
+      expect(response.body).toMatchObject({
+        macSessions: false,
+        macSessionsLocked: true,
+        macSessionsLockedBy: 'VIBETUNNEL_MAC_SESSIONS=0',
+      });
+
+      response = await request(macApp({}, { ...macOnly, cliEnabled: true })).get('/api/config');
+      expect(response.body).toMatchObject({
+        macSessions: true,
+        macSessionsLockedBy: '--mac-sessions',
+      });
+
+      response = await request(macApp({}, { ...macOnly, cliDisabled: true })).get('/api/config');
+      expect(response.body).toMatchObject({
+        macSessions: false,
+        macSessionsLockedBy: '--no-mac-sessions',
+      });
+    });
+
+    it('are not offered where nothing can be listed', async () => {
+      for (const options of [
+        { ...macOnly, platform: 'win32' as const },
+        { ...macOnly, hqMode: true },
+      ]) {
+        const response = await request(macApp({}, options)).get('/api/config');
+        expect(response.body.macSessionsSupported).toBe(false);
+      }
+    });
+
+    it("say which platform the server runs on, for Settings' words", async () => {
+      const linux = await request(macApp({}, { ...macOnly, platform: 'linux' })).get('/api/config');
+      expect(linux.body.platform).toBe('linux');
+      const mac = await request(macApp({}, macOnly)).get('/api/config');
+      expect(mac.body.platform).toBe('darwin');
+    });
+
+    it('PUT saves the switch and the open mode', async () => {
+      const response = await request(app)
+        .put('/api/config')
+        .send({ macSessions: true, macSessionsOpenMode: 'watch' });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        macSessions: true,
+        macSessionsOpenMode: 'watch',
+      });
+      expect(mockConfigService.updateConfig).toHaveBeenCalledWith({
+        ...defaultConfig,
+        macSessions: true,
+        macSessionsOpenMode: 'watch',
+      });
+    });
+
+    it('PUT refuses an open mode other than control or watch, and a switch that is not a boolean', async () => {
+      for (const body of [
+        { macSessionsOpenMode: 'type' },
+        { macSessionsOpenMode: '' },
+        { macSessionsOpenMode: null },
+        { macSessionsOpenMode: ['watch'] },
+        { macSessions: 'yes' },
+        { macSessions: 1 },
+      ]) {
+        const response = await request(app).put('/api/config').send(body);
+        expect(response.status, JSON.stringify(body)).toBe(400);
+      }
+      expect(mockConfigService.updateConfig).not.toHaveBeenCalled();
     });
   });
 });

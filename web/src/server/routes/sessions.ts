@@ -79,6 +79,18 @@ const REPLY_TYPE_WAIT_MS = 15_000;
 const WARM_GAP_MS = 250;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * The session's PTY is a tmux client attached to a tmux session that keeps running without it
+ * (opened from "On this computer" or the tmux list): closing it detaches.
+ */
+function isAttachedToTmux(session: Pick<Session, 'multiplexer' | 'name' | 'command'>): boolean {
+  return (
+    !!session.multiplexer ||
+    !!session.name?.startsWith('tmux:') ||
+    !!session.command?.includes('tmux attach')
+  );
+}
+
 export function createSessionRoutes(config: SessionRoutesConfig): Router {
   const router = Router();
   const { ptyManager, terminalManager, remoteRegistry, isHQMode } = config;
@@ -185,7 +197,8 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       {
         isRunning: running,
         claudeStatus: async () => {
-          const pid = ptyManager.getSession(sessionId)?.pid;
+          const current = ptyManager.getSession(sessionId);
+          const pid = current ? ptyManager.programRootPid(current) : undefined;
           return pid ? (await readClaudeStatuses([pid])).get(pid)?.status : undefined;
         },
         dialogOnScreen: async () => (await readScreenChoices(sessionId)) !== null,
@@ -355,13 +368,17 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
   /** Claude Code's status, title and preview on each running local session (agent chat). */
   async function addClaudeStatuses(sessions: Session[]): Promise<void> {
     try {
+      // A session attached to a user's tmux session: its pid is the tmux client, so look under
+      // the pane that client shows.
+      const rootPid = (session: Session) =>
+        session.status === 'running' ? ptyManager.programRootPid(session) : undefined;
       const runningPids = sessions
-        .filter((session) => session.status === 'running' && session.pid)
-        .map((session) => session.pid as number);
+        .map(rootPid)
+        .filter((pid): pid is number => typeof pid === 'number');
       const claudeStatuses = await readClaudeStatuses(runningPids);
       for (const session of sessions) {
-        const claudeStatus =
-          session.status === 'running' && session.pid ? claudeStatuses.get(session.pid) : undefined;
+        const pid = rootPid(session);
+        const claudeStatus = pid ? claudeStatuses.get(pid) : undefined;
         if (!claudeStatus) continue;
         const { sessionId: claudeSessionId, ...status } = claudeStatus;
         session.claudeStatus = status;
@@ -401,7 +418,7 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     for (const session of sessions) {
       if (session.status !== 'running' || session.claudeStatus) continue;
       try {
-        const ref = await codexSessionRef(session);
+        const ref = await codexSessionRef({ ...session, pid: ptyManager.programRootPid(session) });
         if (!ref) continue;
         session.codexActive = true;
         const title = readCodexChat(ref).title;
@@ -420,7 +437,7 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     for (const session of sessions) {
       if (session.status !== 'running' || session.claudeStatus || session.codexActive) continue;
       try {
-        const ref = await geminiSessionRef(session);
+        const ref = await geminiSessionRef({ ...session, pid: ptyManager.programRootPid(session) });
         if (!ref) continue;
         session.geminiActive = true;
         const title = readGeminiChat(ref).title;
@@ -902,9 +919,8 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
         logger.log(chalk.yellow(`local session ${sessionId} cleaned up`));
         res.json({ success: true, message: 'Session cleaned up' });
       } else {
-        // Check if this is a tmux attachment before killing
-        const isTmuxAttachment =
-          session.name?.startsWith('tmux:') || session.command?.includes('tmux attach');
+        // A tmux attachment is detached, and its tmux session keeps running.
+        const isTmuxAttachment = isAttachedToTmux(session);
 
         await ptyManager.killSession(sessionId, 'SIGTERM');
 
@@ -1132,7 +1148,9 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       return res.json({ available: false, messages: [] });
     }
     try {
-      const chat = await readSessionChat({ ...session, pid: session.pid });
+      // Attached to a user's tmux session: the program in the pane its client shows.
+      const programPid = ptyManager.programRootPid(session) ?? session.pid;
+      const chat = await readSessionChat({ ...session, pid: session.pid }, programPid);
       // `?have=<fingerprint>`: the client already shows these messages; leave them out.
       res.json(chatAnswer(chat, req.query?.have));
     } catch (error) {
@@ -1278,6 +1296,8 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     if (session?.status !== 'running') {
       return res.status(404).json({ error: 'Session not found or not running' });
     }
+    // A tmux client attached read-only: tmux drops the keys, and the answer would never land.
+    if (session.multiplexer?.mode === 'watch') return res.status(409).json({ error: 'read-only' });
     if (answering.has(sessionId)) return res.status(409).json({ error: 'busy' });
     answering.add(sessionId);
     try {
@@ -1312,7 +1332,8 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
 
   /** Claude Code's status for a running session, read live (not the list's cached one). */
   async function liveClaudeStatus(sessionId: string) {
-    const pid = ptyManager.getSession(sessionId)?.pid;
+    const session = ptyManager.getSession(sessionId);
+    const pid = session ? ptyManager.programRootPid(session) : undefined;
     return pid ? (await readClaudeStatuses([pid])).get(pid) : undefined;
   }
 
@@ -1372,6 +1393,8 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     if (session?.status !== 'running') {
       return res.status(404).json({ error: 'Session not found or not running' });
     }
+    // A tmux client attached read-only: tmux drops the keys, and the answer would never land.
+    if (session.multiplexer?.mode === 'watch') return res.status(409).json({ error: 'read-only' });
     if (answering.has(sessionId)) return res.status(409).json({ error: 'busy' });
     answering.add(sessionId);
     try {

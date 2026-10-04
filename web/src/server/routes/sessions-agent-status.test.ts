@@ -39,6 +39,7 @@ function listRoute(agentChat: boolean) {
   ];
   const ptyManager = {
     listSessions: vi.fn(() => sessions.map((s) => ({ ...s }))),
+    programRootPid: (session: { pid?: number }) => session.pid,
     setClaudeTitle: vi.fn(),
     setClaudeSessionId: vi.fn(),
   };

@@ -10,6 +10,7 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import { promisify } from 'util';
+import type { SessionMultiplexer } from '../../shared/types.js';
 import { descendants, type ProcessTable, processTable } from './claude-chat.js';
 import { type CodexSessionRef, forgetCodexSession, isCodexCommand } from './codex-chat.js';
 
@@ -236,17 +237,23 @@ export interface SessionLike {
   startedAt: string;
   pid?: number;
   status?: string;
+  /**
+   * Attached to a tmux session: its command is `tmux … attach-session`, never the agent, though
+   * a socket path or target may contain "codex" or "gemini".
+   */
+  multiplexer?: SessionMultiplexer;
 }
 
 /**
  * What to match a session's Codex rollout with: the session itself when it was started with
- * `codex`, else the Codex process running inside it (a shell where `codex` was typed).
+ * `codex`, else the Codex process running inside it (a shell where `codex` was typed, or the
+ * pane of an attached tmux session).
  */
 export async function codexSessionRef(
   session: SessionLike,
   deps: CodexProcessDeps = defaultDeps
 ): Promise<CodexSessionRef | null> {
-  if (isCodexCommand(session.command)) return session;
+  if (!session.multiplexer && isCodexCommand(session.command)) return session;
   if (!session.pid || session.status !== 'running') return null;
   const codex = await findCodexProcess(session.pid, deps);
   if (!codex) return null;

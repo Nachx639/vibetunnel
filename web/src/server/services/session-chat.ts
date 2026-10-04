@@ -13,15 +13,20 @@ import { geminiSessionRef } from './gemini-process.js';
 
 type ChatSession = SessionInfo & { pid: number };
 
-/** `programPid`: the process the agent runs under; the session's own pid by default. */
+/**
+ * `programPid`: the process the agent runs under: the pane its tmux client shows for a session
+ * attached to a tmux session, else the session's own pid (the default).
+ */
 export async function readSessionChat(
   session: ChatSession,
   programPid: number = session.pid
 ): Promise<ClaudeChat> {
+  // An attached session's command is its tmux client: what runs is found from the pane below.
+  const command = session.multiplexer ? undefined : session.command;
   // OpenAI Codex: the same chat shape, read from its rollout file.
-  if (isCodexCommand(session.command)) return readCodexChat(session);
+  if (isCodexCommand(command)) return readCodexChat(session);
   // Gemini CLI: the same chat shape, read from its chat recording.
-  if (isGeminiCommand(session.command)) return readGeminiChat(session);
+  if (isGeminiCommand(command)) return readGeminiChat(session);
   const claudeChat = await readClaudeChat(programPid);
   if (!claudeChat.available) {
     // A shell where `codex` was typed: its Codex process gives the rollout.

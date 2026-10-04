@@ -105,13 +105,14 @@ export function findGeminiPid(table: ProcessTable, rootPid: number): number | un
 
 /**
  * What to match a session's Gemini chat with: the session itself when it was started with
- * `gemini`, else the Gemini process running inside it (a shell where `gemini` was typed).
+ * `gemini`, else the Gemini process running inside it (a shell where `gemini` was typed, or the
+ * pane of an attached tmux session).
  */
 export async function geminiSessionRef(
   session: SessionLike,
   deps?: CodexProcessDeps
 ): Promise<GeminiSessionRef | null> {
-  if (isGeminiCommand(session.command)) return session;
+  if (!session.multiplexer && isGeminiCommand(session.command)) return session;
   if (!session.pid || session.status !== 'running') return null;
   const gemini = await findAgentProcess(session.pid, isGeminiProcessArgs, deps);
   if (!gemini) return null;
