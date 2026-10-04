@@ -206,7 +206,6 @@ export const ar: Messages = {
 
   // App toasts
   'toast.sessionNotFound': 'لم يتم العثور على الجلسة {id}',
-  'toast.loadSessionsFailed': 'تعذّر تحميل الجلسات',
   'toast.sessionIdMissing': 'تم إنشاء الجلسة لكن معرّفها غير موجود في الاستجابة',
   'toast.terminalWindowOpened': 'تم فتح نافذة الطرفية بنجاح',
   'toast.sessionCreatedNotFound': 'تم إنشاء الجلسة لكن تعذّر العثور عليها. يُرجى التحديث.',
@@ -829,6 +828,9 @@ export const ar: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'اضغط مطولًا للصق',
   'keyboard.typeHere': 'اكتب هنا...',
+
+  // Connection status
+  'connection.reconnecting': 'جارٍ إعادة الاتصال…',
 
   // Appearance and color themes
   'appearance.title': 'المظهر',

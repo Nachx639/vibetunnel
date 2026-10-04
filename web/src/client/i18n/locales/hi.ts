@@ -206,7 +206,6 @@ export const hi: Messages = {
 
   // App toasts
   'toast.sessionNotFound': 'सेशन {id} नहीं मिला',
-  'toast.loadSessionsFailed': 'सेशन लोड नहीं हो सके',
   'toast.sessionIdMissing': 'सेशन बन गया, लेकिन जवाब में उसका ID नहीं मिला',
   'toast.terminalWindowOpened': 'टर्मिनल विंडो खुल गई',
   'toast.sessionCreatedNotFound': 'सेशन बन गया, लेकिन मिल नहीं रहा। कृपया रीफ़्रेश करें।',
@@ -830,6 +829,9 @@ export const hi: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'पेस्ट करने के लिए दबाकर रखें',
   'keyboard.typeHere': 'यहां टाइप करें...',
+
+  // Connection status
+  'connection.reconnecting': 'फिर से जुड़ रहा है…',
 
   // Appearance and color themes
   'appearance.title': 'रूप-रंग',

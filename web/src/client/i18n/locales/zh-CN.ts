@@ -204,7 +204,6 @@ export const zhCN: Messages = {
 
   // App toasts
   'toast.sessionNotFound': '未找到会话 {id}',
-  'toast.loadSessionsFailed': '加载会话失败',
   'toast.sessionIdMissing': '会话已创建，但响应中缺少会话 ID',
   'toast.terminalWindowOpened': '终端窗口已打开',
   'toast.sessionCreatedNotFound': '会话已创建，但未能找到。请刷新页面。',
@@ -821,6 +820,9 @@ export const zhCN: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': '长按以粘贴',
   'keyboard.typeHere': '在此输入...',
+
+  // Connection status
+  'connection.reconnecting': '正在重新连接…',
 
   // Appearance and color themes
   'appearance.title': '外观',

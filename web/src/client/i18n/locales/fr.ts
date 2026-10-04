@@ -219,7 +219,6 @@ export const fr: Messages = {
 
   // App toasts
   'toast.sessionNotFound': 'Session {id} introuvable',
-  'toast.loadSessionsFailed': 'Impossible de charger les sessions',
   'toast.sessionIdMissing': 'Session créée, mais ID absent de la réponse',
   'toast.terminalWindowOpened': 'Fenêtre de terminal ouverte',
   'toast.sessionCreatedNotFound': 'Session créée mais introuvable. Veuillez actualiser.',
@@ -864,6 +863,9 @@ export const fr: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Appui long pour coller',
   'keyboard.typeHere': 'Saisissez ici...',
+
+  // Connection status
+  'connection.reconnecting': 'Reconnexion…',
 
   // Appearance and color themes
   'appearance.title': 'Apparence',

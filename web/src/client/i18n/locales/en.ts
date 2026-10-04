@@ -217,7 +217,6 @@ export const en = {
 
   // App toasts
   'toast.sessionNotFound': 'Session {id} not found',
-  'toast.loadSessionsFailed': 'Failed to load sessions',
   'toast.sessionIdMissing': 'Session created but ID not found in response',
   'toast.terminalWindowOpened': 'Terminal window opened successfully',
   'toast.sessionCreatedNotFound': 'Session created but could not be found. Please refresh.',
@@ -850,6 +849,9 @@ export const en = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Long-press to paste',
   'keyboard.typeHere': 'Type here...',
+
+  // Connection status
+  'connection.reconnecting': 'Reconnecting…',
 
   // Appearance and color themes
   'appearance.title': 'Appearance',

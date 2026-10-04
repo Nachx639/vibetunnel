@@ -73,6 +73,8 @@ export class VibeTunnelApp extends LitElement {
   @state() private loading = false;
   @state() private currentView: 'list' | 'session' | 'auth' | 'file-browser' = 'auth';
   @state() private selectedSessionId: string | null = null;
+  private loadFailures = 0;
+  @state() private reconnecting = false;
   @state() private hideExited = this.loadHideExitedState();
   @state() private showCreateModal = false;
   @state() private createDialogWorkingDir = '';
@@ -647,6 +649,23 @@ export class VibeTunnelApp extends LitElement {
     }, TIMING.SUCCESS_MESSAGE_TIMEOUT);
   }
 
+  /**
+   * The list polls every few seconds, so a server restart or a network blip used to flash
+   * "Failed to load sessions" error toasts. Show a quiet "Reconnecting…" pill instead, from
+   * the second failure in a row, and clear it when the server answers again.
+   */
+  private noteLoadFailure() {
+    this.loadFailures++;
+    if (this.loadFailures >= 2) this.reconnecting = true;
+  }
+
+  private renderReconnecting() {
+    if (!this.reconnecting) return '';
+    return html`<div class="reconnecting-pill" role="status" aria-live="polite">
+      <span class="reconnecting-dot"></span>${t('connection.reconnecting')}
+    </div>`;
+  }
+
   private clearError() {
     // Only clear if there's no active timeout
     if (this.errorTimeoutId === null) {
@@ -665,6 +684,8 @@ export class VibeTunnelApp extends LitElement {
         const headers = authClient.getAuthHeader();
         const response = await fetch('/api/sessions', { headers });
         if (response.ok) {
+          this.loadFailures = 0;
+          this.reconnecting = false;
           const newSessions = (await response.json()) as Session[];
 
           // Preserve Git information and reuse existing session objects when possible
@@ -772,11 +793,11 @@ export class VibeTunnelApp extends LitElement {
           this.handleLogout();
           return;
         } else {
-          this.showError(t('toast.loadSessionsFailed'));
+          this.noteLoadFailure();
         }
       } catch (error) {
         logger.error('error loading sessions:', error);
-        this.showError(t('toast.loadSessionsFailed'));
+        this.noteLoadFailure();
       } finally {
         this.loading = false;
         this.initialLoadComplete = true;
@@ -1958,6 +1979,8 @@ export class VibeTunnelApp extends LitElement {
         @navigate-to-session=${this.handleNavigateToSession}
         @create-session=${this.handleCreateSession}
       ></multiplexer-modal>
+
+      ${this.renderReconnecting()}
     `;
   }
 }

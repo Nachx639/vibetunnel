@@ -216,7 +216,6 @@ export const ptBR: Messages = {
 
   // App toasts
   'toast.sessionNotFound': 'Sessão {id} não encontrada',
-  'toast.loadSessionsFailed': 'Falha ao carregar as sessões',
   'toast.sessionIdMissing': 'Sessão criada, mas o ID não veio na resposta',
   'toast.terminalWindowOpened': 'Janela do terminal aberta',
   'toast.sessionCreatedNotFound':
@@ -854,6 +853,9 @@ export const ptBR: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Toque e segure para colar',
   'keyboard.typeHere': 'Digite aqui...',
+
+  // Connection status
+  'connection.reconnecting': 'Reconectando…',
 
   // Appearance and color themes
   'appearance.title': 'Aparência',
