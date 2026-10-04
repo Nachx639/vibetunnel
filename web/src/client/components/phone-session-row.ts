@@ -28,6 +28,7 @@ import { formatActivity, isBackgroundWait, sessionActivity } from '../utils/clau
 import { resumeClaudeConversation } from '../utils/claude-resume.js';
 import { claudeWaitingLabel } from '../utils/claude-waiting-label.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
+import { lastActivityAt } from '../utils/last-activity.js';
 import { announceMacSessionsChanged } from '../utils/mac-sessions.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
 import { endsADrag } from '../utils/pointer-drag.js';
@@ -804,7 +805,13 @@ export class PhoneSessionRow extends LitElement {
     const session = this.session;
     const tool = sessionTool(session);
     const title = this.displayTitle();
-    const timeIso = session.lastModified || session.startedAt;
+    // With Claude's status (agent chat), the same moment as the session's agent card
+    // (utils/last-activity.ts); otherwise the last output, as before.
+    const activityAt = session.claudeStatus ? lastActivityAt(session) : undefined;
+    const timeIso =
+      activityAt === undefined
+        ? session.lastModified || session.startedAt
+        : new Date(activityAt).toISOString();
     const time = formatRowTime(timeIso);
     const exited = session.status === 'exited';
     const revealed = this.swipeX !== 0;

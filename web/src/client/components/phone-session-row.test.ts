@@ -300,6 +300,39 @@ describe('PhoneSessionRow', () => {
     expect(sessionTool({ command: ['zsh'], codexActive: true })).toBe('codex');
   });
 
+  it('an idle Claude shows when it last did something, the same moment as its agent card', async () => {
+    vi.useFakeTimers({ now: new Date('2025-06-04T13:05:00') });
+    try {
+      const value = session({
+        // Opening the session redrew the screen a few minutes ago: that isn't activity.
+        lastModified: new Date('2025-06-04T13:01:00').toISOString(),
+        claudeStatus: { status: 'idle', since: new Date('2025-06-04T12:45:00').getTime() },
+      });
+      const row = await fixture<PhoneSessionRow>(
+        html`<phone-session-row .session=${value}></phone-session-row>`
+      );
+      expect(row.querySelector('.psr-time')?.textContent?.trim()).toBe('20 min');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('without a Claude status, shows the last output as before', async () => {
+    vi.useFakeTimers({ now: new Date('2025-06-04T13:05:00') });
+    try {
+      const value = session({
+        lastModified: new Date('2025-06-04T13:01:00').toISOString(),
+        activityStatus: { isActive: false, lastActivityAt: '2025-06-04T13:04:00' },
+      });
+      const row = await fixture<PhoneSessionRow>(
+        html`<phone-session-row .session=${value}></phone-session-row>`
+      );
+      expect(row.querySelector('.psr-time')?.textContent?.trim()).toBe('4 min');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps its time current without new session data, on one shared timer', async () => {
     fixtureCleanup(); // rows left by earlier tests would own the (real) shared timer
     vi.useFakeTimers({ now: new Date('2025-05-02T10:30:00') });

@@ -21,7 +21,12 @@ import {
   missionCards,
   showAgentsTab,
 } from '../utils/agent-mission.js';
-import { formatActivity, isBackgroundWait, sessionActivity } from '../utils/claude-activity.js';
+import {
+  formatActivity,
+  formatElapsed,
+  isBackgroundWait,
+  sessionActivity,
+} from '../utils/claude-activity.js';
 import { claudeWaitingLabel } from '../utils/claude-waiting-label.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
@@ -123,7 +128,22 @@ function doingText(card: AgentCard): string {
   if (session.status === 'running' && isBackgroundWait(session.claudeStatus)) {
     return t('activity.backgroundWait');
   }
-  return t('mission.state.idle');
+  return card.since
+    ? t('mission.state.idleFor', { time: formatElapsed(Date.now() - card.since) })
+    : t('mission.state.idle');
+}
+
+/**
+ * An idle card says how long ago it last did something, in words ("Idle for 14h 2m"), not a
+ * bare time in the corner: next to the Sessions list's time that read as a contradiction. Both
+ * are the same moment (utils/last-activity.ts).
+ */
+function idleFor(card: AgentCard): boolean {
+  return (
+    card.state === 'idle' &&
+    Boolean(card.since) &&
+    !(card.session.status === 'running' && isBackgroundWait(card.session.claudeStatus))
+  );
 }
 
 /** Last message (Claude) or last line on screen (Codex / Gemini). */
@@ -603,7 +623,7 @@ export class AgentMission extends LitElement {
           <div class="vtm-top">
             <span class="vtm-name"><bdi>${title}</bdi></span>
             ${
-              card.since
+              card.since && !idleFor(card)
                 ? html`<claude-activity-elapsed class="vtm-elapsed" since=${card.since}></claude-activity-elapsed>`
                 : nothing
             }
@@ -612,7 +632,14 @@ export class AgentMission extends LitElement {
           ${
             state === 'waiting' && !this.selecting
               ? this.renderNeeds(session, doing)
-              : html`<div class="vtm-doing" data-testid="agent-doing"><bdi>${doing}</bdi></div>`
+              : html`<div class="vtm-doing" data-testid="agent-doing"><bdi>${
+                  idleFor(card)
+                    ? html`<claude-activity-elapsed
+                        since=${card.since}
+                        label=${t('mission.state.idleFor', { time: '{time}' })}
+                      ></claude-activity-elapsed>`
+                    : doing
+                }</bdi></div>`
           }
           ${preview ? html`<div class="vtm-preview" data-testid="agent-preview"><bdi>${preview}</bdi></div>` : nothing}
         </div>

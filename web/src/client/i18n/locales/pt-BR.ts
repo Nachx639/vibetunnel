@@ -1268,4 +1268,5 @@ export const ptBR: Messages = {
   'history.liveInTmux': 'Rodando agora no tmux. Abra-a pela lista para continuar.',
   'history.readHere': 'Ler aqui',
   'history.skipPermissions': 'Retomar sem pedidos de permissão (--dangerously-skip-permissions)',
+  'mission.state.idleFor': 'Ocioso há {time}',
 };

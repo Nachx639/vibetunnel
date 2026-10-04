@@ -1238,4 +1238,5 @@ export const ar: Messages = {
   'history.liveInTmux': 'تعمل الآن في tmux. افتحها من القائمة لتتابع.',
   'history.readHere': 'قراءتها هنا',
   'history.skipPermissions': 'المتابعة دون طلبات الإذن (--dangerously-skip-permissions)',
+  'mission.state.idleFor': 'خامل منذ {time}',
 };

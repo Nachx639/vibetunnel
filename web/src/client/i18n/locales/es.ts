@@ -1272,4 +1272,5 @@ export const es: Messages = {
   'history.liveInTmux': 'En marcha ahora en tmux. Ábrela desde la lista para seguir.',
   'history.readHere': 'Leerla aquí',
   'history.skipPermissions': 'Reanudar sin pedir permisos (--dangerously-skip-permissions)',
+  'mission.state.idleFor': 'Inactivo hace {time}',
 };

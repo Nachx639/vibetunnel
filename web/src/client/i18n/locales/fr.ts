@@ -1286,4 +1286,5 @@ export const fr: Messages = {
   'history.readHere': 'La lire ici',
   'history.skipPermissions':
     'Reprendre sans demandes d’autorisation (--dangerously-skip-permissions)',
+  'mission.state.idleFor': 'Inactif depuis {time}',
 };

@@ -1262,6 +1262,7 @@ export const en = {
   'history.liveInTmux': 'Running in tmux right now. Open it from the list to continue.',
   'history.readHere': 'Read it here',
   'history.skipPermissions': 'Resume without permission prompts (--dangerously-skip-permissions)',
+  'mission.state.idleFor': 'Idle for {time}',
 };
 
 export type MessageKey = keyof typeof en;

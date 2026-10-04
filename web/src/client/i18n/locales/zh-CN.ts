@@ -1227,4 +1227,5 @@ export const zhCN: Messages = {
   'history.liveInTmux': '目前正在 tmux 中运行。请从列表中打开以继续。',
   'history.readHere': '在这里阅读',
   'history.skipPermissions': '继续时不再询问权限（--dangerously-skip-permissions）',
+  'mission.state.idleFor': '已空闲 {time}',
 };

@@ -82,6 +82,21 @@ describe('agent-mission', () => {
     fixtureCleanup();
   });
 
+  it('an idle card says how long ago it last did something, in words, not a bare time', async () => {
+    const el = await mount([
+      session('idle', {
+        lastModified: new Date().toISOString(),
+        claudeStatus: { status: 'idle', since: Date.now() - (14 * 60 + 2) * 60_000 - 5000 },
+      }),
+    ]);
+    const card = el.querySelector('[data-session-id="idle"]');
+    expect(card?.querySelector('[data-testid="agent-doing"]')?.textContent?.trim()).toBe(
+      'Idle for 14h 2m'
+    );
+    expect(card?.getAttribute('aria-label')).toContain('Idle for 14h 2m');
+    expect(card?.querySelector('.vtm-elapsed')).toBeNull();
+  });
+
   it('shows agent cards, the one that needs you first, with what each is doing', async () => {
     await setLocale('en');
     const view = await mount();

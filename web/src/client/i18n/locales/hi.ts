@@ -1240,4 +1240,5 @@ export const hi: Messages = {
   'history.liveInTmux': 'अभी tmux में चल रही है। जारी रखने के लिए उसे सूची से खोलें।',
   'history.readHere': 'यहाँ पढ़ें',
   'history.skipPermissions': 'अनुमति पूछे बिना फिर से शुरू करें (--dangerously-skip-permissions)',
+  'mission.state.idleFor': '{time} से निष्क्रिय',
 };

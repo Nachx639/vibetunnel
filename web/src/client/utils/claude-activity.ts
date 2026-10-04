@@ -96,13 +96,14 @@ function stopTimerIfIdle() {
 }
 
 /**
- * `<claude-activity-elapsed since="…">`: the running time of the current step, updated once a
- * second by writing its own text. One shared timer for every instance, paused while the page is
- * hidden, so a long session list never re-renders just to move a clock.
+ * `<claude-activity-elapsed since="…" label="…">`: the running time of the current step (or any
+ * time since, inside `label`'s "{time}"), updated once a second by writing its own text. One
+ * shared timer for every instance, paused while the page is hidden, so a long session list
+ * never re-renders just to move a clock.
  */
 export class ActivityElapsed extends HTMLElement {
   static get observedAttributes() {
-    return ['since'];
+    return ['since', 'label'];
   }
 
   connectedCallback() {
@@ -123,7 +124,9 @@ export class ActivityElapsed extends HTMLElement {
 
   refresh() {
     const since = Number(this.getAttribute('since'));
-    const text = since > 0 ? formatElapsed(Date.now() - since) : '';
+    // `label` wraps the time in words, e.g. "Idle for {time}" (split/join: no "$" patterns).
+    const label = this.getAttribute('label') || '{time}';
+    const text = since > 0 ? label.split('{time}').join(formatElapsed(Date.now() - since)) : '';
     if (this.textContent !== text) this.textContent = text;
   }
 }

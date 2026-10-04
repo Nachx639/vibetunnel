@@ -8,6 +8,7 @@ import type { Session } from '../../shared/types.js';
 import { sessionTool } from '../components/phone-session-row.js';
 import { isBackgroundWait } from './claude-activity.js';
 import { modeSwitchBlocked } from './claude-mode.js';
+import { lastActivityAt } from './last-activity.js';
 import { isWatching } from './mac-attach-mode.js';
 
 export type AgentKind = 'claude' | 'codex' | 'gemini';
@@ -17,7 +18,10 @@ export interface AgentCard {
   session: Session;
   kind: AgentKind;
   state: AgentState;
-  /** When the current state began (epoch ms), if known. */
+  /**
+   * Epoch ms, if known: when it began waiting, when the current step began (working), or its
+   * last activity (idle, as in the Sessions list).
+   */
   since?: number;
 }
 
@@ -43,11 +47,9 @@ export function agentState(session: Session): AgentState {
 
 function stateSince(session: Session, state: AgentState): number | undefined {
   const claude = session.claudeStatus;
+  // Idle: the last activity, the same moment as the session's row in the Sessions list.
+  if (state === 'idle' && !isBackgroundWait(claude)) return lastActivityAt(session);
   if (claude) return (state === 'working' && claude.activity?.since) || claude.since;
-  if (state === 'idle' && session.activityStatus?.lastActivityAt) {
-    const at = Date.parse(session.activityStatus.lastActivityAt);
-    return Number.isNaN(at) ? undefined : at;
-  }
   return undefined;
 }
 

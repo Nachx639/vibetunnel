@@ -1240,4 +1240,5 @@ export const bn: Messages = {
   'history.liveInTmux': 'এখন tmux-এ চলছে। চালিয়ে যেতে তালিকা থেকে খুলুন।',
   'history.readHere': 'এখানে পড়ুন',
   'history.skipPermissions': 'অনুমতির প্রশ্ন ছাড়া আবার শুরু করুন (--dangerously-skip-permissions)',
+  'mission.state.idleFor': '{time} ধরে নিষ্ক্রিয়',
 };
