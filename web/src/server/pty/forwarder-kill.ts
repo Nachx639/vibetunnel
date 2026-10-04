@@ -12,6 +12,10 @@
  * confirmExternalKill reads both processes with `ps`, signals the forwarder (SIGTERM, then
  * SIGKILL) only when that pid runs a forwarder and is the program's parent, and the kill counts
  * only when nothing of the session runs anymore.
+ *
+ * Accepted limits: the pid can be reused between the `ps` read and the signal, and a process can
+ * fake a forwarder's argv (isForwarderArgs reads the command line). Both need a process of the
+ * same user, which could signal the program itself anyway.
  */
 import { execFile } from 'child_process';
 import { promisify } from 'util';
