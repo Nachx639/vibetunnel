@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fixture, html } from '@open-wc/testing';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -2702,6 +2704,72 @@ describe('Terminal', () => {
       fitAddon.proposeDimensions.mockReturnValue({ cols: 100, rows: 24 });
       element.fitTerminal('wide');
       expect(mockTerminal.resize).toHaveBeenLastCalledWith(80, 24);
+    });
+  });
+
+  describe('the phone keyboard going down', () => {
+    /** Claude Code on 10 rows with the keyboard up: the cursor in its prompt box. */
+    async function claudeFrame() {
+      const { Ghostty } = await vi.importActual<typeof import('ghostty-web')>('ghostty-web');
+      const bytes = readFileSync(
+        createRequire(import.meta.url).resolve('ghostty-web/ghostty-vt.wasm')
+      );
+      const { instance } = await WebAssembly.instantiate(bytes, { env: { log: () => {} } });
+      const grid = new Ghostty(instance).createTerminal(45, 10, { scrollbackLimit: 10000 });
+      let output = '';
+      for (let i = 1; i <= 30; i++) output += `line ${i}\r\n`;
+      grid.write(`${output}> test\r\n  status line\x1b[1A\x1b[7G`);
+      return grid;
+    }
+
+    const rowText = (grid: Awaited<ReturnType<typeof claudeFrame>>, y: number) =>
+      (grid.getLine(y) ?? [])
+        .map((cell) => (cell.codepoint ? String.fromCodePoint(cell.codepoint) : ' '))
+        .join('')
+        .trimEnd();
+
+    it('grows the rows in the resize observer, the prompt kept on the bottom edge', async () => {
+      if (!mockTerminal) return;
+      const term = mockTerminal;
+      setViewport(375, 667);
+      const fitAddon = (element as unknown as { fitAddon: MockFitAddon }).fitAddon;
+      fitAddon.proposeDimensions.mockReturnValue({ cols: 45, rows: 10 });
+      element.fitTerminal('keyboard-up');
+
+      // ghostty-web's resize resizes its WASM grid: a real one here.
+      const grid = await claudeFrame();
+      (term as unknown as { wasmTerm: unknown }).wasmTerm = grid;
+      const resize = term.resize.getMockImplementation();
+      term.resize.mockImplementation((cols: number, rows: number) => {
+        grid.resize(cols, rows);
+        resize?.(cols, rows);
+      });
+      const events: Array<{ rows: number; isHeightOnlyChange: boolean; isMobile: boolean }> = [];
+      element.addEventListener('terminal-resize', (e) => events.push((e as CustomEvent).detail));
+      // No frame runs: whatever happens must happen in the observer's own callback.
+      const frame = vi.fn();
+      vi.stubGlobal('requestAnimationFrame', frame);
+
+      try {
+        // The container grew (the visual viewport, then --app-height): the observer fires
+        // after that layout and before the frame is painted.
+        fitAddon.proposeDimensions.mockReturnValue({ cols: 45, rows: 14 });
+        const observer = (element as unknown as { resizeObserver: MockResizeObserver })
+          .resizeObserver;
+        observer.callback([], observer as unknown as ResizeObserver);
+
+        expect(term.rows).toBe(14);
+        expect(rowText(grid, 12)).toBe('> test');
+        expect(rowText(grid, 13)).toBe('  status line');
+        expect(rowText(grid, 0)).toBe('line 19');
+        expect(grid.getCursor()).toMatchObject({ x: 6, y: 12 });
+        expect(events).toEqual([expect.objectContaining({ rows: 14, isHeightOnlyChange: true })]);
+        expect(events[0].isMobile).toBe(true);
+        expect(frame).not.toHaveBeenCalledWith(expect.any(Function));
+      } finally {
+        vi.unstubAllGlobals();
+        grid.free();
+      }
     });
   });
 });

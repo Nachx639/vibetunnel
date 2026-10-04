@@ -127,14 +127,28 @@ export class MockTerminal {
   });
 
   /** The WASM terminal: its dirty state (output since the last paint) and its rows. */
-  wasmTerm = {
-    isDirty: vi.fn(() => false),
-    getCursor: vi.fn(() => ({ x: 0, y: 0, visible: true })),
-    /** A row of the live screen; none unless a test provides them. */
-    getLine: vi.fn((_row: number): ReturnType<MockTerminal['getScrollbackLine']> => null),
-    getGraphemeString: vi.fn((_row: number, _col: number) => ' '),
-    getScrollbackGraphemeString: vi.fn((_offset: number, _col: number) => ' '),
-  };
+  wasmTerm = this.createWasmTerm();
+
+  private createWasmTerm() {
+    const term = this;
+    return {
+      /** The grid's height: ghostty-web's resize resizes its WASM terminal too. */
+      get rows() {
+        return term.rows;
+      },
+      /** Output written straight to the WASM terminal (not through write()). */
+      write: vi.fn((_data: string | Uint8Array) => {}),
+      getScrollbackLength: vi.fn(() => 0),
+      isAlternateScreen: vi.fn(() => false),
+      getMode: vi.fn((_mode: number, _isAnsi?: boolean) => false),
+      isDirty: vi.fn(() => false),
+      getCursor: vi.fn(() => ({ x: 0, y: 0, visible: true })),
+      /** A row of the live screen; none unless a test provides them. */
+      getLine: vi.fn((_row: number): ReturnType<MockTerminal['getScrollbackLine']> => null),
+      getGraphemeString: vi.fn((_row: number, _col: number) => ' '),
+      getScrollbackGraphemeString: vi.fn((_offset: number, _col: number) => ' '),
+    };
+  }
 
   /** ghostty-web's mousedown listener for its in-canvas scrollbar (private there). */
   handleMouseDown = vi.fn();

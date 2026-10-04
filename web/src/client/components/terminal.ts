@@ -24,6 +24,7 @@ import {
   type TerminalTouchScroll,
 } from '../utils/touch-scroll-preference.js';
 import { createGhostty } from './terminal-ghostty.js';
+import { openEscapeTail, resizeKeepingBottom } from './terminal-grow.js';
 import { PeekRow, paintCellRow } from './terminal-peek-row.js';
 import { TouchScroller } from './terminal-touch-scroll.js';
 
@@ -162,6 +163,8 @@ export class Terminal extends LitElement {
   private lastRows = 0;
 
   private pendingResizeSource: string | null = null;
+  /** The escape sequence the output ends inside of, if any (terminal-grow.ts). */
+  private outputEscapeTail = '';
   private pendingResizePrev: { cols: number; rows: number } | null = null;
   private initializationId = 0;
 
@@ -283,6 +286,7 @@ export class Terminal extends LitElement {
       return;
     }
 
+    this.outputEscapeTail = openEscapeTail(this.outputEscapeTail, data);
     const shouldPreserveScroll = !this.followCursorEnabled && this.preservedScrollPosition === null;
     if (shouldPreserveScroll) {
       this.preservedScrollPosition = this.getScrollPosition();
@@ -1143,6 +1147,7 @@ export class Terminal extends LitElement {
     this.container = null;
     this.pasteInput = null;
     this.preservedScrollPosition = null;
+    this.outputEscapeTail = '';
   }
 
   private requestResize(source: string) {
@@ -1245,7 +1250,24 @@ export class Terminal extends LitElement {
     if (cols === prevCols && rows === prevRows) return;
 
     this.requestResizeMeta(source);
-    this.terminal.resize(cols, rows);
+    this.resizeGrid(cols, rows);
+  }
+
+  /**
+   * More rows at the same width (the phone's keyboard going down) keep the bottom in place,
+   * history rows coming down from above as in xterm, at once: Claude's prompt and status line
+   * stay on the bottom edge while the PTY still has the old size (terminal-grow.ts). Not in the
+   * middle of an escape sequence from the stream, which our cursor moves would cut short.
+   */
+  private resizeGrid(cols: number, rows: number) {
+    const term = this.terminal;
+    if (!term) return;
+    const wasm = term.wasmTerm;
+    if (!wasm || cols !== term.cols || rows <= term.rows || this.outputEscapeTail) {
+      term.resize(cols, rows);
+      return;
+    }
+    if (resizeKeepingBottom(wasm, rows, () => term.resize(cols, rows)) > 0) this.paintNow();
   }
 
   private async initializeTerminal() {
@@ -1357,6 +1379,7 @@ export class Terminal extends LitElement {
         const followCursor = this.pendingFollowCursor;
         this.pendingOutput = [];
         this.pendingFollowCursor = true;
+        this.outputEscapeTail = openEscapeTail(this.outputEscapeTail, pending);
         this.terminal.write(pending, () => {
           if (followCursor && this.followCursorEnabled) {
             this.terminal?.scrollToBottom();
@@ -1372,7 +1395,11 @@ export class Terminal extends LitElement {
       this.dispatchEvent(new CustomEvent('terminal-ready', { bubbles: true }));
 
       // Observe container resizes
-      this.resizeObserver = new ResizeObserver(() => this.requestResize('resize-observer'));
+      // Fitted in the observer itself, which runs after layout and before paint: the rows
+      // follow the container (the keyboard going up or down) in the same frame. Through
+      // requestResize they came a frame later. The canvas never outgrows the container, so
+      // this cannot loop.
+      this.resizeObserver = new ResizeObserver(() => this.fitTerminal('resize-observer'));
       this.resizeObserver.observe(this.container);
     } catch (error) {
       logger.error('failed to initialize ghostty terminal', error);
