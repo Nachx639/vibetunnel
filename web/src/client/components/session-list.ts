@@ -26,6 +26,7 @@ import type { AuthClient } from '../services/auth-client.js';
 import type { Worktree } from '../services/git-service.js';
 import './phone-session-row.js';
 import './session-card.js';
+import { openTaskSheet } from './task-sheet.js';
 import './inline-edit.js';
 import './session-list/compact-session-card.js';
 import './session-list/repository-header.js';
@@ -34,6 +35,7 @@ import './git-status-badge.js';
 import { getBaseRepoName } from '../../shared/utils/git.js';
 import type { QuickStartCommand } from '../../types/config.js';
 import { serverConfigService } from '../services/server-config-service.js';
+import { agentChatEnabled } from '../utils/agent-chat.js';
 import { parseCommand } from '../utils/command-utils.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
@@ -1235,6 +1237,9 @@ export class SessionList extends LitElement {
   @state() private quickStarts: QuickStartCommand[] = [];
   private quickStartsLoaded = false;
 
+  /** The server runs tasks (they ride on agent chat): the Tasks entry shows. */
+  @state() private tasksAvailable = false;
+
   private loadQuickStarts() {
     if (this.quickStartsLoaded) return;
     this.quickStartsLoaded = true;
@@ -1244,7 +1249,32 @@ export class SessionList extends LitElement {
         this.quickStarts = commands.filter((entry) => entry.command?.trim());
       })
       .catch(() => {});
+    void agentChatEnabled().then((enabled) => {
+      this.tasksAvailable = enabled;
+    });
   }
+
+  /** Claude Code's command line: the user's Claude quick start, else plain `claude`. */
+  private claudeCommand(): string[] {
+    for (const entry of this.quickStarts) {
+      const argv = parseCommand(entry.command.trim());
+      if (argv[0] && argv[0].split('/').pop() === 'claude') return argv;
+    }
+    return ['claude'];
+  }
+
+  /** Tasks sheet (task-sheet.ts): a prompt for Claude now or later, with a push at the end. */
+  private openTasks = () => {
+    openTaskSheet({
+      folders: this.recentFolders(),
+      command: this.claudeCommand(),
+      onStarted: (sessionId) => {
+        this.dispatchEvent(
+          new CustomEvent('session-created', { detail: { sessionId }, bubbles: true })
+        );
+      },
+    });
+  };
 
   /** Your quick starts, the one you started last first (it becomes the big button). */
   private quickStartList(): QuickStartCommand[] {
@@ -1283,6 +1313,13 @@ export class SessionList extends LitElement {
           <button class="phone-tool" @click=${() => this.openCreateDialog()}>
             ${t('empty.custom')}
           </button>
+          ${
+            this.tasksAvailable
+              ? html`<button class="phone-tool" data-testid="open-tasks" @click=${this.openTasks}>
+                  ⏱ ${t('tasks.open')}
+                </button>`
+              : nothing
+          }
         </div>
         ${
           exitedCount
@@ -1438,6 +1475,7 @@ export class SessionList extends LitElement {
         run: () => this.chooseQuickStart(entry),
       })),
       { label: t('empty.custom'), run: () => this.openCreateDialog() },
+      ...(this.tasksAvailable ? [{ label: `⏱ ${t('tasks.open')}`, run: this.openTasks }] : []),
     ]);
   };
 

@@ -672,6 +672,31 @@ describe('SessionList', () => {
       vi.unstubAllGlobals();
     });
 
+    it('offers Tasks in the "+" sheet only when the server has agent chat on', async () => {
+      const { resetAgentChatCache } = await import('../utils/agent-chat.js');
+      const list = element as unknown as {
+        openToolSheet: () => void;
+        loadQuickStarts: () => void;
+        quickStartsLoaded: boolean;
+        tasksAvailable: boolean;
+      };
+      for (const agentChat of [false, true]) {
+        resetAgentChatCache();
+        vi.mocked(global.fetch).mockImplementation(async (url) =>
+          String(url).includes('/api/config')
+            ? new Response(JSON.stringify({ agentChat, quickStartCommands: [] }))
+            : new Response(JSON.stringify([]))
+        );
+        list.quickStartsLoaded = false;
+        list.loadQuickStarts();
+        await vi.waitFor(() => expect(list.tasksAvailable).toBe(agentChat));
+        list.openToolSheet();
+        expect(sheetButtons().some((label) => label?.includes('Tasks'))).toBe(agentChat);
+        document.body.querySelector('.psr-sheet-cancel')?.dispatchEvent(new Event('click'));
+      }
+      resetAgentChatCache();
+    });
+
     it('a scroll of a sheet that starts on a folder does nothing; a still tap starts there', async () => {
       element.sessions = [createMockSession({ id: 'a', workingDir: '/work/app' })];
       await element.updateComplete;

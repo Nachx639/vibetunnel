@@ -69,8 +69,17 @@ interface ClaudeStatusData {
   timestamp: string;
 }
 
+/** A phone task (task-scheduler.ts): finished (opens its session) or not run. */
+interface TaskData {
+  type: 'task-finished' | 'task-missed';
+  sessionId?: string;
+  taskId: string;
+  timestamp: string;
+}
+
 type NotificationData =
   | ClaudeStatusData
+  | TaskData
   | SessionExitData
   | SessionStartData
   | SessionErrorData
@@ -247,6 +256,7 @@ function getVibrationPattern(notificationType: string): number[] {
       return [150, 75, 150]; // Moderate pattern
     case 'claude-finished':
     case 'claude-replied':
+    case 'task-finished':
       return [75, 50, 75]; // Like a finished command
     case 'claude-waiting':
       return [120, 60, 120, 60, 120]; // Needs an answer
@@ -294,6 +304,8 @@ async function handleNotificationClick(action: string, data: NotificationData): 
       ) {
         // "Answer" opens the session with Claude's prompt in a sheet; it never answers by itself.
         url += `/session/${data.sessionId}${action === 'answer' ? '?answer=1' : ''}`;
+      } else if (data.type === 'task-finished' && data.sessionId) {
+        url += `/session/${data.sessionId}`;
       } else if (
         data.type === 'session-exit' ||
         data.type === 'session-error' ||

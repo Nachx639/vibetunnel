@@ -162,7 +162,10 @@ export class VibeTunnelApp extends LitElement {
     e: CustomEvent<{ action?: string; data?: { type?: string; sessionId?: string } }>
   ) => {
     const { action, data } = e.detail ?? {};
-    if (action === 'dismiss' || !data?.sessionId || !data.type?.startsWith('claude-')) return;
+    const type = data?.type ?? '';
+    // Claude's status pushes and "Task finished" open their session.
+    if (action === 'dismiss' || !data?.sessionId) return;
+    if (!type.startsWith('claude-') && type !== 'task-finished') return;
     const sessionId = data.sessionId;
     void this.handleNavigateToSession(
       new CustomEvent('navigate-to-session', { detail: { sessionId } })
