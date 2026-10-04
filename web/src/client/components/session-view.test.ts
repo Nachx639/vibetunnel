@@ -1397,6 +1397,25 @@ describe('SessionView', () => {
       );
     });
 
+    it('drops the height transition only in the compact phone layout', () => {
+      const styles = Array.from(element.querySelectorAll('style'))
+        .map((style) => style.textContent ?? '')
+        .join('\n');
+      const ruleBody = (selector: string) => {
+        const start = styles.indexOf(`${selector} {`);
+        expect(start).toBeGreaterThanOrEqual(0);
+        return styles.slice(start, styles.indexOf('}', start));
+      };
+
+      expect(ruleBody('.session-view-grid[data-mobile="true"][data-phone-ui="compact"]')).toContain(
+        'transition: none !important;'
+      );
+      // Classic phones and the desktop grid keep their keyboard height transition.
+      expect(ruleBody('.session-view-grid[data-keyboard-visible="true"]')).toContain(
+        'transition: height 0.2s ease-out;'
+      );
+    });
+
     it.skip('should properly calculate terminal height with keyboard and quick keys', {
       timeout: 10000,
     }, async () => {

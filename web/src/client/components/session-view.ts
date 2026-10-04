@@ -1470,6 +1470,10 @@ export class SessionView extends LitElement {
           left: 0 !important;
           right: 0 !important;
           height: var(--app-height, 100dvh) !important;
+          /* Follows the keyboard in the frame it moves. In landscape a phone is over 768px
+             wide and the desktop grid's 0.2 s height transition applied while the keyboard
+             or the quick keys were up: the terminal trailed the keyboard. */
+          transition: none !important;
         }
         .session-view-grid[data-mobile="true"][data-phone-ui="compact"] > .session-header-area {
           /* The notch inset goes on the header: the wrapper's padding sits above a fixed grid. */
