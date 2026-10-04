@@ -2,6 +2,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const esbuild = require('esbuild');
 const { devOptions } = require('./esbuild-config.js');
+const { devServerAuthArgs } = require('./dev-auth-args.js');
 
 console.log('Starting development mode...');
 
@@ -121,7 +122,11 @@ const commands = [
 
 // Add server watching if not client-only
 if (watchServer) {
-  const serverCommand = ['pnpm', ['exec', 'tsx', 'watch', 'src/cli.ts', '--no-auth', ...serverArgs]];
+  // Plain `pnpm run dev` stays open for local hacking; with server arguments (the Mac app
+  // always passes some) the caller owns auth: forcing --no-auth gave anyone who could reach the
+  // port an unauthenticated shell. See scripts/dev-auth-args.js.
+  const authArgs = devServerAuthArgs(serverArgs);
+  const serverCommand = ['pnpm', ['exec', 'tsx', 'watch', 'src/cli.ts', ...authArgs, ...serverArgs]];
   commands.push(serverCommand);
 }
 
