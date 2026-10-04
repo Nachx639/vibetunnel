@@ -3175,3 +3175,52 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
     animation-iteration-count: infinite !important;
   }
 }
+
+/* Read-only share links (session-view/share-sheet.ts): rows inside an action sheet. */
+.vt-share-row {
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border-light);
+  text-align: left;
+  font-size: 14px;
+}
+.vt-share-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.vt-share-muted {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+.vt-share-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.psr-sheet-group .vt-share-actions button {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  padding: 9px 6px;
+  font-size: 15px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.psr-sheet-group .vt-share-actions button + button {
+  border-top: 1px solid var(--color-border-light);
+}
+.psr-sheet-group .vt-share-actions button:disabled {
+  opacity: 0.5;
+}
+.psr-sheet-group .vt-share-actions .vt-share-danger {
+  color: var(--color-status-error);
+}
+.vt-share-error {
+  margin-top: 8px;
+  color: var(--color-status-error);
+  font-size: 13px;
+}

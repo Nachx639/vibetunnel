@@ -49,6 +49,8 @@ export class CompactMenu extends LitElement {
   @property({ type: Function }) onToggleViewMode?: () => void;
   @property({ type: Boolean }) chatMode = false;
   @property({ type: Function }) onToggleChatMode?: () => void;
+  /** Set only when the server has share links on (session-view/share-sheet.ts). */
+  @property({ type: Function }) onShareSession?: () => void;
 
   @state() private showMenu = false;
   @state() private focusedIndex = -1;
@@ -412,6 +414,23 @@ export class CompactMenu extends LitElement {
           <div class="border-t border-border my-1"></div>
           
           <!-- Session Actions -->
+          ${
+            this.onShareSession &&
+            this.session.status === 'running' &&
+            this.session.source !== 'remote'
+              ? html`
+            <button
+              class="w-full text-left px-4 py-3 text-sm font-mono text-primary hover:bg-surface-hover hover:text-primary flex items-center gap-3 ${this.focusedIndex === menuItemIndex++ ? 'bg-surface-hover text-primary' : ''}"
+              @click=${() => this.handleAction(this.onShareSession)}
+              data-testid="compact-share-session"
+              tabindex="${this.showMenu ? '0' : '-1'}"
+            >
+              <span aria-hidden="true" style="width: 16px; text-align: center">🔗</span>
+              ${t('share.menu')}
+            </button>
+          `
+              : nothing
+          }
           ${
             this.session.status === 'running'
               ? html`

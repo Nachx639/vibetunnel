@@ -66,6 +66,7 @@ export class SessionHeader extends LitElement {
   @property({ type: Function }) onToggleViewMode?: () => void;
   @property({ type: Boolean }) chatMode = false;
   @property({ type: Function }) onToggleChatMode?: () => void;
+  @property({ type: Function }) onShareSession?: () => void;
   @state() private isHovered = false;
   @state() private useCompactMenu = false;
   private resizeObserver?: ResizeObserver;
@@ -420,6 +421,7 @@ export class SessionHeader extends LitElement {
                   .onToggleViewMode=${() => this.dispatchEvent(new CustomEvent('toggle-view-mode'))}
                   .chatMode=${this.chatMode}
                   .onToggleChatMode=${this.onToggleChatMode}
+                  .onShareSession=${this.onShareSession}
                   @theme-changed=${(e: CustomEvent) => {
                     this.currentTheme = e.detail.theme;
                   }}
@@ -464,6 +466,7 @@ export class SessionHeader extends LitElement {
                   .session=${this.session}
                   .onTerminate=${this.onTerminateSession}
                   .onClear=${this.onClearSession}
+                  .onShare=${this.onShareSession}
                 ></session-status-dropdown>
                 
                 <!-- Image Upload Menu -->

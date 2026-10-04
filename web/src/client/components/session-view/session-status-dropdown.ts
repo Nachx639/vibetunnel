@@ -22,6 +22,8 @@ export class SessionStatusDropdown extends LitElement {
   @property({ type: Object }) session: Session | null = null;
   @property({ type: Function }) onTerminate?: () => void;
   @property({ type: Function }) onClear?: () => void;
+  /** Set only when the server has share links on (session-view/share-sheet.ts). */
+  @property({ type: Function }) onShare?: () => void;
 
   @state() private showMenu = false;
   @state() private focusedIndex = -1;
@@ -225,6 +227,23 @@ export class SessionStatusDropdown extends LitElement {
         class="absolute right-0 top-full mt-2 bg-surface border border-border rounded-lg shadow-xl py-1 min-w-[250px]"
         style="z-index: ${Z_INDEX.WIDTH_SELECTOR_DROPDOWN};"
       >
+        ${
+          isRunning && this.onShare && this.session?.source !== 'remote'
+            ? html`
+            <button
+              class="w-full text-left px-6 py-3 text-sm font-mono text-primary hover:bg-bg-secondary flex items-center gap-3 ${
+                this.focusedIndex === menuItemIndex++ ? 'bg-bg-secondary' : ''
+              }"
+              @click=${() => this.handleAction(this.onShare)}
+              data-action="share"
+              tabindex="${this.showMenu ? '0' : '-1'}"
+            >
+              <span aria-hidden="true" style="width: 16px; text-align: center">🔗</span>
+              ${t('share.menu')}
+            </button>
+          `
+            : nothing
+        }
         ${
           isRunning
             ? html`

@@ -19,6 +19,8 @@ export interface ServerConfig {
   serverConfigured?: boolean;
   quickStartCommands?: QuickStartCommand[];
   notificationPreferences?: NotificationPreferences;
+  /** Read-only share links are on (config.json `shareLinks` or `--share-links`). */
+  shareLinks?: boolean;
 }
 
 export class ServerConfigService {

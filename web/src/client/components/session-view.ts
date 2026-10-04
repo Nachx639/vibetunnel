@@ -14,7 +14,7 @@
  * @listens browser-cancel - From file browser when cancelled
  */
 import { html, LitElement, type PropertyValues } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
 import { LocaleController, t } from '../i18n/index.js';
 import './clickable-path.js';
@@ -40,6 +40,11 @@ import type { LifecycleEventManagerCallbacks } from './session-view/interfaces.j
 import { LifecycleEventManager } from './session-view/lifecycle-event-manager.js';
 import { LoadingAnimationManager } from './session-view/loading-animation-manager.js';
 import { SessionActionsHandler } from './session-view/session-actions-handler.js';
+import {
+  closeShareSheet,
+  openShareSheet,
+  shareLinksAvailable,
+} from './session-view/share-sheet.js';
 import {
   type TerminalEventHandlers,
   TerminalLifecycleManager,
@@ -94,6 +99,8 @@ export class SessionView extends LitElement {
   private uiStateManager = new UIStateManager();
 
   private gitService = new GitService(authClient);
+  /** The server has read-only share links on (`shareLinks`); the menus offer them only then. */
+  @state() private shareLinksEnabled = false;
   private boundHandleOrientationChange?: () => void;
 
   // Bound terminal event handlers
@@ -184,6 +191,10 @@ export class SessionView extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+
+    void shareLinksAvailable().then((on) => {
+      this.shareLinksEnabled = on;
+    });
 
     // Initialize UIStateManager callbacks
     this.uiStateManager.setCallbacks({
@@ -426,6 +437,7 @@ export class SessionView extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    closeShareSheet();
 
     // Remove orientation listeners
     if (this.boundHandleOrientationChange) {
@@ -1434,6 +1446,15 @@ export class SessionView extends LitElement {
             .macAppConnected=${uiState.macAppConnected}
             .onTerminateSession=${() => this.sessionActionsHandler.handleTerminateSession()}
             .onClearSession=${() => this.sessionActionsHandler.handleClearSession()}
+            .onShareSession=${
+              this.shareLinksEnabled
+                ? () => {
+                    if (this.session) {
+                      openShareSheet(this.session.id, this.session.name || this.session.id);
+                    }
+                  }
+                : undefined
+            }
             .onToggleViewMode=${() => this.sessionActionsHandler.handleToggleViewMode()}
             .chatMode=${uiState.chatMode}
             .onToggleChatMode=${() => this.handleToggleChatMode()}
