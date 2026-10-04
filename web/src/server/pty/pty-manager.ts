@@ -640,6 +640,7 @@ export class PtyManager extends EventEmitter {
     }
 
     // Handle PTY data output
+    let outputPaused = false;
     ptyProcess.onData((data: string) => {
       let processedData = data;
 
@@ -671,6 +672,15 @@ export class PtyManager extends EventEmitter {
       // Write to asciinema file (it has its own internal queue)
       // The AsciinemaWriter now handles pruning detection internally with precise byte tracking
       asciinemaWriter?.writeOutput(Buffer.from(processedData, 'utf8'));
+      if (asciinemaWriter?.isBackedUp() && !outputPaused) {
+        // Let the kernel PTY buffer block the program instead of buffering in memory.
+        outputPaused = true;
+        ptyProcess.pause();
+        asciinemaWriter.onceDrained(() => {
+          outputPaused = false;
+          ptyProcess.resume();
+        });
+      }
 
       // Forward to stdout if requested (using queue for ordering)
       if (forwardToStdout && stdoutQueue) {

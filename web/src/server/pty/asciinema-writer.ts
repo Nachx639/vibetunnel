@@ -7,7 +7,7 @@
  * - UTF-8 encoding and incomplete multi-byte sequences
  * - ANSI escape sequences preservation
  * - Buffering and backpressure
- * - Atomic writes with fsync for durability
+ * - Ordered writes, synced to disk on close
  *
  * Key features:
  * - Real-time recording with minimal buffering
@@ -58,7 +58,12 @@ import { WriteQueue } from '../utils/write-queue.js';
 import { type AsciinemaEvent, type AsciinemaHeader, PtyError } from './types.js';
 
 const _logger = createLogger('AsciinemaWriter');
+/** How often written cast data is flushed to disk (see scheduleFsync). */
+const FSYNC_INTERVAL_MS = 1000;
 const fsync = promisify(fs.fsync);
+
+const OUTPUT_QUEUE_HIGH_WATER = 4 * 1024 * 1024;
+const OUTPUT_QUEUE_LOW_WATER = 1024 * 1024;
 
 // Type for pruning sequence callback
 export type PruningCallback = (info: {
@@ -74,6 +79,9 @@ export class AsciinemaWriter {
   private headerWritten = false;
   private fd: number | null = null;
   private writeQueue = new WriteQueue();
+  // Output accepted by writeOutput() but not yet on disk (see isBackedUp()).
+  private queuedOutputBytes = 0;
+  private drainWaiters: Array<() => void> = [];
 
   // Byte position tracking
   private bytesWritten: number = 0; // Bytes actually written to disk
@@ -188,95 +196,127 @@ export class AsciinemaWriter {
    * Write terminal output data
    */
   writeOutput(data: Buffer): void {
+    // Timestamped when it arrives, not when the queue gets to it.
+    const time = this.getElapsedTime();
+    this.queuedOutputBytes += data.length;
     this.writeQueue.enqueue(async () => {
-      const time = this.getElapsedTime();
-
-      // Combine any buffered bytes with the new data
-      const combinedBuffer = Buffer.concat([this.utf8Buffer, data]);
-
-      // Process data in escape-sequence-aware chunks
-      const { processedData, remainingBuffer } = this.processTerminalData(combinedBuffer);
-
-      if (processedData.length > 0) {
-        // First, check for pruning sequences in the data
-        let pruningInfo: { sequence: string; index: number } | null = null;
-
-        if (this.pruningCallback) {
-          // Use shared detector to find pruning sequences
-          const detection = detectLastPruningSequence(processedData);
-
-          if (detection) {
-            pruningInfo = detection;
-            _logger.debug(
-              `Found pruning sequence '${detection.sequence.split('\x1b').join('\\x1b')}' ` +
-                `at string index ${detection.index} in output data`
-            );
-          }
+      try {
+        await this.writeOutputNow(data, time);
+      } finally {
+        this.queuedOutputBytes -= data.length;
+        if (this.queuedOutputBytes <= OUTPUT_QUEUE_LOW_WATER && this.drainWaiters.length > 0) {
+          const waiters = this.drainWaiters;
+          this.drainWaiters = [];
+          for (const waiter of waiters) waiter();
         }
+      }
+    });
+  }
 
-        // Create the event with ALL data (not truncated)
-        const event: AsciinemaEvent = {
-          time,
-          type: 'o',
-          data: processedData,
-        };
+  /**
+   * True when more output is queued than the disk is absorbing. The producer (the PTY)
+   * should pause until onceDrained() fires; otherwise `yes` grows the queue without bound
+   * (one `yes` session took the server from 110 MB to 2.6 GB in 20 s).
+   */
+  isBackedUp(): boolean {
+    return this.queuedOutputBytes > OUTPUT_QUEUE_HIGH_WATER;
+  }
 
-        // Calculate the byte position where the event will start
-        const eventStartPos = this.bytesWritten + this.pendingBytes;
+  /** Call `callback` once the queued output is back under the low-water mark. */
+  onceDrained(callback: () => void): void {
+    if (this.queuedOutputBytes <= OUTPUT_QUEUE_LOW_WATER) {
+      callback();
+      return;
+    }
+    this.drainWaiters.push(callback);
+  }
 
-        // Write the event
-        await this.writeEvent(event);
+  private async writeOutputNow(data: Buffer, time: number): Promise<void> {
+    // Combine any buffered bytes with the new data
+    const combinedBuffer = Buffer.concat([this.utf8Buffer, data]);
 
-        // Now that the write is complete, handle pruning callback if needed
-        if (pruningInfo && this.pruningCallback) {
-          // Use shared calculator for exact byte position
-          const exactSequenceEndPos = calculateSequenceBytePosition(
-            eventStartPos,
-            time,
-            processedData,
-            pruningInfo.index,
-            pruningInfo.sequence.length
+    // Process data in escape-sequence-aware chunks
+    const { processedData, remainingBuffer } = this.processTerminalData(combinedBuffer);
+
+    if (processedData.length > 0) {
+      // First, check for pruning sequences in the data
+      let pruningInfo: { sequence: string; index: number } | null = null;
+
+      if (this.pruningCallback) {
+        // Use shared detector to find pruning sequences
+        const detection = detectLastPruningSequence(processedData);
+
+        if (detection) {
+          pruningInfo = detection;
+          _logger.debug(
+            `Found pruning sequence '${detection.sequence.split('\x1b').join('\\x1b')}' ` +
+              `at string index ${detection.index} in output data`
           );
-
-          // Validate the calculation
-          const eventJson = `${JSON.stringify([time, 'o', processedData])}\n`;
-          const totalEventSize = Buffer.from(eventJson, 'utf8').length;
-          const calculatedEventEndPos = eventStartPos + totalEventSize;
-
-          if (isDebugEnabled()) {
-            _logger.debug(
-              `Pruning sequence byte calculation:\n` +
-                `  Event start position: ${eventStartPos}\n` +
-                `  Event total size: ${totalEventSize} bytes\n` +
-                `  Event end position: ${calculatedEventEndPos}\n` +
-                `  Exact sequence position: ${exactSequenceEndPos}\n` +
-                `  Current file position: ${this.bytesWritten}`
-            );
-          }
-
-          // Sanity check: sequence position should be within the event
-          if (exactSequenceEndPos > calculatedEventEndPos) {
-            _logger.error(
-              `Pruning sequence position calculation error: ` +
-                `sequence position ${exactSequenceEndPos} is beyond event end ${calculatedEventEndPos}`
-            );
-          } else {
-            // Call the callback with the exact position
-            this.pruningCallback({
-              sequence: pruningInfo.sequence,
-              position: exactSequenceEndPos,
-              timestamp: time,
-            });
-
-            // Use shared logging function
-            logPruningDetection(pruningInfo.sequence, exactSequenceEndPos, '(real-time)');
-          }
         }
       }
 
-      // Store any remaining incomplete data for next time
-      this.utf8Buffer = remainingBuffer;
-    });
+      // Create the event with ALL data (not truncated)
+      const event: AsciinemaEvent = {
+        time,
+        type: 'o',
+        data: processedData,
+      };
+
+      // Calculate the byte position where the event will start
+      const eventStartPos = this.bytesWritten + this.pendingBytes;
+
+      // Write the event
+      await this.writeEvent(event);
+
+      // Now that the write is complete, handle pruning callback if needed
+      if (pruningInfo && this.pruningCallback) {
+        // Use shared calculator for exact byte position
+        const exactSequenceEndPos = calculateSequenceBytePosition(
+          eventStartPos,
+          time,
+          processedData,
+          pruningInfo.index,
+          pruningInfo.sequence.length
+        );
+
+        // Validate the calculation
+        const eventJson = `${JSON.stringify([time, 'o', processedData])}\n`;
+        const totalEventSize = Buffer.from(eventJson, 'utf8').length;
+        const calculatedEventEndPos = eventStartPos + totalEventSize;
+
+        if (isDebugEnabled()) {
+          _logger.debug(
+            `Pruning sequence byte calculation:\n` +
+              `  Event start position: ${eventStartPos}\n` +
+              `  Event total size: ${totalEventSize} bytes\n` +
+              `  Event end position: ${calculatedEventEndPos}\n` +
+              `  Exact sequence position: ${exactSequenceEndPos}\n` +
+              `  Current file position: ${this.bytesWritten}`
+          );
+        }
+
+        // Sanity check: sequence position should be within the event
+        if (exactSequenceEndPos > calculatedEventEndPos) {
+          _logger.error(
+            `Pruning sequence position calculation error: ` +
+              `sequence position ${exactSequenceEndPos} is beyond event end ${calculatedEventEndPos}`
+          );
+        } else {
+          // Call the callback with the exact position
+          this.pruningCallback({
+            sequence: pruningInfo.sequence,
+            position: exactSequenceEndPos,
+            timestamp: time,
+          });
+
+          // Use shared logging function
+          logPruningDetection(pruningInfo.sequence, exactSequenceEndPos, '(real-time)');
+        }
+      }
+    }
+
+    // Store any remaining incomplete data for next time
+    this.utf8Buffer = remainingBuffer;
   }
 
   /**
@@ -380,16 +420,14 @@ export class AsciinemaWriter {
     this.bytesWritten += eventBytes;
     this.pendingBytes -= eventBytes;
 
-    // Sync to disk asynchronously
-    if (this.fd !== null) {
-      try {
-        await fsync(this.fd);
-      } catch (err) {
-        _logger.debug(`fsync failed for ${this.filePath}:`, err);
-      }
-    }
+    // No fsync per event: each one costs ~10 ms on macOS and the queue is
+    // serial, so a burst (`yes | head -200000`) reached the cast file — and so every
+    // viewer — at ~2 KB/s, minutes behind, while the backlog piled up in memory.
+    // Readers see written data through the page cache; it's synced at most once a second,
+    // off the write path, and once more on close().
+    this.scheduleFsync();
 
-    // Validate position periodically (after fsync to ensure data is on disk)
+    // Validate position periodically (the write has drained to the fd, so stat sees it)
     if (
       this.bytesWritten - this.lastValidatedPosition > 1024 * 1024 &&
       !this.validationInProgress
@@ -590,6 +628,22 @@ export class AsciinemaWriter {
   /**
    * Get elapsed time since start in seconds
    */
+  private fsyncTimer: NodeJS.Timeout | null = null;
+
+  /** Flush to disk at most once a second, off the write path (only a crash would lose it). */
+  private scheduleFsync(): void {
+    if (this.fsyncTimer || this.fd === null) return;
+    this.fsyncTimer = setTimeout(() => {
+      this.fsyncTimer = null;
+      const fd = this.fd;
+      if (fd === null || this.writeStream.destroyed) return;
+      fs.fsync(fd, (err) => {
+        if (err) _logger.debug(`fsync failed for ${this.filePath}:`, err);
+      });
+    }, FSYNC_INTERVAL_MS);
+    this.fsyncTimer.unref?.();
+  }
+
   private getElapsedTime(): number {
     return (Date.now() - this.startTime.getTime()) / 1000;
   }
@@ -674,6 +728,18 @@ export class AsciinemaWriter {
 
     // Wait for all queued writes to complete
     await this.writeQueue.drain();
+
+    if (this.fsyncTimer) {
+      clearTimeout(this.fsyncTimer);
+      this.fsyncTimer = null;
+    }
+    if (this.fd !== null) {
+      try {
+        await fsync(this.fd);
+      } catch (err) {
+        _logger.debug(`fsync failed for ${this.filePath}:`, err);
+      }
+    }
 
     // Now it's safe to end the stream
     return new Promise((resolve, reject) => {
