@@ -18,15 +18,22 @@ const INHERITED_CLAUDE_SESSION_VARS = [
   'CLAUDE_CODE_ENTRYPOINT',
   'CLAUDE_CODE_EXECPATH',
   'CLAUDE_CODE_MESSAGING_TOKEN',
+  // Exported next to the token.
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  // An OAuth token handed to the launching process (an SDK host, a bot): a session's own
+  // `claude` must use the user's login, not borrow that identity. Claude Code itself does not
+  // export it.
   'ANTHROPIC_OAUTH_TOKEN',
 ];
 
 /**
- * The server's own login secret (VIBETUNNEL_PASSWORD, the env alternative to --password) never
- * reaches a session: any program run there (an install script, an agent) could read it and
- * log in to VibeTunnel from elsewhere.
+ * The server's own secrets never reach a session: any program run there (an install script,
+ * an agent) could read them. VIBETUNNEL_PASSWORD (the env alternative to --password) logs in
+ * from elsewhere; JWT_SECRET signs VibeTunnel tokens, so it mints a login for anyone;
+ * NGROK_AUTHTOKEN is the operator's ngrok account. Defense in depth: a session runs as the
+ * same user, who can still read the persisted JWT secret file.
  */
-const SERVER_SECRET_VARS = ['VIBETUNNEL_PASSWORD'];
+const SERVER_SECRET_VARS = ['VIBETUNNEL_PASSWORD', 'JWT_SECRET', 'NGROK_AUTHTOKEN'];
 
 export function terminalSessionEnv(
   base: NodeJS.ProcessEnv,
