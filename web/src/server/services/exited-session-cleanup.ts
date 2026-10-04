@@ -2,7 +2,7 @@
  * Removes finished (exited) sessions older than the user's `autoCleanupExitedAfterDays`.
  * Off unless the user picks a number of days in Settings. Each session goes through the same
  * cleanup path as the manual "Clear" (the whole control dir), and running sessions are never
- * touched. Claude conversations live in ~/.claude/projects, so they stay resumable from History.
+ * touched.
  */
 import * as fs from 'fs';
 import * as path from 'path';
