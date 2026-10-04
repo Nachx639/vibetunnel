@@ -10,6 +10,9 @@ export function getTailscaleSearchPaths(
   platform = process.platform,
   environment: NodeJS.ProcessEnv = process.env
 ): string[] {
+  // An explicit binary wins over discovery (custom installs; tests point it at a fake so they
+  // never run `tailscale serve reset` against the developer's real Tailscale).
+  if (environment.VIBETUNNEL_TAILSCALE_BIN) return [environment.VIBETUNNEL_TAILSCALE_BIN];
   const pathEntries = (environment.PATH?.split(delimiter) ?? [])
     .filter((entry) => entry.length > 0)
     .map((entry) => join(entry, platform === 'win32' ? 'tailscale.exe' : 'tailscale'));
@@ -92,7 +95,7 @@ export class TailscaleServeServiceImpl implements TailscaleServeService {
   private serveProcess: ChildProcess | null = null;
   private currentPort: number | null = null;
   private isStarting = false;
-  private tailscaleExecutable = 'tailscale'; // Default to PATH lookup
+  private tailscaleExecutable = process.env.VIBETUNNEL_TAILSCALE_BIN || 'tailscale'; // Default to PATH lookup
   private lastError: string | undefined;
   private startTime: Date | undefined;
   private isPermanentlyDisabled = false;

@@ -1,5 +1,7 @@
+import type { Socket } from 'net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type GitFollowRequest, MessageType } from './pty/socket-protocol.js';
+import type { ApiSocketServer } from './api-socket-server.js';
+import { type GitEventNotify, type GitFollowRequest, MessageType } from './pty/socket-protocol.js';
 
 // Mock net module
 const mockCreateServer = vi.fn();
@@ -59,6 +61,13 @@ const mockExecFile = vi.fn();
 vi.mock('util', () => ({
   promisify: () => mockExecFile,
 }));
+
+/** The private socket handlers these tests drive directly, with a socket that only writes. */
+type ApiSocketServerInternals = {
+  handleGitFollowRequest(socket: Pick<Socket, 'write'>, request: GitFollowRequest): Promise<void>;
+  handleGitEventNotify(socket: Pick<Socket, 'write'>, event: GitEventNotify): Promise<void>;
+};
+const internals = (server: ApiSocketServer) => server as unknown as ApiSocketServerInternals;
 
 describe('ApiSocketServer', () => {
   let apiSocketServer: ApiSocketServer;
@@ -148,7 +157,7 @@ describe('ApiSocketServer', () => {
         write: vi.fn(),
       };
 
-      await apiSocketServer.handleGitFollowRequest(mockSocket, request);
+      await internals(apiSocketServer).handleGitFollowRequest(mockSocket, request);
 
       expect(mockSocket.write).toHaveBeenCalled();
       const call = mockSocket.write.mock.calls[0][0];
@@ -168,7 +177,7 @@ describe('ApiSocketServer', () => {
         write: vi.fn(),
       };
 
-      await apiSocketServer.handleGitFollowRequest(mockSocket, request);
+      await internals(apiSocketServer).handleGitFollowRequest(mockSocket, request);
 
       expect(mockSocket.write).toHaveBeenCalled();
     });
@@ -187,7 +196,7 @@ describe('ApiSocketServer', () => {
         write: vi.fn(),
       };
 
-      await apiSocketServer.handleGitFollowRequest(mockSocket, request);
+      await internals(apiSocketServer).handleGitFollowRequest(mockSocket, request);
 
       expect(mockSocket.write).toHaveBeenCalled();
     });
@@ -198,11 +207,21 @@ describe('ApiSocketServer', () => {
       const mockSocket = {
         write: vi.fn(),
       };
+      // The handler relays the event to the server's HTTP API (localhost:4020 by default);
+      // stub fetch so the test never reaches a VibeTunnel server running on this machine.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(JSON.stringify({ success: true })))
+      );
 
-      await apiSocketServer.handleGitEventNotify(mockSocket, {
-        repoPath: '/Users/test/project',
-        type: 'checkout',
-      });
+      try {
+        await internals(apiSocketServer).handleGitEventNotify(mockSocket, {
+          repoPath: '/Users/test/project',
+          type: 'checkout',
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
 
       expect(mockSocket.write).toHaveBeenCalled();
       const call = mockSocket.write.mock.calls[0][0];

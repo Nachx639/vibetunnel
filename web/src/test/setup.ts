@@ -1,4 +1,8 @@
 // Global test setup for Vitest
+
+import { mkdtempSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { webcrypto } from 'crypto';
 import { vi } from 'vitest';
 import { MockFitAddon, MockTerminal } from './utils/terminal-mocks';
@@ -9,6 +13,22 @@ vi.mock('ghostty-web', () => ({
   Terminal: MockTerminal,
   FitAddon: MockFitAddon,
 }));
+
+// Server tests never touch the real home: a test that saves state (push subscriptions,
+// config, control dir) would otherwise write into the developer's ~/.vibetunnel, which a
+// running VibeTunnel server reads. Set VIBETUNNEL_TEST_REAL_HOME=1 to opt out.
+if (typeof window === 'undefined' && !process.env.VIBETUNNEL_TEST_REAL_HOME) {
+  const realHome = homedir();
+  if (!process.env.HOME?.startsWith(tmpdir())) {
+    process.env.VIBETUNNEL_TEST_ORIGINAL_HOME ??= realHome;
+    process.env.HOME = mkdtempSync(join(tmpdir(), 'vt-test-home-'));
+  }
+  // These move the agents' data out of HOME: set in the developer's shell, tests would read
+  // (and could write) their real Claude, Codex and Gemini folders.
+  delete process.env.CLAUDE_CONFIG_DIR;
+  delete process.env.CODEX_HOME;
+  delete process.env.GEMINI_CLI_HOME;
+}
 
 // Disable SEA loader for tests
 process.env.VIBETUNNEL_SEA = '';
@@ -60,7 +80,7 @@ vi.mock('node-pty', () => {
         // Simulate process exit
         if (exitCallback) {
           setTimeout(() => {
-            exitCallback({ exitCode: signal === 'SIGTERM' ? 143 : 137, signal: 15 });
+            exitCallback?.({ exitCode: signal === 'SIGTERM' ? 143 : 137, signal: 15 });
           }, 50);
         }
       }),
@@ -113,8 +133,12 @@ global.IntersectionObserver = class IntersectionObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
   root = null;
   rootMargin = '';
+  scrollMargin = '';
   thresholds = [];
 };
 
@@ -134,43 +158,33 @@ if (typeof global !== 'undefined') {
   (global as any).localStorage = localStorageMock;
 }
 
-// Prevent duplicate custom element registration in tests
-// We need to patch the registration after each test to handle module re-imports
-const registeredElements = new Set<string>();
+// Prevent duplicate custom element registration in tests (a module re-imported after
+// vi.resetModules() defines its elements again). Wrap define once: re-wrapping before every
+// test stacked wrappers that shared a "seen" set, so the outer one marked a name and the inner
+// one skipped it, and any element first imported inside a test was never registered.
+// The real registry is the only source of truth.
+const PATCHED = Symbol.for('vibetunnel.test.customElementsPatched');
 
-// Helper to patch customElements.define
 function patchCustomElements() {
-  if (typeof window !== 'undefined' && window.customElements) {
-    const originalDefine = window.customElements.define.bind(window.customElements);
-    const originalGet = window.customElements.get.bind(window.customElements);
-
-    window.customElements.define = (
-      name: string,
-      elementConstructor: CustomElementConstructor,
-      options?: ElementDefinitionOptions
-    ) => {
-      // Check both our registry and the real registry
-      if (registeredElements.has(name) || originalGet(name)) {
-        return;
-      }
-      registeredElements.add(name);
-      try {
-        originalDefine(name, elementConstructor, options);
-      } catch (e) {
-        // Ignore duplicate registration errors
-        if (e instanceof Error && e.message.includes('already been used')) {
-          return;
-        }
-        throw e;
-      }
-    };
-  }
+  if (typeof window === 'undefined' || !window.customElements) return;
+  const registry = window.customElements as CustomElementRegistry & { [PATCHED]?: boolean };
+  if (registry[PATCHED]) return;
+  const originalDefine = registry.define.bind(registry);
+  registry.define = (
+    name: string,
+    elementConstructor: CustomElementConstructor,
+    options?: ElementDefinitionOptions
+  ) => {
+    if (registry.get(name)) return;
+    originalDefine(name, elementConstructor, options);
+  };
+  registry[PATCHED] = true;
 }
 
 // Apply patch immediately for module imports
 patchCustomElements();
 
-// Re-apply patch before each test in case happy-dom resets it
+// Re-apply before each test in case the environment swapped the registry (no-op otherwise)
 beforeEach(() => {
   patchCustomElements();
 });
@@ -220,6 +234,40 @@ global.WebSocket = class WebSocket extends EventTarget {
 // Set up fetch mock (only for non-e2e tests)
 if (typeof window !== 'undefined') {
   global.fetch = vi.fn();
+}
+
+// Server tests never reach a VibeTunnel server running on this machine. A relay that is not
+// stubbed (the API socket's git-event relay, for one) would otherwise POST to the default
+// port 4020, or 4021 (`pnpm dev:mobile`), of the developer's own server. Tests that need HTTP
+// start their own server on port 0 or stub fetch. Add more ports with
+// VIBETUNNEL_TEST_BLOCK_PORTS=4100,4101.
+if (typeof window === 'undefined' && typeof globalThis.fetch === 'function') {
+  const realFetch = globalThis.fetch.bind(globalThis);
+  const blockedPorts = new Set([
+    '4020',
+    '4021',
+    ...(process.env.VIBETUNNEL_TEST_BLOCK_PORTS ?? '')
+      .split(',')
+      .map((port) => port.trim())
+      .filter(Boolean),
+  ]);
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    let url: URL | null = null;
+    try {
+      url = new URL(href);
+    } catch {
+      url = null;
+    }
+    if (
+      url &&
+      ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) &&
+      blockedPorts.has(url.port)
+    ) {
+      throw new Error(`test tried to reach a local VibeTunnel server at ${url.host}: stub fetch`);
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
 }
 
 // Configure console to reduce noise in tests

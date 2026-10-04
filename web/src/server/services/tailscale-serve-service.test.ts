@@ -92,6 +92,20 @@ describe('TailscaleServeService Integration Tests', () => {
       expect(service.isRunning()).toBe(true);
     });
 
+    it('sends the reset on stop to the configured binary, never the real Tailscale', async () => {
+      const fake = process.env.VIBETUNNEL_TAILSCALE_BIN;
+      expect(fake).toBeTruthy();
+      const calls = `${fake}.calls`;
+      await rm(calls, { force: true });
+      const configured = new TailscaleServeServiceImpl();
+      (configured as unknown as { currentPort: number | null }).currentPort = 43213;
+
+      await configured.stop();
+
+      const { readFile } = await import('fs/promises');
+      expect(await readFile(calls, 'utf8')).toContain('serve reset');
+    });
+
     it('clears configured state after a failed background command exit', () => {
       const internals = service as unknown as {
         currentPort: number | null;
@@ -505,7 +519,7 @@ describe('Tailscale Integration Tests (Requires ENABLE_TAILSCALE_TESTS=1)', () =
     } catch (error) {
       // Even errors should be handled gracefully
       expect(error).toBeInstanceOf(Error);
-      console.warn('Tailscale test failed (this may be expected):', error.message);
+      console.warn('Tailscale test failed (this may be expected):', (error as Error).message);
     }
   });
 });

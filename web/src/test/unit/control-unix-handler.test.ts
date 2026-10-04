@@ -71,7 +71,7 @@ describe('Control Unix Handler', () => {
     });
 
     it('rejects startup when restrictive socket permissions cannot be set', async () => {
-      const fs = await vi.importMock<typeof import('fs')>('fs');
+      const fs = await import('fs');
       vi.mocked(fs.chmod).mockImplementationOnce((_path, _mode, callback) => {
         callback(new Error('permission denied'));
       });

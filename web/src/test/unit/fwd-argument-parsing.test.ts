@@ -8,10 +8,21 @@ import {
   rmSync,
   writeFileSync,
 } from 'fs';
-import { tmpdir } from 'os';
+import { homedir, tmpdir } from 'os';
 import { join } from 'path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProcessUtils } from '../../server/pty/process-utils.js';
+
+// The alias path needs a shell config file. Server tests run with an empty temporary HOME
+// (src/test/setup.ts, so no test touches the real one); give it the rc files an account has,
+// or these tests would depend on whoever runs them.
+beforeAll(() => {
+  if (!homedir().startsWith(tmpdir())) return; // a real HOME is never written to
+  for (const rc of ['.zshrc', '.bashrc']) {
+    const file = join(homedir(), rc);
+    if (!existsSync(file)) writeFileSync(file, '');
+  }
+});
 
 const itWithBash = existsSync('/bin/bash') ? it : it.skip;
 const itWithTcsh = existsSync('/bin/tcsh') ? it : it.skip;
