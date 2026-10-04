@@ -37,6 +37,8 @@ export class Settings extends LitElement {
   // App settings state
   @state() private repositoryBasePath = DEFAULT_REPOSITORY_BASE_PATH;
   @state() private repositoryCount = 0;
+  /** Days before finished sessions are removed by the server; 0 = off (the default). */
+  @state() private autoCleanupDays = 0;
   @state() private isDiscoveringRepositories = false;
   @state() private showQuickKeysEditor = false;
 
@@ -168,6 +170,7 @@ export class Settings extends LitElement {
           // Always use server's repository base path
           this.repositoryBasePath = serverConfig.repositoryBasePath || DEFAULT_REPOSITORY_BASE_PATH;
           logger.debug('Loaded repository base path:', this.repositoryBasePath);
+          this.autoCleanupDays = serverConfig.autoCleanupExitedAfterDays ?? 0;
           // Force update to ensure UI reflects the loaded value
           this.requestUpdate();
         } catch (error) {
@@ -419,6 +422,54 @@ export class Settings extends LitElement {
         this.requestUpdate();
       }
     }
+  }
+
+  private async handleAutoCleanupChange(select: HTMLSelectElement) {
+    const days = Number(select.value);
+    const previous = this.autoCleanupDays;
+    if (!this.serverConfigService || !Number.isInteger(days) || days === previous) return;
+    this.autoCleanupDays = days;
+    try {
+      await this.serverConfigService.updateConfig({ autoCleanupExitedAfterDays: days });
+    } catch (error) {
+      logger.error('Failed to update finished-session cleanup:', error);
+      this.autoCleanupDays = previous;
+      select.value = String(previous);
+      this.dispatchEvent(
+        new CustomEvent('error', { detail: "Couldn't save the cleanup setting. Try again." })
+      );
+    }
+  }
+
+  private renderAutoCleanup() {
+    const choices = [0, 1, 3, 7, 30];
+    // A value set elsewhere (e.g. config.json) still shows instead of silently reading "Off".
+    if (!choices.includes(this.autoCleanupDays)) choices.push(this.autoCleanupDays);
+    const label = (days: number) => (days === 0 ? 'Off' : days === 1 ? '1 day' : `${days} days`);
+    return html`
+      <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-auto-cleanup">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="min-w-0">
+            <label class="text-primary font-medium" for="auto-cleanup-select">Clean up finished sessions</label>
+            <p class="text-muted text-xs mt-1">Finished sessions older than this are removed automatically.</p>
+          </div>
+          <select
+            id="auto-cleanup-select"
+            class="input-field py-2 text-sm w-full sm:w-auto"
+            data-testid="settings-auto-cleanup-select"
+            @change=${(e: Event) => this.handleAutoCleanupChange(e.target as HTMLSelectElement)}
+          >
+            ${choices.map(
+              (days) => html`
+                <option value=${String(days)} ?selected=${days === this.autoCleanupDays}>
+                  ${label(days)}
+                </option>
+              `
+            )}
+          </select>
+        </div>
+      </div>
+    `;
   }
 
   private get isNotificationsSupported(): boolean {
@@ -739,6 +790,8 @@ export class Settings extends LitElement {
             />
           </div>
         </div>
+
+        ${this.renderAutoCleanup()}
 
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">
           <div class="flex items-center justify-between gap-4">

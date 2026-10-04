@@ -298,7 +298,9 @@ final class ConfigManager {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(config)
+            let data = try Self.keepingServerOwnedKeys(
+                in: encoder.encode(config),
+                from: try? Data(contentsOf: self.configPath))
 
             // Ensure directory exists
             try FileManager.default.createDirectory(at: self.configDir, withIntermediateDirectories: true)
@@ -309,6 +311,40 @@ final class ConfigManager {
         } catch {
             self.logger.error("Failed to save config: \(error.localizedDescription)")
         }
+    }
+
+    /// Top-level keys this app writes. Anything else in config.json belongs to the server (set
+    /// from the web UI, such as `autoCleanupExitedAfterDays`).
+    nonisolated private static let appOwnedKeys: Set<String> = [
+        "version",
+        "quickStartCommands",
+        "repositoryBasePath",
+        "server",
+        "development",
+        "preferences",
+        "remoteAccess",
+        "sessionDefaults",
+    ]
+
+    /// Adds the server-owned top-level keys of the config.json on disk to what this app is about
+    /// to write. Without it, saving settings from the app dropped every key it doesn't model, and
+    /// settings changed in the web UI were lost. The app's own keys stay its to change or clear.
+    nonisolated static func keepingServerOwnedKeys(in encoded: Data, from existing: Data?) throws -> Data {
+        guard let existing,
+              let onDisk = try? JSONSerialization.jsonObject(with: existing) as? [String: Any],
+              var merged = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        else {
+            return encoded
+        }
+        var kept = false
+        for (key, value) in onDisk where !self.appOwnedKeys.contains(key) && merged[key] == nil {
+            merged[key] = value
+            kept = true
+        }
+        guard kept else { return encoded }
+        return try JSONSerialization.data(
+            withJSONObject: merged,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 
     // MARK: - File Monitoring

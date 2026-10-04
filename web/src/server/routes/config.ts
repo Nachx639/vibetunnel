@@ -36,7 +36,11 @@ export interface AppConfig {
   serverConfigured?: boolean;
   quickStartCommands?: QuickStartCommand[];
   notificationPreferences?: NotificationPreferences;
+  /** Days after which exited sessions are removed automatically; 0 = off. */
+  autoCleanupExitedAfterDays: number;
 }
+
+const AutoCleanupDaysSchema = z.number().int().min(0).max(3650);
 
 interface ConfigRouteOptions {
   configService: ConfigService;
@@ -64,6 +68,7 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         serverConfigured: true, // Always configured when server is running
         quickStartCommands: vibeTunnelConfig.quickStartCommands,
         notificationPreferences: configService.getNotificationPreferences(),
+        autoCleanupExitedAfterDays: vibeTunnelConfig.autoCleanupExitedAfterDays ?? 0,
       };
 
       logger.debug('[GET /api/config] Returning app config:', config);
@@ -80,11 +85,17 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
    */
   router.put('/config', (req, res) => {
     try {
-      const { quickStartCommands, repositoryBasePath, notificationPreferences } = req.body;
+      const {
+        quickStartCommands,
+        repositoryBasePath,
+        notificationPreferences,
+        autoCleanupExitedAfterDays,
+      } = req.body;
       const updates: { [key: string]: unknown } = {};
       let validatedCommands: QuickStartCommand[] | undefined;
       let validatedPath: string | undefined;
       let validatedPrefs: Partial<NotificationPreferences> | undefined;
+      let validatedCleanupDays: number | undefined;
 
       if (quickStartCommands !== undefined) {
         // First check if it's an array
@@ -138,6 +149,16 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         }
       }
 
+      if (autoCleanupExitedAfterDays !== undefined) {
+        const parsed = AutoCleanupDaysSchema.safeParse(autoCleanupExitedAfterDays);
+        if (parsed.success) {
+          validatedCleanupDays = parsed.data;
+          updates.autoCleanupExitedAfterDays = validatedCleanupDays;
+        } else {
+          logger.error('[PUT /api/config] Invalid autoCleanupExitedAfterDays:', parsed.error);
+        }
+      }
+
       if (Object.keys(updates).length > 0) {
         const currentConfig = configService.getConfig();
         const updatedConfig: VibeTunnelConfig = { ...currentConfig };
@@ -147,6 +168,9 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         }
         if (validatedPath) {
           updatedConfig.repositoryBasePath = validatedPath;
+        }
+        if (validatedCleanupDays !== undefined) {
+          updatedConfig.autoCleanupExitedAfterDays = validatedCleanupDays;
         }
         if (validatedPrefs) {
           const currentPreferences = currentConfig.preferences ?? {

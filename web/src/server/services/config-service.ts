@@ -24,6 +24,7 @@ const ConfigSchema = z.object({
     })
   ),
   repositoryBasePath: z.string().optional(),
+  autoCleanupExitedAfterDays: z.number().int().min(0).max(3650).optional(),
   // Extended configuration sections - we parse but don't use most of these yet
   server: z
     .object({

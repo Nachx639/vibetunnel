@@ -35,6 +35,7 @@ import { CastOutputHub } from './services/cast-output-hub.js';
 import { CloudflareService } from './services/cloudflare-service.js';
 import { ConfigService } from './services/config-service.js';
 import { ControlDirWatcher } from './services/control-dir-watcher.js';
+import { ExitedSessionCleanup } from './services/exited-session-cleanup.js';
 import { GitStatusHub } from './services/git-status-hub.js';
 import { HQClient } from './services/hq-client.js';
 import { mdnsService } from './services/mdns-service.js';
@@ -540,6 +541,7 @@ interface AppInstance {
   hqClient: HQClient | null;
   controlDirWatcher: ControlDirWatcher | null;
   pushNotificationService: PushNotificationService | null;
+  exitedSessionCleanup: ExitedSessionCleanup;
   inflightRequests: InflightRequests;
 }
 
@@ -1706,6 +1708,19 @@ export async function createApp(): Promise<AppInstance> {
     });
   };
 
+  // Opt-in removal of old finished sessions (Settings > Clean up finished sessions)
+  const exitedSessionCleanup = new ExitedSessionCleanup({
+    controlPath: CONTROL_DIR,
+    listSessions: () => sessionManager.listSessions(),
+    cleanupSession: (sessionId) => {
+      ptyManager.cleanupSession(sessionId);
+      if (config.isHQMode && remoteRegistry) {
+        remoteRegistry.removeSessionFromRemote(sessionId);
+      }
+    },
+    getDays: () => configService.getConfig().autoCleanupExitedAfterDays,
+  });
+
   return {
     app,
     server,
@@ -1719,6 +1734,7 @@ export async function createApp(): Promise<AppInstance> {
     hqClient,
     controlDirWatcher,
     pushNotificationService,
+    exitedSessionCleanup,
     inflightRequests,
   };
 }
@@ -1781,6 +1797,7 @@ export async function startVibeTunnelServer() {
     controlDirWatcher,
     config,
     configService,
+    exitedSessionCleanup,
     inflightRequests,
     wss,
   } = appInstance;
@@ -1792,6 +1809,9 @@ export async function startVibeTunnelServer() {
   }
 
   startServer();
+
+  // Remove finished sessions past the user's chosen age: now, then hourly (off by default)
+  exitedSessionCleanup.start();
 
   // Cleanup old terminals every 5 minutes
   const _terminalCleanupInterval = setInterval(
@@ -1835,6 +1855,7 @@ export async function startVibeTunnelServer() {
       if (_subscriptionCleanupInterval) {
         clearInterval(_subscriptionCleanupInterval);
       }
+      exitedSessionCleanup.stop();
       logger.debug('Cleared cleanup intervals');
 
       // Stop configuration service watcher

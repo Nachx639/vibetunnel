@@ -19,6 +19,8 @@ export interface ServerConfig {
   serverConfigured?: boolean;
   quickStartCommands?: QuickStartCommand[];
   notificationPreferences?: NotificationPreferences;
+  /** Days after which finished sessions are removed automatically; 0 = off. */
+  autoCleanupExitedAfterDays?: number;
 }
 
 export class ServerConfigService {

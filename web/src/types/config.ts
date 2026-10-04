@@ -25,6 +25,8 @@ export interface VibeTunnelConfig {
   version: number;
   quickStartCommands: QuickStartCommand[];
   repositoryBasePath?: string;
+  /** Remove exited sessions older than this many days; 0 or missing = off (never on by default). */
+  autoCleanupExitedAfterDays?: number;
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

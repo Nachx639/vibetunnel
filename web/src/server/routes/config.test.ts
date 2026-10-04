@@ -59,6 +59,7 @@ describe('Config Routes', () => {
         repositoryBasePath: '/home/user/repos',
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
+        autoCleanupExitedAfterDays: 0,
       });
 
       expect(mockConfigService.getConfig).toHaveBeenCalledOnce();
@@ -77,6 +78,7 @@ describe('Config Routes', () => {
         repositoryBasePath: '~/Documents',
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
+        autoCleanupExitedAfterDays: 0,
       });
     });
 
@@ -285,6 +287,34 @@ describe('Config Routes', () => {
       });
     });
 
+    it('reports finished-session cleanup as off when never chosen', async () => {
+      const response = await request(app).get('/api/config');
+      expect(response.body.autoCleanupExitedAfterDays).toBe(0);
+    });
+
+    it('saves the finished-session cleanup age, including turning it off', async () => {
+      for (const days of [7, 0]) {
+        const response = await request(app).put('/api/config').send({
+          autoCleanupExitedAfterDays: days,
+        });
+        expect(response.status).toBe(200);
+        expect(mockConfigService.updateConfig).toHaveBeenLastCalledWith({
+          ...defaultConfig,
+          autoCleanupExitedAfterDays: days,
+        });
+      }
+    });
+
+    it('rejects a negative or fractional cleanup age', async () => {
+      for (const days of [-1, 1.5, '7']) {
+        const response = await request(app).put('/api/config').send({
+          autoCleanupExitedAfterDays: days,
+        });
+        expect(response.status).toBe(400);
+      }
+      expect(mockConfigService.updateConfig).not.toHaveBeenCalled();
+    });
+
     it('should reject invalid repository base path', async () => {
       const response = await request(app).put('/api/config').send({ repositoryBasePath: 123 }); // Not a string
 
@@ -319,6 +349,7 @@ describe('Config Routes', () => {
           serverConfigured: true,
           quickStartCommands: defaultConfig.quickStartCommands,
           notificationPreferences,
+          autoCleanupExitedAfterDays: 0,
         });
       });
 

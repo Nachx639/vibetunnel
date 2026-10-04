@@ -77,6 +77,16 @@ describe('ConfigService', () => {
       expect(service.getConfig()).toEqual(customConfig);
     });
 
+    it('leaves finished-session cleanup off by default and keeps a chosen age', () => {
+      expect(DEFAULT_CONFIG.autoCleanupExitedAfterDays ?? 0).toBe(0);
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(
+        JSON.stringify({ version: 2, quickStartCommands: [], autoCleanupExitedAfterDays: 3 })
+      );
+      expect(new ConfigService().getConfig().autoCleanupExitedAfterDays).toBe(3);
+    });
+
     it('should create default config if file does not exist', () => {
       vi.mocked(fs.existsSync).mockImplementation((p) => {
         if (p === mockConfigDir) return true;
