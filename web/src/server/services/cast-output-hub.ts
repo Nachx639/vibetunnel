@@ -363,9 +363,14 @@ export class CastOutputHub {
   ): Promise<void> {
     const sessionInfo = this.sessionManager.loadSessionInfo(sessionId);
     let clearOffset = sessionInfo?.lastClearOffset ?? 0;
-    if (fs.existsSync(streamPath)) {
-      const stats = fs.statSync(streamPath);
-      clearOffset = Math.min(clearOffset, stats.size);
+    const size = fs.existsSync(streamPath) ? fs.statSync(streamPath).size : 0;
+    if (clearOffset > size) {
+      // Saved against a longer cast (a forwarder restarted under the same id truncates it).
+      // Clamped to the size it left nothing to replay, and a reconnect showed no history. It says nothing about this file: replay its bounded tail instead.
+      logger.warn(
+        `ignoring lastClearOffset ${clearOffset} of ${sessionId}: its cast is only ${size} bytes`
+      );
+      clearOffset = 0;
     }
     clearOffset = Math.min(clearOffset, endOffset);
     // lastClearOffset points inside the event that contains the clear sequence. Start at

@@ -52,6 +52,14 @@ describe('CastOutputHub replay', () => {
 
     expect(output).toBe('\x1b[Hcurrent screen + typing');
   });
+
+  it('ignores a stored clear offset past the end of the file', async () => {
+    // Saved against a longer cast (a forwarder restarted under the same id truncates it):
+    // clamped to the size, it left nothing to replay and a reconnect showed no history.
+    const output = await replay((c) => Buffer.byteLength(c) + 900 * 1024 * 1024);
+
+    expect(output).toBe('\x1b[Hcurrent screen + typing');
+  });
 });
 
 describe('CastOutputHub live follow', () => {
