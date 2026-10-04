@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { type Request, type Response, Router } from 'express';
 import { createReadStream, statSync } from 'fs';
 import * as fs from 'fs/promises';
@@ -12,6 +12,9 @@ import { expandTildePath } from '../utils/path-utils.js';
 const logger = createLogger('filesystem');
 
 const execAsync = promisify(exec);
+// File paths go to git as arguments, never through a shell: a file named `a$(cmd).txt` in
+// the repo ran `cmd` when its diff was opened.
+const execFileAsync = promisify(execFile);
 
 interface FileInfo {
   name: string;
@@ -472,8 +475,9 @@ export function createFilesystemRoutes(): Router {
 
       // Get git diff
       const diffStart = Date.now();
-      const { stdout: diff } = await execAsync(`git diff HEAD -- "${relativePath}"`, {
+      const { stdout: diff } = await execFileAsync('git', ['diff', 'HEAD', '--', relativePath], {
         cwd: process.cwd(),
+        maxBuffer: 16 * 1024 * 1024,
       });
 
       const diffTime = Date.now() - diffStart;
@@ -532,8 +536,9 @@ export function createFilesystemRoutes(): Router {
         const gitPath = `./${relativePath}`;
         logger.debug(`Getting HEAD version: git show HEAD:"${gitPath}"`);
 
-        const { stdout } = await execAsync(`git show HEAD:"${gitPath}"`, {
+        const { stdout } = await execFileAsync('git', ['show', `HEAD:${gitPath}`], {
           cwd: process.cwd(),
+          maxBuffer: 16 * 1024 * 1024,
         });
         originalContent = stdout;
         logger.debug(`Got HEAD version for ${gitPath}, length: ${originalContent.length}`);

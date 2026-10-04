@@ -44,8 +44,9 @@ export class FishHandler {
   async getCompletions(partial: string, cwd: string = process.cwd()): Promise<string[]> {
     return new Promise((resolve) => {
       try {
-        // Use fish's built-in completion system with proper escaping
-        const fishProcess = spawn('fish', ['-c', `complete -C ${JSON.stringify(partial)}`], {
+        // The partial goes to fish as an argument ($argv), never spliced into the script:
+        // JSON.stringify quoting isn't fish quoting, and fish expands $(…) inside "…".
+        const fishProcess = spawn('fish', ['-c', 'complete -C "$argv[1]"', partial], {
           cwd,
           stdio: ['ignore', 'pipe', 'ignore'],
         });

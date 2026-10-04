@@ -9,6 +9,7 @@
  */
 import type { Session } from '../../../shared/types.js';
 import { createLogger } from '../../utils/logger.js';
+import { shellQuotePath } from '../../utils/shell-quote.js';
 import type { FilePicker } from '../file-picker.js';
 import type { InputManager } from './input-manager.js';
 
@@ -208,8 +209,8 @@ export class FileOperationsManager {
     // Close the file picker
     this.callbacks.setShowImagePicker(false);
 
-    // Escape the path for shell use (wrap in quotes if it contains spaces)
-    const escapedPath = path.includes(' ') ? `"${path}"` : path;
+    // Quote the path for the shell: a name with quotes, `$(...)` or `;` must never run.
+    const escapedPath = shellQuotePath(path);
 
     // Send the path to the terminal
     await inputManager.sendInputText(escapedPath);
@@ -232,8 +233,8 @@ export class FileOperationsManager {
 
     if (!path || !session) return;
 
-    // Escape the path for shell use (wrap in quotes if it contains spaces)
-    const escapedPath = path.includes(' ') ? `"${path}"` : path;
+    // Quote the path for the shell: a name with quotes, `$(...)` or `;` must never run.
+    const escapedPath = shellQuotePath(path);
 
     // Send the path to the terminal
     const inputManager = this.callbacks.getInputManager();
