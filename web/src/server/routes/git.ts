@@ -8,6 +8,7 @@ import { createLogger } from '../utils/logger.js';
 import { resolveAbsolutePath } from '../utils/path-utils.js';
 import { createControlEvent } from '../websocket/control-protocol.js';
 import { controlUnixHandler } from '../websocket/control-unix-handler.js';
+import { registerGitChangesRoutes } from './git-changes.js';
 
 const logger = createLogger('git-routes');
 const execFile = promisify(require('child_process').execFile);
@@ -123,6 +124,7 @@ async function execGit(
  */
 export function createGitRoutes(): Router {
   const router = Router();
+  registerGitChangesRoutes(router);
 
   /**
    * GET /api/git/repo-info

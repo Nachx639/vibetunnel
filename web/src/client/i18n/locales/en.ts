@@ -866,6 +866,27 @@ export const en = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Gold',
   'theme.clay': 'Clay',
+
+  // Changes sheet (git diff review)
+  'changes.menuItem': 'Changes',
+  'changes.title': 'Changes',
+  'changes.badge': '{count} changed files',
+  'changes.notARepo': 'Not a git repository',
+  'changes.summaryOne': '1 file',
+  'changes.summaryMany': '{count} files',
+  'changes.refresh': 'Refresh',
+  'changes.close': 'Close',
+  'changes.back': 'Back',
+  'changes.loading': 'Loading…',
+  'changes.empty': 'No changes since the last commit',
+  'changes.notRepo': 'This folder is not in a git repository',
+  'changes.error': "Couldn't load changes",
+  'changes.binary': 'Binary file: no text diff',
+  'changes.noDiff': 'No text changes in this file',
+  'changes.truncated': 'Diff cut at 200 KB',
+  'changes.renamedFrom': 'Renamed from {path}',
+  'changes.untrackedMore': 'Some untracked files are not shown',
+  'changes.badge.one': '{count} changed file',
 };
 
 export type MessageKey = keyof typeof en;

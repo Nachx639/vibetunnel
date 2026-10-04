@@ -62,6 +62,7 @@ export class SessionHeader extends LitElement {
   @property({ type: Function }) onToggleViewMode?: () => void;
   @property({ type: Boolean }) chatMode = false;
   @property({ type: Function }) onToggleChatMode?: () => void;
+  @property({ type: Function }) onShowChanges?: () => void;
   @state() private isHovered = false;
   @state() private useCompactMenu = false;
   private resizeObserver?: ResizeObserver;
@@ -409,6 +410,7 @@ export class SessionHeader extends LitElement {
                   .onToggleViewMode=${() => this.dispatchEvent(new CustomEvent('toggle-view-mode'))}
                   .chatMode=${this.chatMode}
                   .onToggleChatMode=${this.onToggleChatMode}
+                  .onShowChanges=${this.onShowChanges}
                   @theme-changed=${(e: CustomEvent) => {
                     this.currentTheme = e.detail.theme;
                   }}

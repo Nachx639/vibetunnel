@@ -49,6 +49,8 @@ export class CompactMenu extends LitElement {
   @property({ type: Function }) onToggleViewMode?: () => void;
   @property({ type: Boolean }) chatMode = false;
   @property({ type: Function }) onToggleChatMode?: () => void;
+  /** Opens the Changes sheet (the session folder's uncommitted git diff). */
+  @property({ type: Function }) onShowChanges?: () => void;
 
   @state() private showMenu = false;
   @state() private focusedIndex = -1;
@@ -283,6 +285,15 @@ export class CompactMenu extends LitElement {
           </svg>
           ${t('menu.browseFiles')}
         </button>
+
+        <!-- Changes: review the repository's uncommitted diff -->
+        ${
+          this.onShowChanges
+            ? this.hasGitRepo
+              ? this.renderChangesItem(menuItemIndex++)
+              : this.renderChangesUnavailable()
+            : nothing
+        }
         
         <!-- Upload Image -->
         <button
@@ -446,6 +457,63 @@ export class CompactMenu extends LitElement {
             : nothing
         }
       </div>
+    `;
+  }
+
+  /** Changed files as the session's git status watcher counts them (no extra request). */
+  private changedFileCount(): number {
+    const s = this.session;
+    return (s?.gitModifiedCount ?? 0) + (s?.gitAddedCount ?? 0) + (s?.gitDeletedCount ?? 0);
+  }
+
+  /**
+   * Outside a git repository there are no changes to show, but the item stays visible (greyed,
+   * with the reason) so the feature doesn't seem to come and go. A div, not a button, so
+   * arrow-key navigation skips it.
+   */
+  private renderChangesUnavailable() {
+    return html`
+      <div
+        class="w-full px-4 py-3 text-sm font-mono flex items-center gap-3 opacity-50 cursor-default select-none"
+        data-testid="compact-changes-unavailable"
+        aria-disabled="true"
+        title=${t('changes.notARepo')}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8.75 1.75V5H12a.75.75 0 0 1 0 1.5H8.75v3.25a.75.75 0 0 1-1.5 0V6.5H4A.75.75 0 0 1 4 5h3.25V1.75a.75.75 0 0 1 1.5 0zM4 12.5h8a.75.75 0 0 1 0 1.5H4a.75.75 0 0 1 0-1.5z"/>
+        </svg>
+        <span class="flex-1 flex flex-col">
+          <span>${t('changes.menuItem')}</span>
+          <span class="text-xs">${t('changes.notARepo')}</span>
+        </span>
+      </div>
+    `;
+  }
+
+  private renderChangesItem(index: number) {
+    const count = this.changedFileCount();
+    return html`
+      <button
+        class="w-full text-left px-4 py-3 text-sm font-mono text-primary hover:bg-surface-hover hover:text-primary flex items-center gap-3 ${this.focusedIndex === index ? 'bg-surface-hover text-primary' : ''}"
+        @click=${() => this.handleAction(this.onShowChanges)}
+        data-testid="compact-changes"
+        tabindex="${this.showMenu ? '0' : '-1'}"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8.75 1.75V5H12a.75.75 0 0 1 0 1.5H8.75v3.25a.75.75 0 0 1-1.5 0V6.5H4A.75.75 0 0 1 4 5h3.25V1.75a.75.75 0 0 1 1.5 0zM4 12.5h8a.75.75 0 0 1 0 1.5H4a.75.75 0 0 1 0-1.5z"/>
+        </svg>
+        <span class="flex-1">${t('changes.menuItem')}</span>
+        ${
+          count > 0
+            ? html`<span
+                class="min-w-[22px] px-1.5 py-0.5 rounded-full text-xs text-center bg-primary text-bg"
+                data-testid="compact-changes-badge"
+                aria-label=${t('changes.badge', { count })}
+                >${count}</span
+              >`
+            : nothing
+        }
+      </button>
     `;
   }
 

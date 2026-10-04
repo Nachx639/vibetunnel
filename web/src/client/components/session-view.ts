@@ -28,6 +28,7 @@ import { createLogger } from '../utils/logger.js';
 import { TERMINAL_IDS } from '../utils/terminal-constants.js';
 import type { TerminalThemeId } from '../utils/terminal-themes.js';
 // Manager imports
+import { closeChangesSheet, openChangesSheet } from './session-view/changes-sheet.js';
 import { ConnectionManager } from './session-view/connection-manager.js';
 import {
   type DirectKeyboardCallbacks,
@@ -424,6 +425,7 @@ export class SessionView extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    closeChangesSheet();
 
     // Remove orientation listeners
     if (this.boundHandleOrientationChange) {
@@ -743,6 +745,12 @@ export class SessionView extends LitElement {
       }, 50);
     }
   }
+
+  /** Changes: the session folder's uncommitted git diff, reviewable on a phone. */
+  private handleShowChanges = () => {
+    const dir = this.session?.workingDir || this.session?.gitRepoPath;
+    if (dir) openChangesSheet(dir);
+  };
 
   private toggleDirectKeyboard() {
     this.uiStateManager.toggleDirectKeyboard();
@@ -1434,6 +1442,7 @@ export class SessionView extends LitElement {
             .onToggleViewMode=${() => this.sessionActionsHandler.handleToggleViewMode()}
             .chatMode=${uiState.chatMode}
             .onToggleChatMode=${() => this.handleToggleChatMode()}
+            .onShowChanges=${this.handleShowChanges}
             @close-width-selector=${() => {
               this.uiStateManager.setShowWidthSelector(false);
               this.uiStateManager.setCustomWidth('');
