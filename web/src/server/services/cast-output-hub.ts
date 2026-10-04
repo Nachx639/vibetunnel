@@ -64,9 +64,19 @@ export type CastOutputHubEvent =
 
 export type CastOutputHubListener = (event: CastOutputHubEvent) => void;
 
+/** Sent before the history a reset replays: a full terminal reset (RIS). */
+const RESET_EVENT: CastOutputHubEvent = { kind: 'output', data: '\x1bc', historical: true };
+
+interface HubClient {
+  /** Takes a live event; held back while this client's replay runs. */
+  deliver: CastOutputHubListener;
+  /** (Re)plays the history up to lastOffset, first resetting the terminal when asked. */
+  replay: (reset: boolean) => void;
+}
+
 interface WatcherInfo {
   streamPath: string;
-  clients: Set<CastOutputHubListener>;
+  clients: Set<HubClient>;
   watcher?: fs.FSWatcher;
   /** Reads new output now and then in case the watcher missed a change (WATCH_POLL_MS). */
   poll?: NodeJS.Timeout;
@@ -128,23 +138,42 @@ export class CastOutputHub {
     // already delivered to the same listener, so a session writing while a phone
     // (re)subscribed showed new output before the history and lines from both paths
     // twice. Replay stops where live follow starts and live events wait for it.
-    const replayEnd = watcherInfo.lastOffset;
-    let pending: CastOutputHubEvent[] | null = [];
+    let pending: CastOutputHubEvent[] | null = null;
     let active = true;
-    const replayListener: CastOutputHubListener = (event) => {
-      if (active) listener(event);
-    };
-    const client: CastOutputHubListener = (event) => {
-      if (pending) pending.push(event);
-      else listener(event);
+    let replays = 0;
+    const info = watcherInfo;
+    const client: HubClient = {
+      deliver: (event) => {
+        if (pending) pending.push(event);
+        else if (active) listener(event);
+      },
+      replay: (reset) => {
+        // A newer replay (after a reset) supersedes one still running.
+        const replay = ++replays;
+        const replayListener: CastOutputHubListener = (event) => {
+          if (active && replay === replays) listener(event);
+        };
+        pending = [];
+        if (reset) replayListener(RESET_EVENT);
+        const done = () => {
+          if (replay !== replays) return;
+          const queued = pending ?? [];
+          pending = null;
+          for (const event of queued) replayListener(event);
+        };
+        // After a reset the saved clear offset points into the old content: scan for one.
+        this.sendExistingContent(
+          sessionId,
+          info.streamPath,
+          info.lastOffset,
+          !reset,
+          replayListener,
+          done
+        );
+      },
     };
     watcherInfo.clients.add(client);
-
-    this.sendExistingContent(sessionId, watcherInfo.streamPath, replayEnd, replayListener, () => {
-      const queued = pending ?? [];
-      pending = null;
-      for (const event of queued) replayListener(event);
-    });
+    client.replay(false);
 
     return () => {
       active = false;
@@ -189,17 +218,22 @@ export class CastOutputHub {
     watcherInfo.watcher = fs.watch(watcherInfo.streamPath, { persistent: true }, (eventType) => {
       if (eventType === 'change') void this.readNewOutput(sessionId, watcherInfo);
     });
-    watcherInfo.poll = setInterval(
-      () => void this.readNewOutput(sessionId, watcherInfo),
-      WATCH_POLL_MS
-    );
-    watcherInfo.poll.unref?.();
+    this.startPoll(sessionId, watcherInfo);
 
     watcherInfo.watcher.on('error', (error) => {
       logger.error(`file watcher error for session ${sessionId}:`, error);
     });
 
     logger.debug(chalk.green(`watching cast file for session ${sessionId}`));
+  }
+
+  private startPoll(sessionId: string, watcherInfo: WatcherInfo): void {
+    if (watcherInfo.poll) return;
+    watcherInfo.poll = setInterval(
+      () => void this.readNewOutput(sessionId, watcherInfo),
+      WATCH_POLL_MS
+    );
+    watcherInfo.poll.unref?.();
   }
 
   /**
@@ -223,6 +257,19 @@ export class CastOutputHub {
         if (this.activeWatchers.get(sessionId) !== watcherInfo) return;
         const streamPath = watcherInfo.streamPath;
         const size = (await fs.promises.stat(streamPath)).size;
+        if (size < watcherInfo.lastOffset) {
+          // A cast that shrank (a forwarder restarted under the same id truncates it) never
+          // passed the old offset again, so its clients froze. Start over: reset their
+          // terminals and replay the new file's bounded tail, then follow it.
+          logger.warn(
+            `cast of ${sessionId} shrank to ${size} bytes (was followed up to ${watcherInfo.lastOffset}); resetting its live stream`
+          );
+          watcherInfo.lastOffset = findLineStart(streamPath, size);
+          for (const client of watcherInfo.clients) client.replay(true);
+          this.startPoll(sessionId, watcherInfo); // stopped if the old content ended in an exit
+          watcherInfo.readAgain = true;
+          continue;
+        }
         const behind = size - watcherInfo.lastOffset;
         if (behind <= 0) continue;
         if (behind > this.replayMaxBytes) {
@@ -270,7 +317,7 @@ export class CastOutputHub {
     if (!parsed) {
       // Treat as raw output line
       for (const client of watcherInfo.clients) {
-        client({ kind: 'output', data: line, historical: false });
+        client.deliver({ kind: 'output', data: line, historical: false });
       }
       return;
     }
@@ -281,19 +328,20 @@ export class CastOutputHub {
     if (isExitEvent(parsed)) {
       // Nothing follows an exit: the watcher alone notices a restart under the same id.
       clearInterval(watcherInfo.poll);
+      watcherInfo.poll = undefined;
       for (const client of watcherInfo.clients) {
-        client({ kind: 'exit', exitCode: parsed[1] });
+        client.deliver({ kind: 'exit', exitCode: parsed[1] });
       }
       return;
     }
 
     if (isOutputEvent(parsed)) {
       for (const client of watcherInfo.clients) {
-        client({ kind: 'output', data: parsed[2], historical: false });
+        client.deliver({ kind: 'output', data: parsed[2], historical: false });
       }
     } else if (isResizeEvent(parsed)) {
       for (const client of watcherInfo.clients) {
-        client({ kind: 'resize', dimensions: parsed[2], historical: false });
+        client.deliver({ kind: 'resize', dimensions: parsed[2], historical: false });
       }
     }
   }
@@ -330,6 +378,7 @@ export class CastOutputHub {
     sessionId: string,
     streamPath: string,
     endOffset: number,
+    useSavedClear: boolean,
     listener: CastOutputHubListener,
     onDone: () => void
   ) {
@@ -344,7 +393,9 @@ export class CastOutputHub {
       listener({ kind: 'error', message: 'Failed to read session output' });
       finish();
     };
-    this.replayExistingContent(sessionId, streamPath, endOffset, listener).then(finish).catch(fail);
+    this.replayExistingContent(sessionId, streamPath, endOffset, useSavedClear, listener)
+      .then(finish)
+      .catch(fail);
   }
 
   /**
@@ -353,16 +404,18 @@ export class CastOutputHub {
    * Code session's 1 GB cast had 430 MB after its last clear, all kept in memory here and
    * queued on the socket (history is exempt from the client buffer limit). A longer history
    * starts on the first whole event line in its last replayMaxBytes, at the terminal size in
-   * effect there; a full-screen app's repaints in them draw the current screen.
+   * effect there; a full-screen app's repaints in them draw the current screen. Without
+   * `useSavedClear` the session's lastClearOffset is not trusted and the range is scanned.
    */
   private async replayExistingContent(
     sessionId: string,
     streamPath: string,
     endOffset: number,
+    useSavedClear: boolean,
     listener: CastOutputHubListener
   ): Promise<void> {
     const sessionInfo = this.sessionManager.loadSessionInfo(sessionId);
-    let clearOffset = sessionInfo?.lastClearOffset ?? 0;
+    let clearOffset = useSavedClear ? (sessionInfo?.lastClearOffset ?? 0) : 0;
     const size = fs.existsSync(streamPath) ? fs.statSync(streamPath).size : 0;
     if (clearOffset > size) {
       // Saved against a longer cast (a forwarder restarted under the same id truncates it).

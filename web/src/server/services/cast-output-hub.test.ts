@@ -132,6 +132,47 @@ describe('CastOutputHub live follow', () => {
     }
   });
 
+  it('resets its clients and replays the new content when the cast shrinks', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cast-hub-'));
+    const stdoutPath = path.join(tmpDir, 'stdout');
+    const lines = (word: string, count: number) =>
+      Array.from({ length: count }, (_, i) => `${JSON.stringify([i, 'o', `<${word} ${i}>`])}\n`);
+    fs.writeFileSync(stdoutPath, [`${HEADER}\n`, ...lines('old', 40)].join(''));
+    const newContent = [`${HEADER}\n`, ...lines('new', 10)].join('');
+    const sessionManager = {
+      getSessionPaths: () => ({ stdoutPath }),
+      // Saved against the old content, inside the new one's size.
+      loadSessionInfo: () => ({ lastClearOffset: Buffer.byteLength(newContent) - 20 }),
+      saveSessionInfo: vi.fn(),
+    } as unknown as SessionManager;
+    const events: CastOutputHubEvent[] = [];
+    const unsubscribe = new CastOutputHub(sessionManager).subscribe('s1', (event) =>
+      events.push(event)
+    );
+    try {
+      await vi.waitFor(() => expect(events.some((e) => e.kind === 'header')).toBe(true));
+      events.length = 0;
+
+      // A forwarder restarted under the same id truncates the cast and writes it anew.
+      fs.writeFileSync(stdoutPath, newContent);
+      await vi.waitFor(() => expect(events.some((e) => e.kind === 'header')).toBe(true), {
+        timeout: 3000,
+      });
+      fs.appendFileSync(stdoutPath, `${JSON.stringify([11, 'o', '<live>'])}\n`);
+
+      const outputs = () =>
+        events.filter((e) => e.kind === 'output').map((e) => (e as { data: string }).data);
+      await vi.waitFor(() => expect(outputs().at(-1)).toBe('<live>'), { timeout: 3000 });
+      expect(outputs()).toEqual([
+        '\x1bc',
+        ...Array.from({ length: 10 }, (_, i) => `<new ${i}>`),
+        '<live>',
+      ]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it('follows a session that fell far behind from a whole event near the end', async () => {
     // The live read took all new bytes at once: a 540 MB burst (a sparse hole of NUL bytes
     // here, no disk used) was one buffer and one string past V8's limit, so it threw and
