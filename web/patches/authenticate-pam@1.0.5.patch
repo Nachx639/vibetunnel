@@ -1,17 +1,21 @@
 diff --git a/authenticate_pam.cc b/authenticate_pam.cc
-index 2b1b07736e2b63671d5551bfcefe4366a7cb4557..7a4133466d7279d326b094b344318f84f9102e50 100644
+index 2b1b07736e2b63671d5551bfcefe4366a7cb4557..af05c9bcfdb9a9d33bfb81c88ccc2f26125b69c2 100644
 --- a/authenticate_pam.cc
 +++ b/authenticate_pam.cc
-@@ -115,6 +115,16 @@ void after_doing_auth(uv_work_t* req, int status) {
+@@ -115,6 +115,20 @@ void after_doing_auth(uv_work_t* req, int status) {
  		Nan::FatalException(try_catch);
  }
  
 +
-+// V8 removed String::WriteUtf8 (Node 24+); copy through Nan::Utf8String, always NUL-terminated.
++// String::WriteUtf8 is gone from Node 26 / V8 14.x; copy through Nan::Utf8String, always
++// NUL-terminated, and truncate on a character boundary as WriteUtf8 did.
 +static void copyUtf8(v8::Local<v8::String> value, char* buffer, size_t size) {
 +	Nan::Utf8String utf8(value);
 +	size_t length = static_cast<size_t>(utf8.length());
-+	if (length > size - 1) length = size - 1;
++	if (length > size - 1) {
++		length = size - 1;
++		while (length > 0 && (static_cast<unsigned char>((*utf8)[length]) & 0xC0) == 0x80) length--;
++	}
 +	memcpy(buffer, *utf8, length);
 +	buffer[length] = '\0';
 +}
@@ -19,7 +23,7 @@ index 2b1b07736e2b63671d5551bfcefe4366a7cb4557..7a4133466d7279d326b094b344318f84
  NAN_METHOD(Authenticate) {
  	if(info.Length() < 3) {
  		Nan::ThrowTypeError("Wrong number of arguments");
-@@ -147,31 +157,18 @@ NAN_METHOD(Authenticate) {
+@@ -147,31 +161,18 @@ NAN_METHOD(Authenticate) {
  		Local<Value> res = Nan::Get(options, Nan::New<String>("serviceName").ToLocalChecked()).ToLocalChecked();
  		if(! res->IsUndefined()) {
  			Local<String> serviceName = Local<String>::Cast(res);

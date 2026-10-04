@@ -13,7 +13,7 @@ overrides:
 
 patchedDependencies:
   authenticate-pam@1.0.5:
-    hash: 81f3a9ca7349ae8889449a4abb821845a29bfdd86ab85f446718063eac7111b0
+    hash: 8147d953c21cb1c10b62f4cc9f386ba5aa0f52dcae51a8ae0222c78d404f88ca
     path: patches/authenticate-pam@1.0.5.patch
 
 importers:
@@ -231,7 +231,7 @@ importers:
     optionalDependencies:
       authenticate-pam:
         specifier: ^1.0.5
-        version: 1.0.5(patch_hash=81f3a9ca7349ae8889449a4abb821845a29bfdd86ab85f446718063eac7111b0)
+        version: 1.0.5(patch_hash=8147d953c21cb1c10b62f4cc9f386ba5aa0f52dcae51a8ae0222c78d404f88ca)
 
 packages:
 
@@ -4497,7 +4497,7 @@ snapshots:
 
   asynckit@0.4.0: {}
 
-  authenticate-pam@1.0.5(patch_hash=81f3a9ca7349ae8889449a4abb821845a29bfdd86ab85f446718063eac7111b0):
+  authenticate-pam@1.0.5(patch_hash=8147d953c21cb1c10b62f4cc9f386ba5aa0f52dcae51a8ae0222c78d404f88ca):
     dependencies:
       nan: 2.28.0
     optional: true
