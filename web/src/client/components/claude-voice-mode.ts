@@ -15,6 +15,7 @@ import { authClient } from '../services/auth-client.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { endsADrag } from '../utils/pointer-drag.js';
+import { reducedMotionStyles } from '../utils/reduced-motion.js';
 import {
   ReplyWatcher,
   ScreenAwake,
@@ -61,7 +62,9 @@ function onTap(action: () => void) {
 
 @customElement('claude-voice-mode')
 export class ClaudeVoiceMode extends LitElement {
-  static styles = css`
+  static styles = [
+    reducedMotionStyles,
+    css`
     :host {
       position: fixed;
       inset: 0;
@@ -243,7 +246,8 @@ export class ClaudeVoiceMode extends LitElement {
       outline: 2px solid var(--color-primary, #6aa8ff);
       outline-offset: 2px;
     }
-  `;
+  `,
+  ];
 
   @property({ type: String }) sessionId = '';
 
