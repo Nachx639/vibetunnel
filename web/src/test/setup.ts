@@ -134,43 +134,33 @@ if (typeof global !== 'undefined') {
   (global as any).localStorage = localStorageMock;
 }
 
-// Prevent duplicate custom element registration in tests
-// We need to patch the registration after each test to handle module re-imports
-const registeredElements = new Set<string>();
+// Prevent duplicate custom element registration in tests (a module re-imported after
+// vi.resetModules() defines its elements again). Wrap define once: re-wrapping before every
+// test stacked wrappers that shared a "seen" set, so the outer one marked a name and the inner
+// one skipped it, and any element first imported inside a test was never registered.
+// The real registry is the only source of truth.
+const PATCHED = Symbol.for('vibetunnel.test.customElementsPatched');
 
-// Helper to patch customElements.define
 function patchCustomElements() {
-  if (typeof window !== 'undefined' && window.customElements) {
-    const originalDefine = window.customElements.define.bind(window.customElements);
-    const originalGet = window.customElements.get.bind(window.customElements);
-
-    window.customElements.define = (
-      name: string,
-      elementConstructor: CustomElementConstructor,
-      options?: ElementDefinitionOptions
-    ) => {
-      // Check both our registry and the real registry
-      if (registeredElements.has(name) || originalGet(name)) {
-        return;
-      }
-      registeredElements.add(name);
-      try {
-        originalDefine(name, elementConstructor, options);
-      } catch (e) {
-        // Ignore duplicate registration errors
-        if (e instanceof Error && e.message.includes('already been used')) {
-          return;
-        }
-        throw e;
-      }
-    };
-  }
+  if (typeof window === 'undefined' || !window.customElements) return;
+  const registry = window.customElements as CustomElementRegistry & { [PATCHED]?: boolean };
+  if (registry[PATCHED]) return;
+  const originalDefine = registry.define.bind(registry);
+  registry.define = (
+    name: string,
+    elementConstructor: CustomElementConstructor,
+    options?: ElementDefinitionOptions
+  ) => {
+    if (registry.get(name)) return;
+    originalDefine(name, elementConstructor, options);
+  };
+  registry[PATCHED] = true;
 }
 
 // Apply patch immediately for module imports
 patchCustomElements();
 
-// Re-apply patch before each test in case happy-dom resets it
+// Re-apply before each test in case the environment swapped the registry (no-op otherwise)
 beforeEach(() => {
   patchCustomElements();
 });
