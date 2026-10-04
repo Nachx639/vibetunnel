@@ -1,5 +1,5 @@
 import type { PropertyValues } from 'lit';
-import { html, LitElement } from 'lit';
+import { html, LitElement, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type {
@@ -11,16 +11,17 @@ import type {
 } from '../../shared/multiplexer-types.js';
 import { LocaleController, t } from '../i18n/index.js';
 import { apiClient } from '../services/api-client.js';
+import { formatPathForDisplay } from '../utils/path-utils.js';
 import './modal-wrapper.js';
 
 @customElement('multiplexer-modal')
 export class MultiplexerModal extends LitElement {
+  protected readonly i18n = new LocaleController(this);
+
   // Disable shadow DOM to use Tailwind classes
   createRenderRoot() {
     return this;
   }
-
-  protected readonly i18n = new LocaleController(this);
 
   @property({ type: Boolean, reflect: true })
   open = false;
@@ -334,7 +335,10 @@ export class MultiplexerModal extends LitElement {
 
     return html`
       <div class="fixed inset-0 z-50 ${this.open ? 'flex' : 'hidden'} items-center justify-center p-4">
-        <modal-wrapper .open=${this.open} @close=${this.handleClose}>
+        <!-- modal-wrapper takes \`visible\`, not \`open\`: it renders nothing here and is just a
+             flex item holding the card, so it needs the width limits, min-w-0 included (a flex
+             item never shrinks below its content: a tmux title spilled past the phone). -->
+        <modal-wrapper class="block w-full max-w-2xl min-w-0" .open=${this.open} @close=${this.handleClose}>
           <div class="w-full max-w-2xl max-h-[80vh] flex flex-col bg-bg-secondary border border-border rounded-xl p-6 shadow-xl">
             <h2 class="m-0 mb-4 text-xl font-semibold text-text">${t('tmux.title')}</h2>
 
@@ -434,14 +438,44 @@ export class MultiplexerModal extends LitElement {
 
                                   return html`
                           <div class="mb-2 border border-border rounded-lg overflow-hidden transition-all hover:border-primary hover:shadow-md">
+                            <!-- Stacked on phones: side by side, the buttons took half the row,
+                                 cutting the title and covering "last activity". -->
                             <div
-                              class="px-4 py-3 bg-bg-secondary cursor-pointer flex items-center justify-between transition-colors hover:bg-bg-tertiary"
+                              class="px-4 py-3 bg-bg-secondary cursor-pointer flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between transition-colors hover:bg-bg-tertiary"
+                              data-testid="multiplexer-session-row"
                               @click=${() =>
                                 session.type === 'tmux' ? this.toggleSession(session.name) : null}
                               style="cursor: ${session.type === 'tmux' ? 'pointer' : 'default'}"
                             >
-                              <div class="flex-1">
-                                <div class="font-semibold text-text mb-1">${session.name}</div>
+                              <div class="flex-1 min-w-0">
+                                <div class="font-semibold text-text mb-1 truncate" data-testid="multiplexer-session-name">${session.name}</div>
+                                <!-- Names like "0" and "1" tell little: the active pane's title (Claude
+                                     Code's conversation), then its program and folder, under the name. -->
+                                ${
+                                  session.title
+                                    ? html`<div
+                                        class="text-sm text-text truncate mb-1"
+                                        data-testid="multiplexer-session-title"
+                                      >
+                                        ${session.title}
+                                      </div>`
+                                    : nothing
+                                }
+                                ${
+                                  session.command || session.path
+                                    ? html`<div
+                                        class="text-xs text-text-muted font-mono truncate mb-1"
+                                        data-testid="multiplexer-session-where"
+                                      >
+                                        ${[
+                                          session.command,
+                                          session.path ? formatPathForDisplay(session.path) : '',
+                                        ]
+                                          .filter(Boolean)
+                                          .join(' · ')}
+                                      </div>`
+                                    : nothing
+                                }
                                 <div class="text-sm text-text-muted flex gap-4">
                                   ${
                                     session.windows !== undefined
@@ -460,7 +494,7 @@ export class MultiplexerModal extends LitElement {
                                   }
                                 </div>
                               </div>
-                              <div class="flex items-center gap-2">
+                              <div class="flex items-center justify-end gap-2">
                                 ${
                                   session.attached
                                     ? html`<div class="w-2 h-2 rounded-full bg-primary" title=${t('tmux.attached')}></div>`

@@ -94,9 +94,11 @@ export class ModalWrapper extends LitElement {
         @click=${this.handleBackdropClick}
         data-testid="modal-backdrop"
       >
-        <!-- Modal content centered within backdrop -->
+        <!-- Modal content centered within backdrop. min-w-0: a flex item never shrinks below
+             its content's own width, so a line that does not wrap (a tmux session's title)
+             pushed the dialog past both edges of a phone, whatever its max-width. -->
         <div
-          class="${this.contentClass}"
+          class="min-w-0 ${this.contentClass}"
           style="${contentStyle}"
           role="dialog"
           aria-modal="true"

@@ -12,6 +12,9 @@ export interface MultiplexerSession {
   exited?: boolean; // zellij specific
   activity?: string; // tmux specific
   current?: boolean; // tmux specific
+  title?: string; // tmux specific: the active pane's title (Claude's conversation title)
+  command?: string; // tmux specific: the active pane's program
+  path?: string; // tmux specific: the active pane's folder
 }
 
 export interface MultiplexerStatus {

@@ -1,4 +1,5 @@
 import { execFile, execFileSync } from 'child_process';
+import * as os from 'os';
 import { promisify } from 'util';
 import type { TmuxPane, TmuxSession, TmuxWindow } from '../../shared/tmux-types.js';
 import { type SessionCreateOptions, TitleMode } from '../../shared/types.js';
@@ -30,6 +31,33 @@ export function isNoTmuxServer(error: unknown): boolean {
     text.includes('no server running') ||
     /error connecting to .*\((?:No such file or directory|Connection refused)\)/.test(text)
   );
+}
+
+/**
+ * What tells tmux sessions apart beyond names like "0" and "1": the active pane's title
+ * (Claude Code sets it to the conversation's, "✳ Fix the login form"; a leading status glyph
+ * is dropped, and tmux's default, the host name, is not a title), its program (Claude Code's
+ * native binary runs under its version, "2.1.283": shown as "claude") and its folder.
+ */
+export function paneLabel(
+  command: string | undefined,
+  path: string | undefined,
+  rawTitle: string | undefined
+): { title?: string; command?: string; path?: string } {
+  const host = os.hostname();
+  const title = (rawTitle ?? '').replace(/^[^\p{L}\p{N}]+/u, '').trim();
+  // A pane keeps the host name tmux gave it when it was made, and macOS renames the computer
+  // when its name is taken on the network (Host-1.local → Host-2.local). After that every
+  // plain shell was titled with the old name, so a Bonjour name (one word ending in .local)
+  // counts as the host too: programs don't title themselves like that.
+  const isHost =
+    !title || title === host || title === host.split('.')[0] || /^\S+\.local$/i.test(title);
+  const program = command?.trim();
+  return {
+    ...(isHost ? {} : { title }),
+    ...(program ? { command: /^\d+(?:\.\d+)+$/.test(program) ? 'claude' : program } : {}),
+    ...(path?.trim() ? { path: path.trim() } : {}),
+  };
 }
 
 export class TmuxManager {
@@ -109,7 +137,10 @@ export class TmuxManager {
           '#{session_created}',
           '#{?session_attached,attached,detached}',
           '#{session_activity}',
-          '#{?session_active,active,}'
+          '#{?session_active,active,}',
+          '#{pane_current_command}',
+          '#{pane_current_path}',
+          '#{pane_title}'
         ),
       ]);
 
@@ -118,7 +149,8 @@ export class TmuxManager {
         .split('\n')
         .filter((line) => line?.includes(FIELD))
         .map((line) => {
-          const [name, windows, created, attached, activity, current] = line.split(FIELD);
+          const [name, windows, created, attached, activity, current, command, path, title] =
+            line.split(FIELD);
           return {
             name,
             windows: Number.parseInt(windows, 10),
@@ -126,6 +158,7 @@ export class TmuxManager {
             attached: attached === 'attached',
             activity,
             current: current === 'active',
+            ...paneLabel(command, path, title ?? ''),
           };
         });
     } catch (error) {
