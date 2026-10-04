@@ -110,4 +110,18 @@ describe('TerminalManager under an output flood with a full scrollback', () => {
       { timeout: 2000, interval: 50 }
     );
   });
+
+  it('shows output written right after the terminal was built, with no later write', async () => {
+    const file = writeLongSession('s1');
+    manager = new TerminalManager(controlDir as string);
+    await manager.getTerminal('s1');
+
+    // Before the watcher has settled: fs.watch on macOS reported nothing for this one.
+    fs.appendFileSync(file, event(50, 'idle'));
+
+    await vi.waitFor(
+      async () => expect(await recentText(manager as TerminalManager, 1)).toBe('idle'),
+      { timeout: 3000, interval: 50 }
+    );
+  });
 });

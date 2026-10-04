@@ -99,6 +99,8 @@ const LIVE_WRITE_CHUNK_CHARS = 256 * 1024;
 interface SessionTerminal {
   terminal: GhosttyTerminal;
   watcher?: fs.FSWatcher;
+  /** Reads new output now and then in case the watcher missed a change (WATCH_POLL_MS). */
+  poll?: NodeJS.Timeout;
   lastUpdate: number;
   /** Settles once the cast's replay into the new terminal is done. */
   ready?: Promise<void>;
@@ -171,6 +173,14 @@ interface BufferSnapshot {
 /** How long a terminal waits for a new session's cast file to appear (100 × 100 ms). */
 const STREAM_FILE_WAIT_ATTEMPTS = 100;
 const STREAM_FILE_WAIT_INTERVAL_MS = 100;
+
+/**
+ * How often a watched cast is checked for output its fs.watch did not report. On macOS a write
+ * landing just after the watcher starts can go unreported: output appended right after a
+ * terminal was built stayed off its screen until the next write, for good on an idle session.
+ * A check with nothing new is one stat.
+ */
+const WATCH_POLL_MS = 1000;
 
 /** The plain-text fallback snapshot reads at most this much of the end of a cast. */
 const FALLBACK_REPLAY_MAX_BYTES = 1024 * 1024;
@@ -435,6 +445,11 @@ export class TerminalManager {
       sessionTerminal.watcher = fs.watch(streamPath, (eventType) => {
         if (eventType === 'change') void this.readNewOutput(sessionId, sessionTerminal, streamPath);
       });
+      sessionTerminal.poll = setInterval(
+        () => void this.readNewOutput(sessionId, sessionTerminal, streamPath),
+        WATCH_POLL_MS
+      );
+      sessionTerminal.poll.unref?.();
       // Whatever was written while the replay ran.
       void this.readNewOutput(sessionId, sessionTerminal, streamPath);
 
@@ -640,6 +655,7 @@ export class TerminalManager {
           if (sessionTerminal.watcher) {
             sessionTerminal.watcher.close();
           }
+          clearInterval(sessionTerminal.poll);
           return;
         }
 
@@ -1128,6 +1144,7 @@ export class TerminalManager {
       if (sessionTerminal.watcher) {
         sessionTerminal.watcher.close();
       }
+      clearInterval(sessionTerminal.poll);
       sessionTerminal.terminal.free();
       this.terminals.delete(sessionId);
 
