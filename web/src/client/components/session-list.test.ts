@@ -468,6 +468,39 @@ describe('SessionList', () => {
     });
   });
 
+  describe('running order', () => {
+    it('puts sessions waiting for you first, then working ones, when agents report status', async () => {
+      const list = element as unknown as { usePhoneRows: () => boolean };
+      vi.spyOn(list, 'usePhoneRows').mockReturnValue(true);
+      const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+      element.sessions = [
+        createMockSession({ id: 'newest', startedAt: at(1) }),
+        {
+          ...createMockSession({ id: 'working', startedAt: at(2) }),
+          claudeStatus: { status: 'busy' },
+        },
+        {
+          ...createMockSession({ id: 'waiting', startedAt: at(3) }),
+          claudeStatus: { status: 'waiting' },
+        },
+        createMockSession({ id: 'oldest', startedAt: at(4) }),
+      ];
+      await element.updateComplete;
+      const ids = () =>
+        (
+          [...element.querySelectorAll('phone-session-row')] as Array<
+            HTMLElement & { session: { id: string } }
+          >
+        ).map((row) => row.session.id);
+      expect(ids()).toEqual(['waiting', 'working', 'newest', 'oldest']);
+
+      // Without agent status (agent chat off) the order is newest first, as before.
+      element.sessions = element.sessions.map(({ claudeStatus: _, ...session }) => session);
+      await element.updateComplete;
+      expect(ids()).toEqual(['newest', 'working', 'waiting', 'oldest']);
+    });
+  });
+
   describe('timer display', () => {
     it('should show static duration for exited sessions', async () => {
       const now = Date.now();

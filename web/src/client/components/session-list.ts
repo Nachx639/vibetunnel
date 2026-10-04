@@ -27,6 +27,7 @@ import type { Worktree } from '../services/git-service.js';
 import './phone-session-row.js';
 import './session-card.js';
 import './inline-edit.js';
+import { rowState } from './phone-session-row.js';
 import './session-list/compact-session-card.js';
 import './session-list/repository-header.js';
 import './clickable-path.js';
@@ -1113,13 +1114,20 @@ export class SessionList extends LitElement {
   }
 
   /**
-   * Running sessions, newest first, pinned ones on top. By start time: lastModified changes
-   * with every output burst and would shuffle rows under the user's finger on each poll.
+   * Running sessions: the ones waiting for you first, then the ones an agent is working in,
+   * then the rest; newest first within each, pinned ones on top. The agent states come from
+   * the server's agent status, so without agent chat the order is just newest first. By
+   * start time: lastModified changes with every output burst and would shuffle rows under
+   * the user's finger on each poll.
    */
   private orderRunning(sessions: Session[]): Session[] {
+    const rank = (session: Session) => {
+      const state = rowState(session);
+      return state === 'waiting' ? 0 : state === 'working' ? 1 : 2;
+    };
     const started = (session: Session) => new Date(session.startedAt || 0).getTime();
     return pinnedFirst(
-      [...sessions].sort((a, b) => started(b) - started(a)),
+      [...sessions].sort((a, b) => rank(a) - rank(b) || started(b) - started(a)),
       this.pinnedIds
     );
   }
