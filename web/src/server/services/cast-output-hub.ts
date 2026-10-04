@@ -21,6 +21,14 @@ const logger = createLogger('cast-output-hub');
 
 const HEADER_READ_BUFFER_SIZE = 4096;
 
+/**
+ * How often a followed cast is checked for output its fs.watch did not report. On macOS a write
+ * landing just after the watcher starts goes unreported (output appended right after
+ * a phone subscribed stayed off it until the next write, for good on an idle session). A check
+ * with nothing new is one stat.
+ */
+const WATCH_POLL_MS = 1000;
+
 type AsciinemaOutputEvent = [number, 'o', string];
 type AsciinemaInputEvent = [number, 'i', string];
 type AsciinemaResizeEvent = [number, 'r', string];
@@ -60,6 +68,8 @@ interface WatcherInfo {
   streamPath: string;
   clients: Set<CastOutputHubListener>;
   watcher?: fs.FSWatcher;
+  /** Reads new output now and then in case the watcher missed a change (WATCH_POLL_MS). */
+  poll?: NodeJS.Timeout;
   /**
    * End of the last complete line handed to the clients: live follow reads on from here, a
    * new subscriber's replay ends here. A trailing partial line is read again once it ends, so
@@ -156,6 +166,7 @@ export class CastOutputHub {
     watcherInfo.retryTimer && clearTimeout(watcherInfo.retryTimer);
     watcherInfo.watcher?.close();
     watcherInfo.watcher = undefined;
+    clearInterval(watcherInfo.poll);
     this.activeWatchers.delete(sessionId);
     logger.debug(chalk.yellow(`stopped cast watcher for session ${sessionId}`));
   }
@@ -178,6 +189,11 @@ export class CastOutputHub {
     watcherInfo.watcher = fs.watch(watcherInfo.streamPath, { persistent: true }, (eventType) => {
       if (eventType === 'change') void this.readNewOutput(sessionId, watcherInfo);
     });
+    watcherInfo.poll = setInterval(
+      () => void this.readNewOutput(sessionId, watcherInfo),
+      WATCH_POLL_MS
+    );
+    watcherInfo.poll.unref?.();
 
     watcherInfo.watcher.on('error', (error) => {
       logger.error(`file watcher error for session ${sessionId}:`, error);
@@ -263,6 +279,8 @@ export class CastOutputHub {
     if (!Array.isArray(parsed)) return;
 
     if (isExitEvent(parsed)) {
+      // Nothing follows an exit: the watcher alone notices a restart under the same id.
+      clearInterval(watcherInfo.poll);
       for (const client of watcherInfo.clients) {
         client({ kind: 'exit', exitCode: parsed[1] });
       }

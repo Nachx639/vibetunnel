@@ -101,6 +101,29 @@ describe('CastOutputHub live follow', () => {
     }
   });
 
+  it('delivers output written right after subscribing, with no later write', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cast-hub-'));
+    const stdoutPath = path.join(tmpDir, 'stdout');
+    fs.writeFileSync(stdoutPath, `${HEADER}\n`);
+    const sessionManager = {
+      getSessionPaths: () => ({ stdoutPath }),
+      loadSessionInfo: () => ({ lastClearOffset: 0 }),
+      saveSessionInfo: vi.fn(),
+    } as unknown as SessionManager;
+    const live: string[] = [];
+    const unsubscribe = new CastOutputHub(sessionManager).subscribe('s1', (event) => {
+      if (event.kind === 'output' && !event.historical) live.push(event.data);
+    });
+    try {
+      // Before the watcher has settled: fs.watch on macOS reports nothing for this one.
+      fs.appendFileSync(stdoutPath, `${JSON.stringify([0.1, 'o', 'idle'])}\n`);
+
+      await vi.waitFor(() => expect(live).toEqual(['idle']), { timeout: 3000, interval: 50 });
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it('follows a session that fell far behind from a whole event near the end', async () => {
     // The live read took all new bytes at once: a 540 MB burst (a sparse hole of NUL bytes
     // here, no disk used) was one buffer and one string past V8's limit, so it threw and
