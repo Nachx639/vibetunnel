@@ -352,9 +352,13 @@
   
 
   /* Default focus styles */
-  /* Default focus styles */
+  /* Default focus styles. The ring shows for keyboard focus (:focus-visible), not on every
+     click, and never on elements only focused by code (tabindex="-1", e.g. a dialog taking
+     focus so a screen reader starts at its title). :where() keeps the specificity low. */
   :focus {
     outline: none;
+  }
+  :focus-visible:where(:not([tabindex='-1'])) {
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 30%, transparent);
   }
 
