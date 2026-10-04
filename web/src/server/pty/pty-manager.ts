@@ -395,11 +395,9 @@ export class PtyManager extends EventEmitter {
         ...(options.shielded ? { shielded: true } : {}),
       };
 
-      if (options.shielded && !this.shieldTmux.isAvailable()) {
-        throw new PtyError(
-          'Shielded sessions need tmux, which is not installed',
-          'SHIELD_UNAVAILABLE'
-        );
+      const shieldProblem = options.shielded ? this.shieldTmux.unavailableReason() : null;
+      if (shieldProblem) {
+        throw new PtyError(shieldProblem, 'SHIELD_UNAVAILABLE');
       }
 
       // Save initial session info
@@ -2087,8 +2085,9 @@ export class PtyManager extends EventEmitter {
       this.finishLostShieldedSession(sessionId, 'restored too many times in the last hour');
       return false;
     }
-    if (!this.shieldTmux.isAvailable()) {
-      this.finishLostShieldedSession(sessionId, 'tmux is not installed');
+    const shieldProblem = this.shieldTmux.unavailableReason();
+    if (shieldProblem) {
+      this.finishLostShieldedSession(sessionId, shieldProblem);
       return false;
     }
 
@@ -2262,6 +2261,11 @@ export class PtyManager extends EventEmitter {
 
   isShieldAvailable(): boolean {
     return this.shieldTmux.isAvailable();
+  }
+
+  /** Why shielded sessions can't run on this server (no tmux, or one that is too old), or null. */
+  shieldUnavailableReason(): string | null {
+    return this.shieldTmux.unavailableReason();
   }
 
   /**

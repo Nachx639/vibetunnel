@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PtyError } from '../pty/index.js';
 import { readClaudeStatuses } from '../services/claude-chat';
 import { createSessionRoutes } from './sessions';
 
@@ -50,7 +51,11 @@ describe('POST /sessions shielding (off by default)', () => {
       sessionInfo: { id: 's-1', pid: 1, name: 'x', command: ['zsh'], workingDir: '/tmp' },
     }));
     const router = createSessionRoutes({
-      ptyManager: { createSession, isShieldAvailable: () => options.tmux ?? true } as never,
+      ptyManager: {
+        createSession,
+        isShieldAvailable: () => options.tmux ?? true,
+        shieldUnavailableReason: () => (options.tmux === false ? 'no tmux' : null),
+      } as never,
       terminalManager: {} as never,
       remoteRegistry: null,
       isHQMode: false,
@@ -85,10 +90,15 @@ describe('POST /sessions shielding (off by default)', () => {
     expect(await created(body, options)).toBe(expected);
   });
 
-  it('answers 501 for an explicit shielded session without tmux', async () => {
+  it('answers 501 with the reason for an explicit shielded session without a usable tmux', async () => {
     const createSession = vi.fn();
+    const reason = 'Shielded sessions need tmux 3.2 or newer; the server has tmux 3.1c';
     const router = createSessionRoutes({
-      ptyManager: { createSession, isShieldAvailable: () => false } as never,
+      ptyManager: {
+        createSession,
+        isShieldAvailable: () => false,
+        shieldUnavailableReason: () => reason,
+      } as never,
       terminalManager: {} as never,
       remoteRegistry: null,
       isHQMode: false,
@@ -100,7 +110,54 @@ describe('POST /sessions shielding (off by default)', () => {
       '/sessions'
     )({ body: { command: ['zsh'], workingDir: '/tmp', shielded: true } } as Request, res as never);
     expect(res.status).toHaveBeenCalledWith(501);
+    expect(res.json).toHaveBeenCalledWith({ error: reason });
     expect(createSession).not.toHaveBeenCalled();
+  });
+
+  /** A tmux that is there but fails to start the shield (an option it rejects, a dead socket). */
+  async function failingShield(body: Record<string, unknown>) {
+    const createSession = vi.fn(async (_command: string[], options: { shielded?: boolean }) => {
+      if (options.shielded) throw new PtyError('tmux: invalid option: allow-passthrough');
+      return {
+        sessionId: 's-2',
+        sessionInfo: { id: 's-2', pid: 2, name: 'x', command: ['zsh'], workingDir: '/tmp' },
+      };
+    });
+    const router = createSessionRoutes({
+      ptyManager: {
+        createSession,
+        isShieldAvailable: () => true,
+        shieldUnavailableReason: () => null,
+      } as never,
+      terminalManager: {} as never,
+      remoteRegistry: null,
+      isHQMode: false,
+      shieldNewSessionsByDefault: () => true,
+    } as Routes);
+    const res = response();
+    await route(
+      router,
+      'post',
+      '/sessions'
+    )({ body: { command: ['zsh'], workingDir: '/tmp', ...body } } as Request, res as never);
+    return { createSession, res };
+  }
+
+  it('falls back to a plain session when the shield came from the default and fails', async () => {
+    const { createSession, res } = await failingShield({});
+    expect(createSession.mock.calls.map((call) => call[1].shielded)).toEqual([true, false]);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's-2' }));
+  });
+
+  it('answers with a clear error when the user asked for the shield and it fails', async () => {
+    const { createSession, res } = await failingShield({ shielded: true });
+    expect(createSession).toHaveBeenCalledTimes(1);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Failed to create shielded session',
+      details: 'tmux: invalid option: allow-passthrough',
+    });
   });
 });
 
@@ -112,6 +169,7 @@ describe('POST /sessions/:sessionId/shield', () => {
       ptyManager: {
         getSession: vi.fn(() => session),
         isShieldAvailable: () => tmux,
+        shieldUnavailableReason: () => (tmux ? null : 'no tmux'),
         killSession,
         createSession,
       } as never,

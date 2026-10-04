@@ -9,8 +9,10 @@ import {
   findTmuxBinary,
   lastCastSize,
   newSessionArgs,
+  parseTmuxVersion,
   SHIELD_RESTORE_LIMIT,
   SHIELD_RESTORED_BANNER,
+  SHIELD_SERVER_OPTIONS,
   ShieldTmux,
   shieldClientEndReason,
   shieldLaunchdLabel,
@@ -23,6 +25,8 @@ import {
   shieldTmuxName,
   shieldUsesLaunchd,
   tmuxEnv,
+  tmuxVersionProblem,
+  withoutPermissionBypass,
 } from './shielded-tmux.js';
 import { setShuttingDown } from './shutdown-state.js';
 
@@ -210,6 +214,131 @@ describe('tmux arguments', () => {
   });
 });
 
+describe('tmux versions', () => {
+  it('reads the version tmux -V prints', () => {
+    expect(parseTmuxVersion('tmux 3.2a\n')).toEqual([3, 2]);
+    expect(parseTmuxVersion('tmux 3.5')).toEqual([3, 5]);
+    expect(parseTmuxVersion('tmux next-3.6')).toEqual([3, 6]);
+    expect(parseTmuxVersion('tmux 2.7')).toEqual([2, 7]);
+    expect(parseTmuxVersion('tmux master')).toBeNull();
+  });
+
+  it('refuses a tmux older than 3.2 and names the version it found', () => {
+    expect(tmuxVersionProblem('tmux 3.1c')).toContain('tmux 3.1c');
+    expect(tmuxVersionProblem('tmux 2.7')).toContain('3.2 or newer');
+    expect(tmuxVersionProblem('tmux 3.2a')).toBeNull();
+    expect(tmuxVersionProblem('tmux 3.5a')).toBeNull();
+    expect(tmuxVersionProblem('tmux master')).toBeNull();
+  });
+
+  it('marks shielded sessions unavailable with an old tmux, asking tmux -V once', () => {
+    const binDir = fs.mkdtempSync('/tmp/vt-bin-');
+    try {
+      const calls = path.join(binDir, 'calls');
+      const fake = (name: string, version: string) => {
+        const file = path.join(binDir, name);
+        fs.writeFileSync(
+          file,
+          `#!/bin/sh\necho "$*" >> '${calls}'\n[ "$1" = "-V" ] && echo 'tmux ${version}'\nexit 0\n`,
+          { mode: 0o755 }
+        );
+        return file;
+      };
+      const old = new ShieldTmux(binDir, fake('tmux-old', '3.1c'), false);
+      expect(old.isAvailable()).toBe(false);
+      expect(old.unavailableReason()).toContain('tmux 3.1c');
+      expect(old.isAvailable()).toBe(false);
+      const current = new ShieldTmux(binDir, fake('tmux-new', '3.4'), false);
+      expect(current.isAvailable()).toBe(true);
+      expect(new ShieldTmux(binDir, null, false).unavailableReason()).toContain('not installed');
+      expect(fs.readFileSync(calls, 'utf8').trim().split('\n')).toEqual(['-V', '-V']);
+    } finally {
+      fs.rmSync(binDir, { recursive: true, force: true });
+    }
+  });
+
+  it('sets every server option with -q, so an option an older tmux lacks is skipped', () => {
+    for (const option of SHIELD_SERVER_OPTIONS) {
+      expect(option.slice(0, 2)).toEqual(['set-option', '-q']);
+    }
+  });
+});
+
+describe('withoutPermissionBypass', () => {
+  it("drops Claude Code's permission bypass", () => {
+    expect(withoutPermissionBypass(['/x/claude', '--dangerously-skip-permissions', '-p'])).toEqual([
+      '/x/claude',
+      '-p',
+    ]);
+    expect(
+      withoutPermissionBypass(['claude', '--allow-dangerously-skip-permissions', '--model', 'opus'])
+    ).toEqual(['claude', '--model', 'opus']);
+    expect(withoutPermissionBypass(['claude', '--permission-mode', 'bypassPermissions'])).toEqual([
+      'claude',
+    ]);
+    expect(withoutPermissionBypass(['claude', '--permission-mode=bypassPermissions'])).toEqual([
+      'claude',
+    ]);
+    expect(withoutPermissionBypass(['claude', '--permission-mode', 'plan'])).toEqual([
+      'claude',
+      '--permission-mode',
+      'plan',
+    ]);
+  });
+
+  it("drops Codex's approval and sandbox bypass", () => {
+    expect(
+      withoutPermissionBypass(['codex', '--dangerously-bypass-approvals-and-sandbox', 'fix it'])
+    ).toEqual(['codex', 'fix it']);
+    expect(withoutPermissionBypass(['/opt/bin/codex', '--yolo'])).toEqual(['/opt/bin/codex']);
+    expect(
+      withoutPermissionBypass(['codex', '--sandbox', 'danger-full-access', '-a', 'never'])
+    ).toEqual(['codex']);
+    expect(withoutPermissionBypass(['npx', '@openai/codex', '--yolo'])).toEqual([
+      'npx',
+      '@openai/codex',
+    ]);
+    expect(withoutPermissionBypass(['codex', '--sandbox', 'workspace-write'])).toEqual([
+      'codex',
+      '--sandbox',
+      'workspace-write',
+    ]);
+  });
+
+  it("drops Gemini's yolo mode", () => {
+    expect(withoutPermissionBypass(['gemini', '--yolo'])).toEqual(['gemini']);
+    expect(withoutPermissionBypass(['gemini', '-y', '-m', 'pro'])).toEqual(['gemini', '-m', 'pro']);
+    expect(withoutPermissionBypass(['gemini', '--approval-mode=yolo'])).toEqual(['gemini']);
+    expect(withoutPermissionBypass(['npx', '@google/gemini-cli', '-y'])).toEqual([
+      'npx',
+      '@google/gemini-cli',
+    ]);
+  });
+
+  it("leaves other programs' flags and anything after -- alone", () => {
+    expect(withoutPermissionBypass(['apt-get', 'install', '-y', 'x'])).toEqual([
+      'apt-get',
+      'install',
+      '-y',
+      'x',
+    ]);
+    expect(withoutPermissionBypass(['gemini', '--', '-y'])).toEqual(['gemini', '--', '-y']);
+  });
+
+  it('refuses a shell command string that carries a bypass', () => {
+    expect(withoutPermissionBypass(['/bin/zsh', '-c', 'codex --yolo'])).toBeNull();
+    expect(
+      withoutPermissionBypass(['/bin/zsh', '-i', '-c', 'claude --dangerously-skip-permissions'])
+    ).toBeNull();
+    expect(withoutPermissionBypass(['/bin/zsh', '-c', 'gemini -y'])).toBeNull();
+    expect(withoutPermissionBypass(['/bin/zsh', '-c', 'npm test'])).toEqual([
+      '/bin/zsh',
+      '-c',
+      'npm test',
+    ]);
+  });
+});
+
 describe('shieldReopenPlan', () => {
   it('continues a Claude conversation and replaces the old session', () => {
     expect(
@@ -284,6 +413,30 @@ describe('shieldRestorePlan', () => {
       command: ['/x/claude'],
       kind: 'same-command',
     });
+  });
+
+  it("never re-runs a permission bypass under 'all'", () => {
+    // Claude without a known conversation (it died early, or a -p run): started again, no bypass.
+    expect(
+      shieldRestorePlan({ command: ['claude', '--dangerously-skip-permissions'] }, 'all')
+    ).toEqual({ command: ['claude'], kind: 'same-command' });
+    expect(
+      shieldRestorePlan(
+        { command: ['claude', '--permission-mode', 'bypassPermissions', '-p', 'x'] },
+        'all'
+      )?.command
+    ).toEqual(['claude', '-p', 'x']);
+    expect(
+      shieldRestorePlan({ command: ['codex', '--dangerously-bypass-approvals-and-sandbox'] }, 'all')
+        ?.command
+    ).toEqual(['codex']);
+    expect(shieldRestorePlan({ command: ['codex', '--yolo'] }, 'all')?.command).toEqual(['codex']);
+    expect(shieldRestorePlan({ command: ['gemini', '--yolo'] }, 'all')?.command).toEqual([
+      'gemini',
+    ]);
+    expect(shieldRestorePlan({ command: ['gemini', '-y'] }, 'all')?.command).toEqual(['gemini']);
+    // A bypass inside a shell string can't be removed safely: not restored at all.
+    expect(shieldRestorePlan({ command: ['/bin/zsh', '-c', 'codex --yolo'] }, 'all')).toBeNull();
   });
 
   it('writes the restored line in English', () => {
@@ -398,6 +551,30 @@ describe.skipIf(!tmux)('shielded session survives a server restart (real tmux)',
       // No server left.
     }
     fs.rmSync(controlPath, { recursive: true, force: true });
+  });
+
+  it('starts the session when tmux rejects an option, as an older tmux does', async () => {
+    controlPath = fs.mkdtempSync('/tmp/vt-sh-');
+    // Unknown to every tmux: without -q it would abort the chain before new-session.
+    const args = [
+      ...shieldSocketArgs(controlPath),
+      'start-server',
+      ';',
+      'set-option',
+      '-q',
+      '-g',
+      'no-such-option-in-any-tmux',
+      'on',
+      ';',
+      ...newSessionArgs({
+        sessionId: 'old-tmux',
+        command: ['sleep', '30'],
+        cwd: '/tmp',
+        sessionEnv: {},
+      }),
+    ];
+    execFileSync(tmux as string, args, { env: tmuxEnv(process.env), stdio: 'ignore' });
+    expect(await new ShieldTmux(controlPath, tmux, false).has('old-tmux')).toBe(true);
   });
 
   it('re-attaches the same program under the same id', async () => {

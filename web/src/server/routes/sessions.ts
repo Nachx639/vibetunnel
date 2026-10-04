@@ -531,14 +531,21 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     // Shielded sessions run in tmux on this server, never in a terminal window. Without an
     // explicit choice, local web/phone sessions are shielded only when the user turned
     // "shield new sessions" on and tmux is there. Terminal-window and remote (HQ) sessions
-    // are never shielded by default.
-    const shielded =
-      req.body.shielded === true ||
-      (req.body.shielded === undefined &&
-        req.body.spawn_terminal !== true &&
-        !remoteId &&
-        (config.shieldNewSessionsByDefault?.() ?? false) &&
-        ptyManager.isShieldAvailable());
+    // are never shielded by default. A default shield that can't start falls back to a plain
+    // session; an explicit one answers with the reason.
+    const shieldAsked = req.body.shielded === true;
+    const shieldByDefault =
+      !shieldAsked &&
+      req.body.shielded === undefined &&
+      req.body.spawn_terminal !== true &&
+      !remoteId &&
+      (config.shieldNewSessionsByDefault?.() ?? false);
+    let shielded = shieldAsked || (shieldByDefault && ptyManager.isShieldAvailable());
+    if (shieldByDefault && !shielded) {
+      logger.warn(
+        `new session not shielded: ${ptyManager.shieldUnavailableReason() ?? 'shield unavailable'}`
+      );
+    }
     const spawn_terminal = shielded ? false : req.body.spawn_terminal;
     logger.debug(
       `creating new session: command=${JSON.stringify(command)}, remoteId=${remoteId || 'local'}, spawn_terminal=${spawn_terminal}, cols=${cols}, rows=${rows}`
@@ -691,19 +698,20 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
         )
       );
 
-      if (shielded && !ptyManager.isShieldAvailable()) {
-        return res
-          .status(501)
-          .json({ error: 'Shielded sessions need tmux, which is not installed on the server' });
+      if (shieldAsked && !ptyManager.isShieldAvailable()) {
+        return res.status(501).json({
+          error:
+            ptyManager.shieldUnavailableReason() ??
+            'Shielded sessions are not available on this server',
+        });
       }
 
-      const result = await ptyManager.createSession(command, {
+      const sessionOptions = {
         name: sessionName,
         workingDir: cwd,
         cols,
         rows,
         titleMode,
-        shielded,
         gitRepoPath: gitInfo.gitRepoPath,
         gitBranch: gitInfo.gitBranch,
         gitAheadCount: gitInfo.gitAheadCount,
@@ -711,7 +719,19 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
         gitHasChanges: gitInfo.gitHasChanges,
         gitIsWorktree: gitInfo.gitIsWorktree,
         gitMainRepoPath: gitInfo.gitMainRepoPath,
-      });
+      };
+      let result: Awaited<ReturnType<typeof ptyManager.createSession>>;
+      try {
+        result = await ptyManager.createSession(command, { ...sessionOptions, shielded });
+      } catch (error) {
+        if (!shielded || shieldAsked) throw error;
+        // Shielded only because of the default: the user still gets their session.
+        logger.warn(
+          `shielding a new session failed, starting it unshielded: ${error instanceof Error ? error.message : error}`
+        );
+        shielded = false;
+        result = await ptyManager.createSession(command, { ...sessionOptions, shielded });
+      }
 
       const { sessionId, sessionInfo } = result;
       logger.log(chalk.green(`WEB session ${sessionId} created (PID: ${sessionInfo.pid})`));
@@ -722,7 +742,10 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
     } catch (error) {
       logger.error('error creating session:', error);
       if (error instanceof PtyError) {
-        res.status(500).json({ error: 'Failed to create session', details: error.message });
+        res.status(500).json({
+          error: shieldAsked ? 'Failed to create shielded session' : 'Failed to create session',
+          details: error.message,
+        });
       } else {
         res.status(500).json({ error: 'Failed to create session' });
       }
@@ -1520,9 +1543,11 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       });
     }
     if (!ptyManager.isShieldAvailable()) {
-      return res
-        .status(501)
-        .json({ error: 'Shielded sessions need tmux, which is not installed on the server' });
+      return res.status(501).json({
+        error:
+          ptyManager.shieldUnavailableReason() ??
+          'Shielded sessions are not available on this server',
+      });
     }
     const plan = shieldReopenPlan(session);
     try {

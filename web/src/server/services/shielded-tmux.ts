@@ -32,7 +32,7 @@
  * job's plist (0600, next to the socket) holds the environment the sessions get. It is booted
  * out when the last shielded session ends. VIBETUNNEL_SHIELD_LAUNCHD=0 turns launchd off.
  */
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -96,32 +96,79 @@ export function shieldSocketArgs(controlPath: string): string[] {
 }
 
 /**
+ * Oldest tmux shielded sessions run on: `tmux -D` (the launchd job) and `terminal-features`
+ * are 3.2. An older tmux makes the shield unavailable, so a default shield falls back to a
+ * plain session instead of failing.
+ */
+export const SHIELD_MIN_TMUX_VERSION: readonly [number, number] = [3, 2];
+
+/**
+ * The version in `tmux -V` output, or null when it names none (`tmux master`, an OS build).
+ * `tmux 3.2a` and `tmux next-3.4` give [3, 2] and [3, 4].
+ */
+export function parseTmuxVersion(output: string): [number, number] | null {
+  const match = /^tmux\s+(?:next-)?(\d+)\.(\d+)/.exec(output.trim());
+  return match ? [Number(match[1]), Number(match[2])] : null;
+}
+
+/** Why the tmux that printed `versionOutput` can't run shielded sessions, or null if it can. */
+export function tmuxVersionProblem(versionOutput: string): string | null {
+  const version = parseTmuxVersion(versionOutput);
+  // No number: a development or OS build, which tracks current tmux.
+  if (!version) return null;
+  const [minMajor, minMinor] = SHIELD_MIN_TMUX_VERSION;
+  const [major, minor] = version;
+  if (major > minMajor || (major === minMajor && minor >= minMinor)) return null;
+  return `Shielded sessions need tmux ${minMajor}.${minMinor} or newer; the server has ${versionOutput.trim()}`;
+}
+
+/** `tmux -V` is asked once per binary. */
+const tmuxProblems = new Map<string, string | null>();
+
+function tmuxBinaryProblem(tmuxBin: string): string | null {
+  const cached = tmuxProblems.get(tmuxBin);
+  if (cached !== undefined) return cached;
+  let problem: string | null;
+  try {
+    const output = execFileSync(tmuxBin, ['-V'], { encoding: 'utf8', timeout: 5_000 });
+    problem = tmuxVersionProblem(output);
+  } catch (error) {
+    problem = `Shielded sessions need tmux, and ${tmuxBin} -V failed: ${error instanceof Error ? error.message : error}`;
+  }
+  if (problem) logger.warn(problem);
+  tmuxProblems.set(tmuxBin, problem);
+  return problem;
+}
+
+/**
  * Options of the shield tmux server: tmux must be invisible. No status bar, no prefix key (every
  * key reaches the program), no mouse capture (the web terminal scrolls), no escape delay, and no
  * alternate screen on the outside so output scrolls into the web terminal's scrollback.
+ * Every one is `set-option -q`: tmux stops a `;` chain at the first failing command, so one
+ * option a tmux doesn't know would otherwise abort the `new-session` after it.
  */
 export const SHIELD_SERVER_OPTIONS: string[][] = [
-  ['set-option', '-g', 'status', 'off'],
-  ['set-option', '-g', 'prefix', 'None'],
-  ['set-option', '-g', 'prefix2', 'None'],
-  ['set-option', '-g', 'mouse', 'off'],
-  ['set-option', '-s', 'escape-time', '0'],
-  ['set-option', '-g', 'history-limit', '50000'],
-  ['set-option', '-g', 'default-terminal', 'tmux-256color'],
-  ['set-option', '-s', 'terminal-overrides', '*:smcup@:rmcup@'],
-  ['set-option', '-s', 'terminal-features', 'xterm*:RGB:clipboard:title:focus'],
-  ['set-option', '-s', 'set-clipboard', 'on'],
-  ['set-option', '-s', 'focus-events', 'on'],
-  ['set-option', '-g', 'set-titles', 'on'],
-  ['set-option', '-g', 'set-titles-string', '#{pane_title}'],
-  ['set-option', '-g', 'allow-passthrough', 'on'],
-  ['set-option', '-g', 'allow-rename', 'off'],
-  ['set-option', '-g', 'bell-action', 'any'],
-  ['set-option', '-g', 'visual-bell', 'off'],
-  ['set-option', '-g', 'remain-on-exit', 'off'],
-  ['set-option', '-g', 'destroy-unattached', 'off'],
-  ['set-option', '-g', 'detach-on-destroy', 'on'],
-  ['set-option', '-g', 'window-size', 'latest'],
+  ['set-option', '-q', '-g', 'status', 'off'],
+  ['set-option', '-q', '-g', 'prefix', 'None'],
+  ['set-option', '-q', '-g', 'prefix2', 'None'],
+  ['set-option', '-q', '-g', 'mouse', 'off'],
+  ['set-option', '-q', '-s', 'escape-time', '0'],
+  ['set-option', '-q', '-g', 'history-limit', '50000'],
+  ['set-option', '-q', '-g', 'default-terminal', 'tmux-256color'],
+  ['set-option', '-q', '-s', 'terminal-overrides', '*:smcup@:rmcup@'],
+  ['set-option', '-q', '-s', 'terminal-features', 'xterm*:RGB:clipboard:title:focus'],
+  ['set-option', '-q', '-s', 'set-clipboard', 'on'],
+  ['set-option', '-q', '-s', 'focus-events', 'on'],
+  ['set-option', '-q', '-g', 'set-titles', 'on'],
+  ['set-option', '-q', '-g', 'set-titles-string', '#{pane_title}'],
+  ['set-option', '-q', '-g', 'allow-passthrough', 'on'],
+  ['set-option', '-q', '-g', 'allow-rename', 'off'],
+  ['set-option', '-q', '-g', 'bell-action', 'any'],
+  ['set-option', '-q', '-g', 'visual-bell', 'off'],
+  ['set-option', '-q', '-g', 'remain-on-exit', 'off'],
+  ['set-option', '-q', '-g', 'destroy-unattached', 'off'],
+  ['set-option', '-q', '-g', 'detach-on-destroy', 'on'],
+  ['set-option', '-q', '-g', 'window-size', 'latest'],
 ];
 
 /** Variables each session gets with `new-session -e`; never part of the server's environment. */
@@ -264,7 +311,13 @@ export class ShieldTmux {
   ) {}
 
   isAvailable(): boolean {
-    return this.tmuxBin !== null;
+    return this.unavailableReason() === null;
+  }
+
+  /** Why shielded sessions can't run here (no tmux, or one that is too old), or null. */
+  unavailableReason(): string | null {
+    if (!this.tmuxBin) return 'Shielded sessions need tmux, which is not installed';
+    return tmuxBinaryProblem(this.tmuxBin);
   }
 
   private bin(): string {
@@ -545,11 +598,82 @@ export function shieldRestoreMode(value: unknown): ShieldRestoreMode {
   return value === 'agents' || value === 'all' ? value : 'off';
 }
 
+type BypassAgent = 'claude' | 'codex' | 'gemini';
+
+/** Flags that turn an agent's permission prompts off; each with the values that do so. */
+const BYPASS_FLAGS: Record<BypassAgent, { flags: string[]; valued: Record<string, string[]> }> = {
+  claude: {
+    flags: ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions'],
+    valued: { '--permission-mode': ['bypassPermissions'] },
+  },
+  codex: {
+    flags: ['--dangerously-bypass-approvals-and-sandbox', '--yolo'],
+    valued: {
+      '--sandbox': ['danger-full-access'],
+      '-s': ['danger-full-access'],
+      '--ask-for-approval': ['never'],
+      '-a': ['never'],
+    },
+  },
+  gemini: {
+    flags: ['--yolo', '-y'],
+    valued: { '--approval-mode': ['yolo'] },
+  },
+};
+
+/** The agent a command-line word starts (`claude`, `/x/codex`, `@google/gemini-cli`), if any. */
+function bypassAgent(word: string): BypassAgent | null {
+  const name = word.split('/').pop() ?? '';
+  const match = /^(claude|codex|gemini)(?:-cli)?(?:@[\w.-]+)?$/.exec(name);
+  return match ? (match[1] as BypassAgent) : null;
+}
+
+/**
+ * `command` without the flags that turn an agent's permission prompts off (Claude Code's
+ * `--dangerously-skip-permissions`, Codex's `--dangerously-bypass-approvals-and-sandbox` or
+ * `--yolo`, Gemini's `--yolo` or `-y`, and their sandbox/approval-mode spellings), for a
+ * restore that runs with nobody watching. Null when such a flag sits inside a shell command
+ * string (`zsh -c "codex --yolo"`), which can't be edited safely: that session isn't restored.
+ */
+export function withoutPermissionBypass(command: string[]): string[] | null {
+  const agentAt = command.findIndex((word) => bypassAgent(word) !== null);
+  if (agentAt === -1) {
+    const bypassWord =
+      /(^|\s)(--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--permission-mode[=\s]+bypassPermissions|--dangerously-bypass-approvals-and-sandbox|--yolo|-y|--approval-mode[=\s]+yolo|--sandbox[=\s]+danger-full-access)(\s|$)/;
+    const inShellString = command.some(
+      (word) => /\s/.test(word) && /(claude|codex|gemini)/.test(word) && bypassWord.test(word)
+    );
+    return inShellString ? null : command;
+  }
+  const { flags, valued } = BYPASS_FLAGS[bypassAgent(command[agentAt]) as BypassAgent];
+  const kept = command.slice(0, agentAt + 1);
+  const rest = command.slice(agentAt + 1);
+  for (let i = 0; i < rest.length; i++) {
+    const word = rest[i];
+    if (word === '--') {
+      kept.push(...rest.slice(i));
+      break;
+    }
+    if (flags.includes(word)) continue;
+    const [name, inlineValue] = word.split(/=(.*)/s, 2);
+    const values = valued[name];
+    if (values) {
+      if (inlineValue !== undefined && values.includes(inlineValue)) continue;
+      if (inlineValue === undefined && values.includes(rest[i + 1])) {
+        i++;
+        continue;
+      }
+    }
+    kept.push(word);
+  }
+  return kept;
+}
+
 /**
  * What a lost shielded session runs when it is recreated, or null when `mode` says nothing
  * runs. Claude resumes its conversation (`claude --resume <id>`); under 'all' anything else
  * runs its original command again. An unattended restore never carries a permission-bypass
- * flag (`--dangerously-skip-permissions`): the user can add it back in the session.
+ * flag (see withoutPermissionBypass): the user can add it back in the session.
  */
 export function shieldRestorePlan(
   info: Pick<SessionInfo, 'command' | 'claudeSessionId'>,
@@ -565,7 +689,8 @@ export function shieldRestorePlan(
     return { command: [executable, ...args], kind: 'claude-resume' };
   }
   if (mode !== 'all') return null;
-  return { command: info.command, kind: 'same-command' };
+  const command = withoutPermissionBypass(info.command);
+  return command ? { command, kind: 'same-command' } : null;
 }
 
 /** Last size recorded in a cast file (resize events, else the header), for a recreated pane. */
