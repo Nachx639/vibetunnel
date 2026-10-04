@@ -758,7 +758,7 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
 
               // Remove cleaned remote sessions from registry
               for (const sessionId of cleanedSessionIds) {
-                remoteRegistry.removeSessionFromRemote(sessionId);
+                remoteRegistry.removeSessionFromRemote(sessionId, remote.id);
               }
 
               remoteResults.push({ remoteName: remote.name, cleaned: cleanedCount });

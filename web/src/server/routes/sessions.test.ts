@@ -1231,8 +1231,9 @@ describe('sessions routes', () => {
         const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
         await handlerOf(hqRouter, '/cleanup-exited')({} as Request, res as never);
 
-        expect(remoteRegistry.removeSessionFromRemote).toHaveBeenCalledWith('r-1');
-        expect(remoteRegistry.removeSessionFromRemote).toHaveBeenCalledWith('r-2');
+        // Only as sessions of the remote that reported them.
+        expect(remoteRegistry.removeSessionFromRemote).toHaveBeenCalledWith('r-1', 'remote-1');
+        expect(remoteRegistry.removeSessionFromRemote).toHaveBeenCalledWith('r-2', 'remote-1');
         expect(res.json).toHaveBeenCalledWith(
           expect.objectContaining({ remoteResults: [{ remoteName: 'mini', cleaned: 2 }] })
         );

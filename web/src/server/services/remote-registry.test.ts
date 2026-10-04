@@ -56,6 +56,18 @@ describe('RemoteRegistry health checks', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("never lets one remote's report unmap another remote's session", () => {
+    fetchMock.mockResolvedValue({ ok: true } as Response);
+    const a = registerRemote('a');
+    const b = registerRemote('b');
+    registry.addSessionToRemote(a.id, 's-a');
+
+    registry.removeSessionFromRemote('s-a', b.id);
+    expect(registry.getRemoteBySessionId('s-a')?.id).toBe(a.id);
+    registry.removeSessionFromRemote('s-a', a.id);
+    expect(registry.getRemoteBySessionId('s-a')).toBeUndefined();
+  });
+
   it('rejects a different remote that collides by name or id', () => {
     fetchMock.mockResolvedValue({ ok: true } as Response);
     const original = registerRemote('original');

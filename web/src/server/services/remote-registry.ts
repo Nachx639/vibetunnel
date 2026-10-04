@@ -151,10 +151,18 @@ export class RemoteRegistry {
     logger.debug(`session ${sessionId} added to remote ${remote.name}`);
   }
 
-  removeSessionFromRemote(sessionId: string): void {
+  /**
+   * Forget a session's remote. With `fromRemoteId` (ids a remote reported itself), only when the
+   * session is mapped to that remote: a misbehaving remote can't unmap another's sessions.
+   */
+  removeSessionFromRemote(sessionId: string, fromRemoteId?: string): void {
     const remoteId = this.sessionToRemote.get(sessionId);
     if (!remoteId) {
       logger.debug(`session ${sessionId} not mapped to any remote`);
+      return;
+    }
+    if (fromRemoteId !== undefined && remoteId !== fromRemoteId) {
+      logger.warn(`remote ${fromRemoteId} reported session ${sessionId} of another remote`);
       return;
     }
 
