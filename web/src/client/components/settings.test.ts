@@ -52,6 +52,18 @@ describe('Settings', () => {
   const button = (testId: string) =>
     component.querySelector(`[data-testid="${testId}"]`) as HTMLButtonElement | null;
 
+  describe('phone layout', () => {
+    it('is Classic until Compact is picked, and remembers the choice', async () => {
+      expect(button('settings-phone-layout-classic')?.getAttribute('aria-pressed')).toBe('true');
+      button('settings-phone-layout-compact')?.click();
+      await component.updateComplete;
+      expect(button('settings-phone-layout-compact')?.getAttribute('aria-pressed')).toBe('true');
+      expect(JSON.parse(localStorage.getItem('vibetunnel_app_preferences') ?? '{}').phoneUi).toBe(
+        'compact'
+      );
+    });
+  });
+
   describe('appearance', () => {
     it('starts on the default color theme', () => {
       expect(button('settings-accent-emerald')?.getAttribute('aria-pressed')).toBe('true');

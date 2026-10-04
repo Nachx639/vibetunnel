@@ -869,6 +869,43 @@ export const en = {
   // Kill all
   'sessions.killAllConfirm': 'Kill all {n} running sessions? Unsaved work in them is lost.',
   'sessions.killAllConfirm.one': 'Kill the running session? Unsaved work in it is lost.',
+  // Compact phone layout
+  'settings.phoneLayout': 'Phone layout',
+  'settings.phoneLayout.description':
+    'How VibeTunnel looks on a phone in this browser. Classic keeps the session cards; Compact shows a chat-style list with search, pins and a quick way to start a session.',
+  'settings.phoneLayout.classic': 'Classic',
+  'settings.phoneLayout.compact': 'Compact',
+  'sessions.row.now': 'now',
+  'sessions.row.minutes': '{n} min',
+  'sessions.row.killConfirm': 'Kill “{name}”?',
+  'sessions.row.open': 'Open',
+  'sessions.row.rename': 'Rename',
+  'sessions.row.clear': 'Clear session',
+  'sessions.row.renamePrompt': 'New name',
+  'organize.pin': 'Pin to top',
+  'organize.unpin': 'Unpin',
+  'organize.pinned': 'Pinned',
+  'phoneList.swipeKill': 'Kill',
+  'phoneList.swipeClear': 'Clear',
+  'phoneList.clearFinished': 'Clear all',
+  'phoneList.clearFinishedConfirm': 'Clear {n} finished sessions?',
+  'phoneList.clearFinishedConfirm.one': 'Clear {n} finished session?',
+  'a11y.row.actions': 'Actions for {name}',
+  'a11y.row.exited': 'Exited',
+  'sessions.search': 'Search sessions',
+  'sessions.searchEmpty': 'No sessions match',
+  'empty.title': 'Nothing running',
+  'empty.subtitle':
+    'Start Claude, another agent or a shell. Your sessions show up here, like a chat list.',
+  'empty.custom': 'Other command…',
+  'empty.showExited': 'Show {n} finished sessions',
+  'empty.showExited.one': 'Show {n} finished session',
+  'newChat.title': 'New session',
+  'newChat.which': 'What do you want to open?',
+  'newChat.where': 'Start {tool} in…',
+  'newChat.other': 'Other folder…',
+  'newChat.failed': 'Could not start the session',
+  'header.more': 'More',
 };
 
 export type MessageKey = keyof typeof en;

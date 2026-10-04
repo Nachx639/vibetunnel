@@ -13,6 +13,7 @@ import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
 import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
 import { createLogger } from '../utils/logger.js';
+import { getPhoneUi, type PhoneUi, setPhoneUi } from '../utils/phone-ui.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
 import './language-picker.js';
@@ -46,6 +47,7 @@ export class Settings extends LitElement {
 
   // Appearance state (shared with the header toggle and the session compact menu)
   @state() private themeMode: ThemeMode = getThemeMode();
+  @state() private phoneUi: PhoneUi = getPhoneUi();
   @state() private accent = getAccent();
 
   private permissionChangeUnsubscribe?: () => void;
@@ -770,12 +772,48 @@ export class Settings extends LitElement {
     `;
   }
 
+  private selectPhoneUi(value: PhoneUi) {
+    this.phoneUi = value;
+    setPhoneUi(value);
+  }
+
+  /** Phone layout: Classic (the cards, as on wider screens) or Compact (chat-style rows). */
+  private renderPhoneLayout() {
+    const options: Array<[PhoneUi, string]> = [
+      ['classic', t('settings.phoneLayout.classic')],
+      ['compact', t('settings.phoneLayout.compact')],
+    ];
+    return html`
+      <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-phone-layout">
+        <label class="text-primary font-medium">${t('settings.phoneLayout')}</label>
+        <p class="text-muted text-xs mt-1">${t('settings.phoneLayout.description')}</p>
+        <div class="appearance-modes mt-3" role="group" aria-label=${t('settings.phoneLayout')}>
+          ${options.map(
+            ([value, label]) => html`
+              <button
+                type="button"
+                class="appearance-mode min-h-[44px] ${this.phoneUi === value ? 'active' : ''}"
+                aria-pressed=${this.phoneUi === value ? 'true' : 'false'}
+                data-testid="settings-phone-layout-${value}"
+                @click=${() => this.selectPhoneUi(value)}
+              >
+                ${label}
+              </button>
+            `
+          )}
+        </div>
+      </div>
+    `;
+  }
+
   private renderAppSettings() {
     return html`
       <div class="space-y-4">
         <h3 class="text-md font-bold text-primary mb-3">${t('settings.application')}</h3>
 
         ${this.renderAppearance()}
+
+        ${this.renderPhoneLayout()}
 
         <!-- Language -->
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">

@@ -4,15 +4,139 @@
  * Full-width header for list view with horizontal layout
  */
 import { html } from 'lit';
-import { customElement } from 'lit/decorators.js';
+import { customElement, state } from 'lit/decorators.js';
 import { t } from '../i18n/index.js';
+import { PHONE_UI_CHANGED_EVENT, usesCompactPhoneUi } from '../utils/phone-ui.js';
 import { HeaderBase } from './header-base.js';
 import './terminal-icon.js';
 import './notification-status.js';
 import './theme-toggle-icon.js';
 
+const MENU_ICONS = {
+  settings: html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>`,
+  files: html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>`,
+  tmux: html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16M3 12h9" /></svg>`,
+  logout: html`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 17l5-5-5-5M15 12H3" /></svg>`,
+};
+
 @customElement('full-header')
 export class FullHeader extends HeaderBase {
+  @state() private showMoreMenu = false;
+  @state() private moreMenuStyle = '';
+
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
+    document.removeEventListener('click', this.closeMoreMenu, true);
+  }
+
+  private handlePhoneUiChanged = () => this.requestUpdate();
+
+  /** The compact phone layout: three buttons (appearance, create, more) instead of six. */
+  private isPhone(): boolean {
+    return usesCompactPhoneUi();
+  }
+
+  private closeMoreMenu = (e: Event) => {
+    if (!e.composedPath().some((el) => (el as HTMLElement).dataset?.moreMenu !== undefined)) {
+      this.setMoreMenu(false);
+    }
+  };
+
+  private setMoreMenu(open: boolean, anchor?: HTMLElement) {
+    if (open && anchor) {
+      // Fixed position: the header row clips its overflow.
+      const rect = anchor.getBoundingClientRect();
+      this.moreMenuStyle = `top: ${rect.bottom + 6}px; right: ${window.innerWidth - rect.right}px;`;
+    }
+    this.showMoreMenu = open;
+    document.removeEventListener('click', this.closeMoreMenu, true);
+    if (open) document.addEventListener('click', this.closeMoreMenu, true);
+  }
+
+  private menuItem(label: string, icon: ReturnType<typeof html>, action: () => void) {
+    return html`
+      <button
+        class="phone-menu-item"
+        role="menuitem"
+        @click=${() => {
+          this.setMoreMenu(false);
+          action();
+        }}
+      >
+        <span class="phone-menu-icon" aria-hidden="true">${icon}</span>${label}
+      </button>
+    `;
+  }
+
+  private renderPhoneActions() {
+    return html`
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <theme-toggle-icon
+          .theme=${this.currentTheme}
+          @theme-changed=${(e: CustomEvent) => {
+            this.currentTheme = e.detail.theme;
+          }}
+        ></theme-toggle-icon>
+        <button
+          class="p-2 bg-primary text-text-bright hover:bg-primary-light rounded-lg transition-all duration-200 vt-create-button"
+          @click=${this.handleCreateSession}
+          title=${t('header.createSession')}
+          aria-label=${t('header.createSession')}
+          data-testid="create-session-button"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"/>
+          </svg>
+        </button>
+        <button
+          class="p-2 bg-bg-tertiary text-muted border border-border rounded-lg"
+          data-more-menu
+          data-testid="header-more-button"
+          aria-label=${t('header.more')}
+          aria-haspopup="menu"
+          aria-expanded=${this.showMoreMenu ? 'true' : 'false'}
+          @click=${(e: Event) => this.setMoreMenu(!this.showMoreMenu, e.currentTarget as HTMLElement)}
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M4 10a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm7.5 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM19 10a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/>
+          </svg>
+        </button>
+        ${
+          this.showMoreMenu
+            ? html`
+              <div class="phone-menu" role="menu" data-more-menu style=${this.moreMenuStyle}>
+                ${this.menuItem(t('common.settings'), MENU_ICONS.settings, () =>
+                  this.dispatchEvent(new CustomEvent('open-settings'))
+                )}
+                ${this.menuItem(t('menu.browseFiles'), MENU_ICONS.files, () =>
+                  this.dispatchEvent(new CustomEvent('open-file-browser'))
+                )}
+                ${this.menuItem(t('header.tmuxSessionsButton'), MENU_ICONS.tmux, () =>
+                  this.handleOpenTmuxSessions()
+                )}
+                ${
+                  this.currentUser
+                    ? html`
+                      <div class="phone-menu-sep"></div>
+                      <div class="phone-menu-user">${this.currentUser} · ${this.authMethodLabel}</div>
+                      ${this.menuItem(t('header.logoutButton'), MENU_ICONS.logout, () => this.handleLogout())}
+                    `
+                    : ''
+                }
+              </div>
+            `
+            : ''
+        }
+      </div>
+    `;
+  }
+
   private get authMethodLabel(): string {
     switch (this.authMethod) {
       case 'password':
@@ -43,8 +167,8 @@ export class FullHeader extends HeaderBase {
             <terminal-icon size="24" class="flex-shrink-0"></terminal-icon>
             <div class="flex items-baseline gap-2 min-w-0">
               <h1 class="text-sm sm:text-xl font-bold text-primary font-mono group-hover:underline truncate">
-                <span class="hidden sm:inline">VibeTunnel</span>
-                <span class="sm:hidden">VT</span>
+                <span class="${this.isPhone() ? '' : 'hidden sm:inline'}">VibeTunnel</span>
+                <span class="${this.isPhone() ? 'hidden' : 'sm:hidden'}">VT</span>
               </h1>
               <p class="text-text-muted text-xs font-mono flex-shrink-0">
                 (${runningSessions.length})
@@ -52,6 +176,14 @@ export class FullHeader extends HeaderBase {
             </div>
           </button>
 
+          ${this.isPhone() ? this.renderPhoneActions() : this.renderActions()}
+        </div>
+      </div>
+    `;
+  }
+
+  private renderActions() {
+    return html`
           <div class="flex items-center gap-2 flex-shrink-0">
             <notification-status
               @open-settings=${() => this.dispatchEvent(new CustomEvent('open-settings'))}
@@ -95,8 +227,6 @@ export class FullHeader extends HeaderBase {
             </button>
             ${this.renderUserMenu()}
           </div>
-        </div>
-      </div>
     `;
   }
 

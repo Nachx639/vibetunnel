@@ -598,5 +598,167 @@ describe('SessionList', () => {
       }
       expect(worktreeCalls()).toBe(2);
     });
+
+    it('does not fetch worktrees for the phone list, which never shows them', async () => {
+      const list = element as unknown as { usePhoneRows: () => boolean };
+      const phone = vi.spyOn(list, 'usePhoneRows').mockReturnValue(true);
+      element.sessions = repoSessions('1');
+      await element.updateComplete;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(worktreeCalls()).toBe(0);
+      phone.mockRestore();
+    });
+  });
+  describe('phone list (compact phone layout)', () => {
+    const sheetButtons = () =>
+      [...document.body.querySelectorAll('.psr-sheet-group button')].map((b) =>
+        b.textContent?.trim()
+      );
+    // The global localStorage mock stores nothing; give these tests a real one.
+    const store = new Map<string, string>();
+    beforeEach(() => {
+      vi.mocked(localStorage.getItem).mockImplementation((key) => store.get(key) ?? null);
+      vi.mocked(localStorage.setItem).mockImplementation((key, value) => {
+        store.set(key, value);
+      });
+    });
+    afterEach(() => {
+      store.clear();
+      vi.mocked(localStorage.getItem).mockReset();
+      vi.mocked(localStorage.setItem).mockReset();
+      document.body.querySelector('.psr-sheet-cancel')?.dispatchEvent(new Event('click'));
+      vi.restoreAllMocks();
+    });
+
+    it('keeps the cards by default, and shows rows only with the compact layout on a phone', async () => {
+      element.sessions = [createMockSession({ id: 'a' }), createMockSession({ id: 'b' })];
+      await element.updateComplete;
+      expect(element.querySelectorAll('session-card')).toHaveLength(2);
+      expect(element.querySelector('phone-session-row')).toBeNull();
+
+      store.set('vibetunnel_app_preferences', JSON.stringify({ phoneUi: 'compact' }));
+      element.requestUpdate();
+      await element.updateComplete;
+      // Not a phone (desktop user agent, wide window): still cards.
+      expect(element.querySelector('phone-session-row')).toBeNull();
+
+      vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)'
+      );
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+      try {
+        element.requestUpdate();
+        await element.updateComplete;
+        expect(element.querySelectorAll('phone-session-row')).toHaveLength(2);
+        expect(element.querySelector('session-card')).toBeNull();
+      } finally {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
+      }
+    });
+
+    it('asks before clearing finished sessions from the phone list', async () => {
+      element.sessions = [createMockSession({ id: 'a', status: 'exited' })];
+      const cleanup = vi.spyOn(element, 'handleCleanupExited').mockResolvedValue();
+      const ask = vi.fn(() => false);
+      vi.stubGlobal('confirm', ask);
+      const clear = (element as unknown as { confirmClearFinished: () => void })
+        .confirmClearFinished;
+      clear();
+      expect(ask).toHaveBeenCalledWith('Clear 1 finished session?');
+      expect(cleanup).not.toHaveBeenCalled();
+      ask.mockReturnValue(true);
+      clear();
+      expect(cleanup).toHaveBeenCalledTimes(1);
+      vi.unstubAllGlobals();
+    });
+
+    it('a scroll of a sheet that starts on a folder does nothing; a still tap starts there', async () => {
+      element.sessions = [createMockSession({ id: 'a', workingDir: '/work/app' })];
+      await element.updateComplete;
+      (
+        element as unknown as { openFolderSheet: (entry: { command: string }) => void }
+      ).openFolderSheet({ command: 'zsh' });
+      const folder = () =>
+        document.body.querySelector('.psr-sheet-group button.folder') as HTMLElement;
+      expect(folder().textContent?.trim()).toBe('/work/app');
+      const post = vi.fn(async () => new Response(JSON.stringify({ sessionId: 'new-1' })));
+      vi.mocked(global.fetch).mockImplementation(post);
+      const created = vi.fn();
+      element.addEventListener('session-created', created);
+      // iOS ends a scroll that began on a button with a pointerup on it.
+      const touch = (dy: number) => {
+        const at = (y: number) => ({
+          pointerType: 'touch',
+          pointerId: 7,
+          clientX: 40,
+          clientY: y,
+          bubbles: true,
+        });
+        folder().dispatchEvent(new PointerEvent('pointerdown', at(300)));
+        folder().dispatchEvent(new PointerEvent('pointerup', at(300 + dy)));
+      };
+      const later = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000); // past the opening tap
+      touch(-100);
+      expect(post).not.toHaveBeenCalled();
+      touch(2);
+      later.mockRestore();
+      await vi.waitFor(() => expect(created).toHaveBeenCalled());
+      const [url, init] = post.mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toBe('/api/sessions');
+      expect(JSON.parse(String(init.body))).toMatchObject({
+        command: ['zsh'],
+        workingDir: '/work/app',
+        spawn_terminal: false,
+      });
+    });
+
+    it('puts the last tool first and keeps folders after their sessions are cleared', async () => {
+      const list = element as unknown as {
+        openToolSheet: () => void;
+        openFolderSheet: (entry: { command: string }) => void;
+        quickStarts: Array<{ name?: string; command: string }>;
+        quickStartsLoaded: boolean;
+      };
+      list.quickStartsLoaded = true;
+      list.quickStarts = [{ command: 'claude' }, { command: 'zsh' }];
+      element.sessions = [
+        createMockSession({ id: 'a', status: 'exited', workingDir: '/work/app' }),
+      ];
+      await element.updateComplete;
+      list.openFolderSheet({ command: 'zsh' });
+      expect(sheetButtons()).toContain('/work/app');
+
+      store.set(
+        'vt-phone-recent-starts',
+        JSON.stringify({ ...JSON.parse(store.get('vt-phone-recent-starts') || '{}'), tool: 'zsh' })
+      );
+      element.sessions = [];
+      await element.updateComplete;
+      list.openFolderSheet({ command: 'zsh' });
+      expect(sheetButtons()).toContain('/work/app');
+
+      list.openToolSheet();
+      expect(sheetButtons()).toEqual(['zsh', 'claude', 'Other command…']);
+    });
+
+    it('searches past the hidden finished sessions once the list is long', async () => {
+      const list = element as unknown as { usePhoneRows: () => boolean; phoneQuery: string };
+      vi.spyOn(list, 'usePhoneRows').mockReturnValue(true);
+      element.sessions = [
+        ...['a', 'b', 'c', 'd', 'e', 'f'].map((id) =>
+          createMockSession({ id, name: `shell ${id}`, status: 'running' })
+        ),
+        createMockSession({ id: 'old', name: 'deploy', status: 'exited' }),
+      ];
+      element.hideExited = true;
+      await element.updateComplete;
+      expect(element.querySelector('.phone-search input')).toBeTruthy();
+      list.phoneQuery = 'deploy';
+      await element.updateComplete;
+      const rows = [...element.querySelectorAll('phone-session-row')] as Array<
+        HTMLElement & { session: { id: string } }
+      >;
+      expect(rows.map((row) => row.session.id)).toEqual(['old']);
+    });
   });
 });

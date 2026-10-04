@@ -38,6 +38,7 @@ import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
+import { prunePinned } from './utils/pinned-sessions.js';
 import { VisibilityPoller } from './utils/visibility-poller.js';
 
 const logger = createLogger('app');
@@ -783,6 +784,9 @@ export class VibeTunnelApp extends LitElement {
             // If newSession has Git data, ensure we create a complete session object
             return newSession;
           });
+
+          // Pins of sessions that no longer exist are forgotten.
+          prunePinned(updatedSessions.map((session) => session.id));
 
           // Re-render only when something shown changed: a new array every poll re-rendered
           // the whole list once a second on a phone that may sit on it for hours. Sessions
@@ -2052,6 +2056,7 @@ export class VibeTunnelApp extends LitElement {
               @navigate-to-session=${this.handleNavigateToSession}
               @open-file-browser=${this.handleOpenFileBrowser}
               @open-create-dialog=${this.handleOpenCreateDialog}
+              @session-created=${this.handleSessionCreated}
             ></session-list>
           </div>
         </div>

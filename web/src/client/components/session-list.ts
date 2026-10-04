@@ -16,7 +16,7 @@
  * @listens session-kill-error - From session-card when kill fails
  * @listens clean-exited-sessions - To trigger cleanup of exited sessions
  */
-import { html, LitElement } from 'lit';
+import { html, LitElement, nothing, render } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type { Session } from '../../shared/types.js';
@@ -24,6 +24,7 @@ import { HttpMethod } from '../../shared/types.js';
 import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import type { Worktree } from '../services/git-service.js';
+import './phone-session-row.js';
 import './session-card.js';
 import './inline-edit.js';
 import './session-list/compact-session-card.js';
@@ -31,14 +32,59 @@ import './session-list/repository-header.js';
 import './clickable-path.js';
 import './git-status-badge.js';
 import { getBaseRepoName } from '../../shared/utils/git.js';
+import type { QuickStartCommand } from '../../types/config.js';
+import { serverConfigService } from '../services/server-config-service.js';
+import { parseCommand } from '../utils/command-utils.js';
 import { Z_INDEX } from '../utils/constants.js';
+import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
+import { PHONE_UI_CHANGED_EVENT, usesCompactPhoneUi } from '../utils/phone-ui.js';
+import { loadPinned, pinnedFirst, setPinned } from '../utils/pinned-sessions.js';
+import { endsADrag } from '../utils/pointer-drag.js';
+import { holdSheetFocus } from '../utils/sheet-a11y.js';
 
 const logger = createLogger('session-list');
 
 /** After a repository's worktrees fail to load, ask again at most this often. */
 const WORKTREE_RETRY_MS = 60_000;
+
+/**
+ * What the phone "new session" flow remembers between visits: the last tool you started and
+ * the folders you worked in, so they survive clearing the sessions they came from.
+ */
+const PHONE_STARTS_KEY = 'vt-phone-recent-starts';
+const MAX_RECENT_FOLDERS = 6;
+
+interface PhoneStarts {
+  tool?: string;
+  folders?: string[];
+}
+
+function readPhoneStarts(): PhoneStarts {
+  try {
+    const value = JSON.parse(localStorage.getItem(PHONE_STARTS_KEY) || '{}');
+    return value && typeof value === 'object' ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePhoneStarts(update: PhoneStarts) {
+  try {
+    localStorage.setItem(PHONE_STARTS_KEY, JSON.stringify({ ...readPhoneStarts(), ...update }));
+  } catch {
+    // Private mode or blocked storage: the sheet just falls back to current sessions.
+  }
+}
+
+/**
+ * The compact phone layout (Settings > Phone layout) on a phone: a chat-style list of rows
+ * instead of cards, sidebar included. Off by default: phones keep the cards.
+ */
+export function isPhoneListLayout(): boolean {
+  return usesCompactPhoneUi();
+}
 
 @customElement('session-list')
 export class SessionList extends LitElement {
@@ -69,6 +115,8 @@ export class SessionList extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    window.addEventListener('resize', this.placeFab);
+    window.addEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
     // Make the component focusable
     this.tabIndex = 0;
     // Add keyboard listener only to this component
@@ -77,10 +125,14 @@ export class SessionList extends LitElement {
     document.addEventListener('click', this.handleClickOutside);
   }
 
+  private handlePhoneUiChanged = () => this.requestUpdate();
+
   updated(changedProperties: Map<string | number | symbol, unknown>) {
     super.updated(changedProperties);
+    this.placeFab();
 
-    if (changedProperties.has('sessions')) {
+    // Phone rows show no worktree/follow-mode UI: don't fetch it for them.
+    if (changedProperties.has('sessions') && !this.usePhoneRows()) {
       // Load follow mode for all repositories
       this.loadFollowModeForAllRepos();
     }
@@ -96,8 +148,39 @@ export class SessionList extends LitElement {
     }
   }
 
+  /**
+   * The floating "+" of the phone list sits 14 px above the bar at the bottom of the list,
+   * whatever its height. Without the bar (no sessions) the CSS default applies.
+   */
+  private placeFab = () => {
+    const fab = this.querySelector<HTMLElement>('[data-testid="new-session-fab"]');
+    if (!fab) return;
+    const footer = this.querySelector<HTMLElement>('[data-testid="session-list-footer"]');
+    const top = footer?.getBoundingClientRect().top ?? 0;
+    if (!footer || top <= 0 || top >= window.innerHeight) {
+      fab.style.removeProperty('bottom');
+    } else {
+      fab.style.bottom = `${Math.round(window.innerHeight - top + 14)}px`;
+    }
+    if (footer !== this.observedFooter) {
+      this.footerObserver?.disconnect();
+      this.observedFooter = footer;
+      if (footer && typeof ResizeObserver !== 'undefined') {
+        this.footerObserver ??= new ResizeObserver(() => this.placeFab());
+        this.footerObserver.observe(footer);
+      }
+    }
+  };
+  private footerObserver: ResizeObserver | null = null;
+  private observedFooter: HTMLElement | null = null;
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.footerObserver?.disconnect();
+    this.observedFooter = null;
+    window.removeEventListener('resize', this.placeFab);
+    window.removeEventListener(PHONE_UI_CHANGED_EVENT, this.handlePhoneUiChanged);
+    this.closeSheet();
     this.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('click', this.handleClickOutside);
   }
@@ -777,10 +860,12 @@ export class SessionList extends LitElement {
     return html`
       <div class="font-mono text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2 focus:ring-offset-bg-primary rounded-lg" data-testid="session-list-container">
         ${this.renderActiveSessionInfo()}
-        <div class="p-4 pt-5">
+        <div class="p-4 pt-5 ${this.usePhoneRows() && !this.compactMode ? 'phone-list-fab-room' : ''}">
         ${
           !hasRunningSessions && (!hasExitedSessions || this.hideExited)
-            ? html`
+            ? this.usePhoneRows() && !this.compactMode && !this.loading
+              ? this.renderPhoneEmpty(exitedSessions.length)
+              : html`
               <div class="text-text-muted text-center py-8">
                 ${
                   this.loading
@@ -853,7 +938,9 @@ export class SessionList extends LitElement {
                 }
               </div>
             `
-            : html`
+            : this.usePhoneRows()
+              ? this.renderPhoneRows(runningSessions, showExitedSection ? exitedSessions : [])
+              : html`
               <!-- Running Sessions -->
               ${
                 hasRunningSessions
@@ -1003,6 +1090,404 @@ export class SessionList extends LitElement {
     `;
   }
 
+  /** The compact phone layout: chat-style rows (phone-session-row) instead of cards. */
+  private usePhoneRows(): boolean {
+    return isPhoneListLayout();
+  }
+
+  @state() private phoneQuery = '';
+  /** Sessions pinned on this device (utils/pinned-sessions.ts): first in the phone list. */
+  @state() private pinnedIds = loadPinned();
+
+  private handlePinToggle = (e: CustomEvent<{ sessionId: string; pinned: boolean }>) => {
+    this.pinnedIds = setPinned(e.detail.sessionId, e.detail.pinned);
+  };
+
+  /** Search over what a row shows: name, folder and command. */
+  private matchesQuery(session: Session, rawQuery: string): boolean {
+    const query = rawQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [session.name, session.workingDir, session.command?.join(' ')].some((field) =>
+      field?.toLowerCase().includes(query)
+    );
+  }
+
+  /**
+   * Running sessions, newest first, pinned ones on top. By start time: lastModified changes
+   * with every output burst and would shuffle rows under the user's finger on each poll.
+   */
+  private orderRunning(sessions: Session[]): Session[] {
+    const started = (session: Session) => new Date(session.startedAt || 0).getTime();
+    return pinnedFirst(
+      [...sessions].sort((a, b) => started(b) - started(a)),
+      this.pinnedIds
+    );
+  }
+
+  private renderPhoneRow(session: Session) {
+    return html`
+      <phone-session-row
+        .session=${session}
+        .authClient=${this.authClient}
+        .selected=${session.id === this.selectedSessionId}
+        .pinned=${this.pinnedIds.has(session.id)}
+        .stamp=${`${session.status}|${session.name}|${session.lastModified}`}
+        @session-select=${this.handleSessionSelect}
+        @session-killed=${this.handleSessionKilled}
+        @session-kill-error=${this.handleSessionKillError}
+        @session-renamed=${this.handleSessionRenamed}
+        @session-rename-error=${this.handleSessionRenameError}
+        @session-pin-toggle=${this.handlePinToggle}
+      ></phone-session-row>
+    `;
+  }
+
+  private renderPhoneRows(allRunning: Session[], allExited: Session[]) {
+    // Count every session, hidden finished ones included (2 running + 30 finished needs search).
+    const searchable = this.sessions.length > 6;
+    // A query only filters while its box is visible; otherwise it could hide sessions with no
+    // way to clear it.
+    const query = searchable ? this.phoneQuery : '';
+    const running = allRunning.filter((session) => this.matchesQuery(session, query));
+    // While searching, finished sessions are searched too even if the list hides them.
+    const exitedPool = query.trim()
+      ? this.sessions.filter((session) => session.status === 'exited')
+      : allExited;
+    const exited = exitedPool.filter((session) => this.matchesQuery(session, query));
+    const recency = (session: Session) =>
+      new Date(session.lastModified || session.startedAt || 0).getTime();
+    const row = (session: Session) => this.renderPhoneRow(session);
+    return html`
+      ${this.compactMode ? '' : this.renderNewChatButton()}
+      ${
+        searchable
+          ? html`<div class="phone-search">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
+              <input
+                type="search"
+                enterkeyhint="search"
+                autocapitalize="off"
+                autocorrect="off"
+                autocomplete="off"
+                placeholder=${t('sessions.search')}
+                aria-label=${t('sessions.search')}
+                .value=${this.phoneQuery}
+                @input=${(e: Event) => {
+                  this.phoneQuery = (e.target as HTMLInputElement).value;
+                }}
+              />
+            </div>`
+          : ''
+      }
+      ${
+        query.trim() && !running.length && !exited.length
+          ? html`<div class="phone-search-empty">${t('sessions.searchEmpty')}</div>`
+          : ''
+      }
+      ${
+        running.length
+          ? html`<div class="psr-list" data-testid="phone-session-list">
+              ${repeat(this.orderRunning(running), (session) => session.id, row)}
+            </div>`
+          : ''
+      }
+      ${
+        exited.length
+          ? html`
+            <div class="flex items-center justify-between mt-6 mb-2">
+              <h3 class="text-xs font-semibold text-text-muted uppercase tracking-wider">
+                ${t('sessions.exited')} <span class="text-text-dim">(${exited.length})</span>
+              </h3>
+              <button
+                class="text-sm text-status-warning px-2 py-1 -mr-2 disabled:opacity-50"
+                data-testid="phone-clear-finished"
+                ?disabled=${this.cleaningExited}
+                @click=${this.confirmClearFinished}
+              >
+                ${t('phoneList.clearFinished')}
+              </button>
+            </div>
+            <div class="psr-list">
+              ${repeat(
+                pinnedFirst(
+                  [...exited].sort((a, b) => recency(b) - recency(a)),
+                  this.pinnedIds
+                ),
+                (session) => session.id,
+                row
+              )}
+            </div>
+          `
+          : ''
+      }
+    `;
+  }
+
+  /** Clears every finished session (not only the ones a search shows), after asking. */
+  private confirmClearFinished = () => {
+    const count = this.sessions.filter((session) => session.status === 'exited').length;
+    if (!count || !window.confirm(t('phoneList.clearFinishedConfirm', { n: count }))) return;
+    void this.handleCleanupExited();
+  };
+
+  /** Quick starts from the server config, loaded on first use. */
+  @state() private quickStarts: QuickStartCommand[] = [];
+  private quickStartsLoaded = false;
+
+  private loadQuickStarts() {
+    if (this.quickStartsLoaded) return;
+    this.quickStartsLoaded = true;
+    serverConfigService
+      .getQuickStartCommands()
+      .then((commands) => {
+        this.quickStarts = commands.filter((entry) => entry.command?.trim());
+      })
+      .catch(() => {});
+  }
+
+  /** Your quick starts, the one you started last first (it becomes the big button). */
+  private quickStartList(): QuickStartCommand[] {
+    const list = this.quickStarts.length ? this.quickStarts : [{ command: 'zsh' }];
+    const last = readPhoneStarts().tool;
+    const index = list.findIndex((entry) => entry.command.trim() === last);
+    return index > 0 ? [list[index], ...list.slice(0, index), ...list.slice(index + 1)] : list;
+  }
+
+  private quickStartLabel(entry: QuickStartCommand): string {
+    return (entry.name || entry.command).trim();
+  }
+
+  /** A quick start tapped: on to its folder. */
+  private chooseQuickStart(entry: QuickStartCommand) {
+    this.openFolderSheet(entry);
+  }
+
+  /** Phone home with nothing running: pick a tool (your quick starts), then a folder. */
+  private renderPhoneEmpty(exitedCount: number) {
+    this.loadQuickStarts();
+    const tools = this.quickStartList();
+    return html`
+      <div class="phone-empty" data-testid="phone-empty">
+        <h2>${t('empty.title')}</h2>
+        <p>${t('empty.subtitle')}</p>
+        <div class="phone-empty-tools">
+          ${tools.map(
+            (entry, index) => html`<button
+              class="phone-tool ${index === 0 ? 'primary' : ''}"
+              @click=${() => this.chooseQuickStart(entry)}
+            >
+              ${this.quickStartLabel(entry)}
+            </button>`
+          )}
+          <button class="phone-tool" @click=${() => this.openCreateDialog()}>
+            ${t('empty.custom')}
+          </button>
+        </div>
+        ${
+          exitedCount
+            ? html`<button
+                class="phone-empty-link"
+                @click=${() => this.dispatchEvent(new CustomEvent('hide-exited-change', { detail: false }))}
+              >
+                ${t('empty.showExited', { n: exitedCount })}
+              </button>`
+            : ''
+        }
+      </div>
+    `;
+  }
+
+  /** Phone: a new session in two taps: tool, then folder (like "new chat"). */
+  private renderNewChatButton() {
+    this.loadQuickStarts();
+    return html`
+      <button
+        class="new-chat-fab"
+        data-testid="new-session-fab"
+        aria-label=${t('newChat.title')}
+        @click=${this.openToolSheet}
+      >
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+          stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
+    `;
+  }
+
+  private sheetHost: HTMLElement | null = null;
+
+  /** Recent working directories, most recent first, then ones remembered from earlier. */
+  private recentFolders(): string[] {
+    const recency = (session: Session) =>
+      new Date(session.lastModified || session.startedAt || 0).getTime();
+    const folders: string[] = [];
+    // Local folders only: a remote (HQ) session's folder doesn't exist on this machine.
+    const local = this.sessions.filter(
+      (session) => session.source !== 'remote' && !session.remoteId
+    );
+    for (const session of local.sort((a, b) => recency(b) - recency(a))) {
+      if (session.workingDir && !folders.includes(session.workingDir)) {
+        folders.push(session.workingDir);
+      }
+      if (folders.length === MAX_RECENT_FOLDERS) break;
+    }
+    for (const folder of readPhoneStarts().folders ?? []) {
+      if (folders.length === MAX_RECENT_FOLDERS) break;
+      if (typeof folder === 'string' && folder && !folders.includes(folder)) folders.push(folder);
+    }
+    // Remember them now: clearing finished sessions would otherwise take their folders along.
+    if (folders.length) writePhoneStarts({ folders });
+    else folders.push('~');
+    return folders;
+  }
+
+  private sheetOpenedAt = 0;
+  private sheetActionAt = 0;
+
+  /**
+   * Touch acts on pointerup (iOS can take the first tap on a fresh button as a hover) and the
+   * click that may follow is swallowed; the click that finished the tap opening the sheet
+   * (< 500 ms) is ignored. Mouse and keyboard use the click.
+   */
+  private sheetAction(fn: () => void) {
+    return {
+      handleEvent: (e: Event) => {
+        if (Date.now() - this.sheetOpenedAt < 500) return;
+        if (e.type === 'pointerup') {
+          if ((e as PointerEvent).pointerType === 'mouse') return;
+          // A scroll of the sheet that started on a button ends here too: not a tap.
+          if (endsADrag(e as PointerEvent)) return;
+          this.sheetActionAt = Date.now();
+          swallowNextClick();
+        } else if (Date.now() - this.sheetActionAt < 700) {
+          return;
+        }
+        fn();
+      },
+    };
+  }
+
+  /** Action sheet in <body> (the phone sidebar's transform would trap position:fixed). */
+  private showSheet(
+    title: string,
+    buttons: Array<{ label: string; mono?: boolean; run: () => void }>
+  ) {
+    this.closeSheet();
+    // Closing a previous sheet (tool -> folder) already handed focus back to its opener.
+    const opener = document.activeElement;
+    const host = document.createElement('div');
+    this.sheetHost = host;
+    this.sheetOpenedAt = Date.now();
+    document.body.appendChild(host);
+    render(
+      html`
+        <div class="psr-sheet-backdrop" @click=${this.closeSheet}></div>
+        <div class="psr-sheet" role="dialog" aria-modal="true" aria-label=${title}>
+          <div class="psr-sheet-group">
+            <div class="psr-sheet-title">${title}</div>
+            ${buttons.map(
+              (button) => html`<button
+                class=${button.mono ? 'folder' : ''}
+                @pointerup=${this.sheetAction(() => {
+                  this.closeSheet();
+                  button.run();
+                })}
+                @click=${this.sheetAction(() => {
+                  this.closeSheet();
+                  button.run();
+                })}
+              >
+                <bdi>${button.label}</bdi>
+              </button>`
+            )}
+          </div>
+          <button class="psr-sheet-cancel" @click=${this.closeSheet}>${t('common.cancel')}</button>
+        </div>
+      `,
+      host
+    );
+    this.releaseSheetFocus = holdSheetFocus(
+      host.querySelector<HTMLElement>('.psr-sheet'),
+      this.closeSheet,
+      opener
+    );
+    requestAnimationFrame(() => host.querySelector('.psr-sheet')?.classList.add('open'));
+  }
+
+  private releaseSheetFocus: (() => void) | null = null;
+
+  private closeSheet = () => {
+    if (!this.sheetHost) return;
+    render(nothing, this.sheetHost);
+    this.sheetHost.remove();
+    this.sheetHost = null;
+    this.releaseSheetFocus?.();
+    this.releaseSheetFocus = null;
+  };
+
+  private openCreateDialog() {
+    this.dispatchEvent(new CustomEvent('open-create-dialog', { detail: {}, bubbles: true }));
+  }
+
+  private openToolSheet = () => {
+    this.showSheet(t('newChat.which'), [
+      ...this.quickStartList().map((entry) => ({
+        label: this.quickStartLabel(entry),
+        run: () => this.chooseQuickStart(entry),
+      })),
+      { label: t('empty.custom'), run: () => this.openCreateDialog() },
+    ]);
+  };
+
+  private openFolderSheet(entry: QuickStartCommand) {
+    this.showSheet(t('newChat.where', { tool: this.quickStartLabel(entry) }), [
+      ...this.recentFolders().map((folder) => ({
+        label: formatPathForDisplay(folder),
+        mono: true,
+        run: () => void this.startSession(entry, folder),
+      })),
+      { label: t('newChat.other'), run: () => this.openCreateDialog() },
+    ]);
+  }
+
+  /** The same request as the create dialog, with the quick start's exact command. */
+  private async startSession(entry: QuickStartCommand, workingDir: string): Promise<boolean> {
+    const command = parseCommand(entry.command.trim());
+    writePhoneStarts({
+      tool: entry.command.trim(),
+      folders: [
+        workingDir,
+        ...(readPhoneStarts().folders ?? []).filter((folder) => folder !== workingDir),
+      ].slice(0, MAX_RECENT_FOLDERS),
+    });
+    try {
+      const response = await fetch('/api/sessions', {
+        method: HttpMethod.POST,
+        headers: { 'Content-Type': 'application/json', ...this.authClient?.getAuthHeader() },
+        body: JSON.stringify({
+          command,
+          workingDir,
+          name: `${command[0]} (${formatPathForDisplay(workingDir)})`,
+          spawn_terminal: false,
+          cols: 120,
+          rows: 30,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.sessionId) throw new Error(result.error || response.statusText);
+      // The app opens it once it shows up, as for the full create dialog.
+      this.dispatchEvent(new CustomEvent('session-created', { detail: result, bubbles: true }));
+      return true;
+    } catch (error) {
+      this.dispatchEvent(
+        new CustomEvent('error', { detail: `${t('newChat.failed')}: ${error}`, bubbles: true })
+      );
+      return false;
+    }
+  }
+
   private renderExitedControls() {
     const exitedSessions = this.sessions.filter((session) => session.status === 'exited');
     const runningSessions = this.sessions.filter((session) => session.status === 'running');
@@ -1011,7 +1496,10 @@ export class SessionList extends LitElement {
     if (this.sessions.length === 0) return '';
 
     return html`
-      <div class="sticky bottom-0 border-t border-border bg-bg-secondary shadow-lg" style="z-index: ${Z_INDEX.SESSION_LIST_BOTTOM_BAR};">
+      <div class="sticky bottom-0 border-t border-border bg-bg-secondary shadow-lg" data-testid="session-list-footer" style="z-index: ${Z_INDEX.SESSION_LIST_BOTTOM_BAR};${
+        // The home-screen app on a phone draws under the home indicator.
+        this.usePhoneRows() ? ' padding-bottom: env(safe-area-inset-bottom, 0px);' : ''
+      }">
         <div class="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <!-- Status group (left side) -->
           <div class="flex flex-wrap items-center gap-3 sm:gap-4">
@@ -1060,9 +1548,10 @@ export class SessionList extends LitElement {
 
           <!-- Actions group (right side) -->
           <div class="flex items-center gap-2 ml-auto">
-            <!-- Clean button (only visible when showing exited sessions) -->
+            <!-- Clean button (only visible when showing exited sessions). The phone list has
+                 "Clear all" with a confirmation in the finished-sessions header instead. -->
             ${
-              !this.hideExited && exitedSessions.length > 0
+              !this.hideExited && exitedSessions.length > 0 && !this.usePhoneRows()
                 ? html`
               <button
                 class="font-mono text-xs px-3 py-1.5 rounded-md border transition-all duration-200 border-status-warning bg-status-warning/10 text-status-warning hover:bg-status-warning/20 hover:shadow-glow-warning-sm active:scale-95 disabled:opacity-50"
@@ -1108,8 +1597,9 @@ export class SessionList extends LitElement {
   }
 
   private renderActiveSessionInfo() {
-    // Only show in compact mode (mobile sidebar) when there's an active session
-    if (!this.compactMode || !this.activeSessionId) {
+    // Only show in compact mode (mobile sidebar) when there's an active session.
+    // Phone rows already highlight the active session.
+    if (!this.compactMode || !this.activeSessionId || this.usePhoneRows()) {
       return '';
     }
 
