@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest';
 // through execFile/spawn with an argument array. Interpolating plain numbers (a pid) is fine.
 // Reviewed exceptions: numeric pids, a constant service name, the local account name, and
 // the program of a session the user starts themselves (it can already run anything).
+// A tripwire, not a proof: it reads template literals passed straight to exec*, so a command
+// built in a variable first (process-tree-analyzer, pty-manager: pid-only today) escapes it.
 const ALLOWED = [
   /^[^$]*\$\{(?:pid|pgid|currentPid|rootPid)\}[^$]*$/,
   /^systemctl --user [\w-]+ \$\{SERVICE_NAME\}$/,

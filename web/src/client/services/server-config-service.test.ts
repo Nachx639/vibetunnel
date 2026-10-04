@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HttpMethod } from '../../shared/types.js';
 import type { QuickStartCommand } from '../../types/config.js';
-import type { AuthClient } from './auth-client.js';
-import { type ServerConfig, ServerConfigService } from './server-config-service.js';
+import { type AuthClient, authClient } from './auth-client.js';
+import {
+  type ServerConfig,
+  ServerConfigService,
+  serverConfigService,
+} from './server-config-service.js';
 
 // Mock the logger
 vi.mock('../utils/logger.js', () => ({
@@ -317,5 +321,11 @@ describe('ServerConfigService', () => {
         headers: { Authorization: 'Bearer new-token' },
       });
     });
+  });
+
+  it('shares an instance that sends the app auth', () => {
+    expect((serverConfigService as unknown as { authClient?: AuthClient }).authClient).toBe(
+      authClient
+    );
   });
 });
