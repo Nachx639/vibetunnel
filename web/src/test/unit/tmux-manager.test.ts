@@ -21,12 +21,15 @@ vi.mock('util', () => ({
 }));
 
 // Import after mocks are set up
-import { TmuxManager } from '../../server/services/tmux-manager.js';
+import { TMUX_FIELD_SEPARATOR, TmuxManager } from '../../server/services/tmux-manager.js';
 
 // Mock PtyManager
 const mockPtyManager = {
   createSession: vi.fn(),
 } as unknown as PtyManager;
+
+/** tmux's list output as these tests write it, "|" standing for the field separator. */
+const tmuxOutput = (text: string) => text.replaceAll('|', TMUX_FIELD_SEPARATOR);
 
 describe('TmuxManager', () => {
   let tmuxManager: TmuxManager;
@@ -65,7 +68,7 @@ describe('TmuxManager', () => {
 dev|2|Thu Jul 25 11:00:00 2024|detached||
 test|1|Thu Jul 25 12:00:00 2024|detached||`;
 
-      mockExecFileAsync.mockResolvedValue({ stdout: mockOutput, stderr: '' });
+      mockExecFileAsync.mockResolvedValue({ stdout: tmuxOutput(mockOutput), stderr: '' });
 
       const sessions = await tmuxManager.listSessions();
 
@@ -94,7 +97,7 @@ main|1|Thu Jul 25 10:00:00 2024|attached||
 /Users/test/.profile: line 10: command not found
 dev|2|Thu Jul 25 11:00:00 2024|detached||`;
 
-      mockExecFileAsync.mockResolvedValue({ stdout: mockOutput, stderr: '' });
+      mockExecFileAsync.mockResolvedValue({ stdout: tmuxOutput(mockOutput), stderr: '' });
 
       const sessions = await tmuxManager.listSessions();
 
@@ -110,6 +113,23 @@ dev|2|Thu Jul 25 11:00:00 2024|detached||`;
       const sessions = await tmuxManager.listSessions();
       expect(sessions).toEqual([]);
     });
+
+    it('returns an empty list when the socket is gone or stale (tmux on macOS)', async () => {
+      for (const reason of ['No such file or directory', 'Connection refused']) {
+        const stderr = `error connecting to /private/tmp/tmux-501/default (${reason})\n`;
+        const error = Object.assign(new Error(`Command failed: tmux list-sessions\n${stderr}`), {
+          code: 1,
+          stderr,
+        });
+        mockExecFileAsync.mockRejectedValue(error);
+        expect(await tmuxManager.listSessions()).toEqual([]);
+      }
+    });
+
+    it('still reports other failures', async () => {
+      mockExecFileAsync.mockRejectedValue(new Error('tmux: invalid option -- F'));
+      await expect(tmuxManager.listSessions()).rejects.toThrow('invalid option');
+    });
   });
 
   describe('listWindows', () => {
@@ -118,7 +138,7 @@ dev|2|Thu Jul 25 11:00:00 2024|detached||`;
 main|1|shell||1
 main|2|logs||2`;
 
-      mockExecFileAsync.mockResolvedValue({ stdout: mockOutput, stderr: '' });
+      mockExecFileAsync.mockResolvedValue({ stdout: tmuxOutput(mockOutput), stderr: '' });
 
       const windows = await tmuxManager.listWindows('main');
 
@@ -141,12 +161,40 @@ main|2|logs||2`;
   });
 
   describe('listPanes', () => {
+    it('keeps a "|" in a pane title or a folder inside its field', async () => {
+      // With "|" between fields, such a title shifted the pid, program and size after it.
+      mockExecFileAsync.mockResolvedValue({
+        stdout: [
+          'main',
+          '0',
+          '0',
+          'active',
+          'build | watch',
+          '1234',
+          'node',
+          '80',
+          '24',
+          '/Users/me/a|b',
+        ].join(TMUX_FIELD_SEPARATOR),
+        stderr: '',
+      });
+      const [pane] = await tmuxManager.listPanes('main');
+      expect(pane).toMatchObject({
+        title: 'build | watch',
+        pid: 1234,
+        command: 'node',
+        width: 80,
+        height: 24,
+        currentPath: '/Users/me/a|b',
+      });
+    });
+
     it('should parse tmux panes correctly', async () => {
       const mockOutput = `main|0|0|active|vim|1234|vim|80|24|/Users/test/project
 main|0|1||zsh|5678|npm|80|24|/Users/test/project
 main|1|0|active|zsh|9012|ls|80|24|/Users/test`;
 
-      mockExecFileAsync.mockResolvedValue({ stdout: mockOutput, stderr: '' });
+      mockExecFileAsync.mockResolvedValue({ stdout: tmuxOutput(mockOutput), stderr: '' });
 
       const panes = await tmuxManager.listPanes('main');
 
@@ -181,7 +229,7 @@ main|1|0|active|zsh|9012|ls|80|24|/Users/test`;
       const mockOutput = `main|1|0|active|zsh|1234|ls|80|24|/Users/test
 main|1|1||vim|5678|vim|80|24|/Users/test/docs`;
 
-      mockExecFileAsync.mockResolvedValue({ stdout: mockOutput, stderr: '' });
+      mockExecFileAsync.mockResolvedValue({ stdout: tmuxOutput(mockOutput), stderr: '' });
 
       const panes = await tmuxManager.listPanes('main', 1);
 

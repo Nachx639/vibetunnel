@@ -8,6 +8,30 @@ import { createLogger } from '../utils/logger.js';
 const execFileAsync = promisify(execFile);
 const logger = createLogger('TmuxManager');
 
+/**
+ * Between the fields of tmux's list output. Names, paths and titles are free text: with "|",
+ * a path holding one spilled into the title and a pane title holding one shifted every field
+ * after it. Printable ASCII on purpose: tmux 3.4/3.5 escape control characters as "\\037",
+ * and 3.6+ turn them into "_" for a client without a UTF-8 locale.
+ */
+export const TMUX_FIELD_SEPARATOR = '~|vt|~';
+const FIELD = TMUX_FIELD_SEPARATOR;
+const fields = (...formats: string[]) => formats.join(FIELD);
+
+/**
+ * No tmux server to ask: "no server running", or, from tmux on macOS, "error connecting to
+ * /private/tmp/tmux-501/default (No such file or directory)" (no socket) or "(Connection
+ * refused)" (a stale one). An empty list, not an error: it used to be logged as an error and
+ * answered with a 500 on every poll of the tmux list.
+ */
+export function isNoTmuxServer(error: unknown): boolean {
+  const text = `${(error as Error)?.message ?? ''}\n${(error as { stderr?: string })?.stderr ?? ''}`;
+  return (
+    text.includes('no server running') ||
+    /error connecting to .*\((?:No such file or directory|Connection refused)\)/.test(text)
+  );
+}
+
 export class TmuxManager {
   private static instance: TmuxManager;
   private ptyManager: PtyManager;
@@ -79,15 +103,22 @@ export class TmuxManager {
       const { stdout } = await execFileAsync('tmux', [
         'list-sessions',
         '-F',
-        '#{session_name}|#{session_windows}|#{session_created}|#{?session_attached,attached,detached}|#{session_activity}|#{?session_active,active,}',
+        fields(
+          '#{session_name}',
+          '#{session_windows}',
+          '#{session_created}',
+          '#{?session_attached,attached,detached}',
+          '#{session_activity}',
+          '#{?session_active,active,}'
+        ),
       ]);
 
       return stdout
         .trim()
         .split('\n')
-        .filter((line) => line?.includes('|'))
+        .filter((line) => line?.includes(FIELD))
         .map((line) => {
-          const [name, windows, created, attached, activity, current] = line.split('|');
+          const [name, windows, created, attached, activity, current] = line.split(FIELD);
           return {
             name,
             windows: Number.parseInt(windows, 10),
@@ -98,9 +129,7 @@ export class TmuxManager {
           };
         });
     } catch (error) {
-      if (error instanceof Error && error.message.includes('no server running')) {
-        return [];
-      }
+      if (isNoTmuxServer(error)) return [];
       throw error;
     }
   }
@@ -117,7 +146,13 @@ export class TmuxManager {
         '-t',
         sessionName,
         '-F',
-        '#{session_name}|#{window_index}|#{window_name}|#{?window_active,active,}|#{window_panes}',
+        fields(
+          '#{session_name}',
+          '#{window_index}',
+          '#{window_name}',
+          '#{?window_active,active,}',
+          '#{window_panes}'
+        ),
       ]);
 
       return stdout
@@ -125,7 +160,7 @@ export class TmuxManager {
         .split('\n')
         .filter((line) => line)
         .map((line) => {
-          const [session, index, name, active, panes] = line.split('|');
+          const [session, index, name, active, panes] = line.split(FIELD);
           return {
             session,
             index: Number.parseInt(index, 10),
@@ -158,7 +193,18 @@ export class TmuxManager {
         '-t',
         targetArgs,
         '-F',
-        '#{session_name}|#{window_index}|#{pane_index}|#{?pane_active,active,}|#{pane_title}|#{pane_pid}|#{pane_current_command}|#{pane_width}|#{pane_height}|#{pane_current_path}',
+        fields(
+          '#{session_name}',
+          '#{window_index}',
+          '#{pane_index}',
+          '#{?pane_active,active,}',
+          '#{pane_title}',
+          '#{pane_pid}',
+          '#{pane_current_command}',
+          '#{pane_width}',
+          '#{pane_height}',
+          '#{pane_current_path}'
+        ),
       ]);
 
       return stdout
@@ -167,7 +213,7 @@ export class TmuxManager {
         .filter((line) => line)
         .map((line) => {
           const [session, window, index, active, title, pid, command, width, height, currentPath] =
-            line.split('|');
+            line.split(FIELD);
           return {
             session,
             window: Number.parseInt(window, 10),
