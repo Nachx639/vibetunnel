@@ -825,4 +825,5 @@ export const zhCN: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': '长按以粘贴',
   'keyboard.typeHere': '在此输入...',
+  'palette.count.one': '{n} 个命令',
 };

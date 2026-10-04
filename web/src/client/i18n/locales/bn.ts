@@ -836,4 +836,5 @@ export const bn: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'পেস্ট করতে চেপে ধরে রাখুন',
   'keyboard.typeHere': 'এখানে লিখুন...',
+  'palette.count.one': '{n}টি কমান্ড',
 };

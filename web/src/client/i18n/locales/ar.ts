@@ -833,4 +833,5 @@ export const ar: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'اضغط مطولًا للصق',
   'keyboard.typeHere': 'اكتب هنا...',
+  'palette.count.one': '{n} أمر',
 };

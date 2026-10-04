@@ -868,4 +868,5 @@ export const fr: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Appui long pour coller',
   'keyboard.typeHere': 'Saisissez ici...',
+  'palette.count.one': '{n} commande',
 };

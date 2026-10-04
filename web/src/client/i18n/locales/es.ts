@@ -859,4 +859,5 @@ export const es: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Mantén pulsado para pegar',
   'keyboard.typeHere': 'Escribe aquí...',
+  'palette.count.one': '{n} comando',
 };

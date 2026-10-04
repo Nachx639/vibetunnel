@@ -854,6 +854,7 @@ export const en = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Long-press to paste',
   'keyboard.typeHere': 'Type here...',
+  'palette.count.one': '{n} command',
 };
 
 export type MessageKey = keyof typeof en;

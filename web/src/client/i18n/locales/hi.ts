@@ -834,4 +834,5 @@ export const hi: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'पेस्ट करने के लिए दबाकर रखें',
   'keyboard.typeHere': 'यहां टाइप करें...',
+  'palette.count.one': '{n} कमांड',
 };

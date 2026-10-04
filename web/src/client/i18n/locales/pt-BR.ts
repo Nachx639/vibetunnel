@@ -858,4 +858,5 @@ export const ptBR: Messages = {
   // Direct keyboard input
   'keyboard.longPressToPaste': 'Toque e segure para colar',
   'keyboard.typeHere': 'Digite aqui...',
+  'palette.count.one': '{n} comando',
 };

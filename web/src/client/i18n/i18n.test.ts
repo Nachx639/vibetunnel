@@ -127,6 +127,8 @@ describe('i18n', () => {
     const i18n = await loadI18n();
     expect(i18n.t('title.sessions', { n: 1 })).toBe('VibeTunnel - 1 Session');
     expect(i18n.t('title.sessions', { n: 3 })).toBe('VibeTunnel - 3 Sessions');
+    expect(i18n.t('palette.count', { n: 1 })).toBe('1 command');
+    expect(i18n.t('palette.count', { n: 2 })).toBe('2 commands');
     await i18n.setLocale('es');
     expect(i18n.t('sessions.runningCount', { n: 1 })).toBe('1 activa');
     expect(i18n.t('sessions.runningCount', { n: 2 })).toBe('2 activas');
