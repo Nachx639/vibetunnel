@@ -252,17 +252,17 @@ describe('dictationTools (paths from the environment)', () => {
 });
 
 describe('the "voice" switch', () => {
-  it.each([undefined, false])('voice=%s: status is off and nothing is looked up', async (voice) => {
+  it('voice=false: status is off and nothing is looked up', async () => {
     standInTools();
-    await withApp(voiceApp(voice), async (base) => {
+    await withApp(voiceApp(false), async (base) => {
       const response = await fetch(`${base}/api/dictation/status`);
       expect(await response.json()).toEqual({ enabled: false, available: false });
     });
   });
 
-  it.each([undefined, false])('voice=%s: transcribe is refused and runs no tool', async (voice) => {
+  it('voice=false: transcribe is refused and runs no tool', async () => {
     const stand = standInTools();
-    await withApp(voiceApp(voice), async (base) => {
+    await withApp(voiceApp(false), async (base) => {
       const response = await fetch(`${base}/api/dictation/transcribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'audio/wav' },
@@ -274,9 +274,12 @@ describe('the "voice" switch', () => {
     expect(stand.ranAnything()).toBe(false);
   });
 
-  it('voice=true: status reports the tools', async () => {
+  it.each([
+    undefined,
+    true,
+  ])('voice=%s (on by default): status reports the tools', async (voice) => {
     standInTools();
-    await withApp(voiceApp(true), async (base) => {
+    await withApp(voiceApp(voice), async (base) => {
       const response = await fetch(`${base}/api/dictation/status`);
       expect(await response.json()).toEqual({ enabled: true, available: true });
     });

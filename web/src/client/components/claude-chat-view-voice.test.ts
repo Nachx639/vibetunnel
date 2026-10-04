@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/component-helpers.js';
+import { resetDictationForTests } from '../utils/dictation.js';
 import { VoicePlayer } from '../utils/voice-io.js';
+import { setVoicePreference } from '../utils/voice-preferences.js';
 import {
   type ClaudeChatView,
   resetServerVoiceCheck,
@@ -8,12 +11,23 @@ import {
   speechText,
 } from './claude-chat-view.js';
 
-/** The chat and the server's voice status (`voice` = what /api/tts/status answers). */
-function stub(messages: unknown[], voice: unknown) {
+/**
+ * The chat and the server's voice status (`voice` = what /api/tts/status answers,
+ * `dictation` = /api/dictation/status; by default the server transcribes).
+ */
+function stub(
+  messages: unknown[],
+  voice: unknown,
+  dictation: unknown = { enabled: true, available: true }
+) {
   const fetchMock = vi.fn(async (url: string) => ({
     ok: true,
     json: async () =>
-      url.includes('/api/tts/status') ? voice : { available: true, status: 'idle', messages },
+      url.includes('/api/tts/status')
+        ? voice
+        : url.includes('/api/dictation/status')
+          ? dictation
+          : { available: true, status: 'idle', messages },
   }));
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
@@ -51,15 +65,21 @@ function stubSpeechSynthesis() {
 const OFF = { enabled: false, available: false, engine: null, engines: [] };
 
 describe('ClaudeChatView voice', () => {
-  beforeEach(() => resetServerVoiceCheck());
+  beforeEach(() => {
+    setupLocalStorageMock();
+    resetServerVoiceCheck();
+    resetDictationForTests();
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     document.body.innerHTML = '';
     resetServerVoiceCheck();
+    resetDictationForTests();
+    restoreLocalStorage();
   });
 
-  it('offers no read aloud and no voice mode when voice is off (the default)', async () => {
+  it('offers no read aloud and no voice mode when the server has voice off', async () => {
     const { synth } = stubSpeechSynthesis();
     stub([{ id: 'a', role: 'assistant', text: 'Done.' }], OFF);
     const view = await mountChat();
@@ -77,7 +97,48 @@ describe('ClaudeChatView voice', () => {
     expect(view.shadowRoot?.querySelector('.speak-msg')).toBeNull();
   });
 
-  it('reads an answer with the browser voice when the server has voice on but no engine', async () => {
+  it('by default, a server without a voice engine gets no read aloud and no voice mode (no browser speech)', async () => {
+    const { synth } = stubSpeechSynthesis();
+    stub([{ id: 'a', role: 'assistant', text: 'Done.' }], {
+      enabled: true,
+      available: false,
+      engine: null,
+      engines: [],
+    });
+    const view = await mountChat();
+    expect(view.shadowRoot?.querySelector('.speak-msg')).toBeNull();
+    expect(view.shadowRoot?.querySelector('.voice-toggle')).toBeNull();
+    expect(synth.speak).not.toHaveBeenCalled();
+  });
+
+  it('the Voice switch off in Settings hides read aloud and voice mode', async () => {
+    setVoicePreference('voice', false);
+    stubSpeechSynthesis();
+    stub([{ id: 'a', role: 'assistant', text: 'Done.' }], {
+      enabled: true,
+      available: true,
+      engine: 'say',
+      engines: ['say'],
+    });
+    const view = await mountChat();
+    expect(view.shadowRoot?.querySelector('.speak-msg')).toBeNull();
+    expect(view.shadowRoot?.querySelector('.voice-toggle')).toBeNull();
+  });
+
+  it('with a server engine, voice mode needs the server to transcribe too', async () => {
+    stubSpeechSynthesis();
+    stub(
+      [{ id: 'a', role: 'assistant', text: 'Done.' }],
+      { enabled: true, available: true, engine: 'say', engines: ['say'] },
+      { enabled: true, available: false }
+    );
+    const view = await mountChat();
+    expect(view.shadowRoot?.querySelector('.speak-msg')).toBeTruthy();
+    expect(view.shadowRoot?.querySelector('.voice-toggle')).toBeNull();
+  });
+
+  it('reads an answer with the browser voice when Browser speech is on and the server has no engine', async () => {
+    setVoicePreference('browserSpeech', true);
     const { synth, spoken } = stubSpeechSynthesis();
     stub(
       [
@@ -133,6 +194,7 @@ describe('ClaudeChatView voice', () => {
   });
 
   it('stops reading when the session changes', async () => {
+    setVoicePreference('browserSpeech', true);
     const { synth } = stubSpeechSynthesis();
     stub([{ id: 'a', role: 'assistant', text: 'Done.' }], {
       enabled: true,

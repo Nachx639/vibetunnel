@@ -1037,7 +1037,7 @@ export const fr: Messages = {
   'chat.yesterday': 'Hier',
   'chat.yourInput': 'votre saisie',
   'chat.sending': 'Envoi…',
-  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  // Dictation (speech to text into the chat box; when the server has whisper.cpp)
   'chat.dictate': 'Dicter (voix en texte)',
   'chat.stopDictation': 'Arrêter la dictée',
   'dictation.starting': 'Préparation du micro…',
@@ -1057,7 +1057,7 @@ export const fr: Messages = {
   'dictation.error.no-audio':
     "Le micro ne capte aucun son. Vérifiez qu'il n'est pas coupé ni utilisé par une autre app, puis réessayez.",
   'dictation.error.failed': 'La dictée a échoué. Réessayez.',
-  // Read-aloud and voice mode in the Claude chat (off unless the server enables voice)
+  // Read-aloud and voice mode in the Claude chat (when the server has local speech tools)
   'chat.readAloud': 'Lire à voix haute',
   'chat.stopReading': 'Arrêter la lecture',
   'chat.codeOmitted': 'code omis',
@@ -1083,4 +1083,10 @@ export const fr: Messages = {
   'voice.resume': 'Continuer',
   'voice.engine': 'Voix : {engine}',
   'voice.codeOmitted': 'code omis',
+  'settings.voice': 'Voix',
+  'settings.voice.description':
+    'Dictée, Lecture à voix haute et Mode vocal avec les outils vocaux locaux de ce serveur (whisper.cpp, Kokoro, Piper ou say), s’ils sont installés.',
+  'settings.browserSpeech': 'Voix du navigateur',
+  'settings.browserSpeech.description':
+    'Si le serveur n’a pas d’outils vocaux, utiliser la reconnaissance et les voix du navigateur. Chrome envoie l’audio à Google.',
 };

@@ -1,5 +1,6 @@
 /**
- * Read-aloud for the chat and voice mode, behind the same `"voice": true` switch as dictation.
+ * Read-aloud for the chat and voice mode, behind the same `voice` switch as dictation (on unless
+ * config.json has `"voice": false`).
  *
  * GET /api/tts/status → { enabled, available, engine, engines, ready, maxChars }. Off, it says
  * `enabled: false` without looking for any engine. `?warm=1&lang=xx` loads Kokoro (when it is

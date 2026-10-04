@@ -1001,7 +1001,7 @@ export const bn: Messages = {
   'chat.yesterday': 'গতকাল',
   'chat.yourInput': 'আপনার ইনপুট',
   'chat.sending': 'পাঠানো হচ্ছে…',
-  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  // Dictation (speech to text into the chat box; when the server has whisper.cpp)
   'chat.dictate': 'ডিক্টেট (কণ্ঠস্বর থেকে লেখা)',
   'chat.stopDictation': 'বলে লেখা থামান',
   'dictation.starting': 'মাইক্রোফোন প্রস্তুত হচ্ছে…',
@@ -1019,7 +1019,7 @@ export const bn: Messages = {
   'dictation.error.no-audio':
     'মাইক্রোফোনে কোনো শব্দ আসছে না। এটি মিউট বা অন্য অ্যাপে ব্যবহৃত নয় তা দেখে আবার চেষ্টা করুন।',
   'dictation.error.failed': 'ডিক্টেশন ব্যর্থ হয়েছে। আবার চেষ্টা করুন।',
-  // Read-aloud and voice mode in the Claude chat (off unless the server enables voice)
+  // Read-aloud and voice mode in the Claude chat (when the server has local speech tools)
   'chat.readAloud': 'জোরে পড়ুন',
   'chat.stopReading': 'পড়া থামান',
   'chat.codeOmitted': 'কোড বাদ দেওয়া হয়েছে',
@@ -1045,4 +1045,10 @@ export const bn: Messages = {
   'voice.resume': 'কথা চালিয়ে যান',
   'voice.engine': 'কণ্ঠ: {engine}',
   'voice.codeOmitted': 'কোড বাদ দেওয়া হয়েছে',
+  'settings.voice': 'ভয়েস',
+  'settings.voice.description':
+    'এই সার্ভারের স্থানীয় ভয়েস টুল (whisper.cpp, Kokoro, Piper বা say, যেখানে ইনস্টল আছে) দিয়ে ডিক্টেশন, জোরে পড়া ও ভয়েস মোড।',
+  'settings.browserSpeech': 'ব্রাউজারের ভয়েস',
+  'settings.browserSpeech.description':
+    'সার্ভারে ভয়েস টুল না থাকলে ব্রাউজারের শনাক্তকরণ ও ভয়েস ব্যবহার করুন। Chrome অডিও Google-এ পাঠায়।',
 };

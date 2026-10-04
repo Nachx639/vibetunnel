@@ -1025,7 +1025,7 @@ export const ptBR: Messages = {
   'chat.yesterday': 'Ontem',
   'chat.yourInput': 'sua entrada',
   'chat.sending': 'Enviando…',
-  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  // Dictation (speech to text into the chat box; when the server has whisper.cpp)
   'chat.dictate': 'Ditar (voz para texto)',
   'chat.stopDictation': 'Parar ditado',
   'dictation.starting': 'Preparando o microfone…',
@@ -1045,7 +1045,7 @@ export const ptBR: Messages = {
   'dictation.error.no-audio':
     'O microfone não está captando som. Verifique se não está mudo ou em uso por outro app e tente de novo.',
   'dictation.error.failed': 'O ditado falhou. Tente de novo.',
-  // Read-aloud and voice mode in the Claude chat (off unless the server enables voice)
+  // Read-aloud and voice mode in the Claude chat (when the server has local speech tools)
   'chat.readAloud': 'Ler em voz alta',
   'chat.stopReading': 'Parar leitura',
   'chat.codeOmitted': 'código omitido',
@@ -1071,4 +1071,10 @@ export const ptBR: Messages = {
   'voice.resume': 'Continuar conversando',
   'voice.engine': 'Voz: {engine}',
   'voice.codeOmitted': 'código omitido',
+  'settings.voice': 'Voz',
+  'settings.voice.description':
+    'Ditado, Ler em voz alta e Modo voz com as ferramentas de voz locais deste servidor (whisper.cpp, Kokoro, Piper ou say), quando instaladas.',
+  'settings.browserSpeech': 'Voz do navegador',
+  'settings.browserSpeech.description':
+    'Se o servidor não tiver ferramentas de voz, usar o reconhecimento e as vozes do navegador. O Chrome envia o áudio ao Google.',
 };

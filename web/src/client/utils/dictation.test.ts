@@ -2,12 +2,15 @@
  * @vitest-environment happy-dom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/component-helpers.js';
 import {
+  canDictate,
   DictationController,
   type DictationError,
   resetDictationForTests,
   serverDictation,
 } from './dictation.js';
+import { setVoicePreference } from './voice-preferences.js';
 
 /** Web Audio double: the processor's onaudioprocess is driven by the test. */
 class FakeAudioContext {
@@ -61,6 +64,7 @@ function setup(text = '') {
 describe('DictationController', () => {
   const track = { stop: vi.fn() };
   beforeEach(() => {
+    setupLocalStorageMock();
     resetDictationForTests();
     FakeAudioContext.last = null;
     vi.stubGlobal('AudioContext', FakeAudioContext);
@@ -75,6 +79,7 @@ describe('DictationController', () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    restoreLocalStorage();
   });
 
   it('records on iOS (Chrome too) and puts the server transcription after what was typed', async () => {
@@ -204,7 +209,26 @@ describe('DictationController', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/transcribe'))).toBe(false);
   });
 
-  it("reports the browser recognizer's error instead of going quiet", async () => {
+  it('never falls back to the browser recognizer by default (Chrome sends the audio to Google)', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined });
+    const started = vi.fn();
+    vi.stubGlobal(
+      'webkitSpeechRecognition',
+      class {
+        start = started;
+        stop() {}
+        abort() {}
+      }
+    );
+    const { controller, errors } = setup();
+    await controller.toggle();
+    expect(started).not.toHaveBeenCalled();
+    expect(errors).toEqual(['unsupported']);
+    expect(controller.state).toBe('idle');
+  });
+
+  it("with Browser speech on, reports the browser recognizer's error instead of going quiet", async () => {
+    setVoicePreference('browserSpeech', true);
     // The browser recognizer is the fallback where audio can't be recorded.
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined });
     Object.defineProperty(navigator, 'userAgent', {
@@ -252,5 +276,33 @@ describe('serverDictation', () => {
     // A full yes is remembered for the page.
     await serverDictation(headers);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('canDictate (whether the mic is shown)', () => {
+  beforeEach(() => setupLocalStorageMock());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    restoreLocalStorage();
+  });
+
+  it('by default: only when the server transcribes', () => {
+    vi.stubGlobal('webkitSpeechRecognition', class {});
+    expect(canDictate({ enabled: true, available: true })).toBe(true);
+    expect(canDictate({ enabled: true, available: false })).toBe(false);
+    expect(canDictate({ enabled: false, available: false })).toBe(false);
+  });
+
+  it('with Browser speech on, also where the browser has a recognizer', () => {
+    setVoicePreference('browserSpeech', true);
+    expect(canDictate({ enabled: true, available: false })).toBe(false);
+    vi.stubGlobal('webkitSpeechRecognition', class {});
+    expect(canDictate({ enabled: true, available: false })).toBe(true);
+    expect(canDictate({ enabled: false, available: false })).toBe(false);
+  });
+
+  it('never with the Voice switch off', () => {
+    setVoicePreference('voice', false);
+    expect(canDictate({ enabled: true, available: true })).toBe(false);
   });
 });

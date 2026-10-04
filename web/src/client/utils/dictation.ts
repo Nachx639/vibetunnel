@@ -12,6 +12,7 @@
  * started but never opened the microphone.
  */
 import { createLogger } from './logger.js';
+import { getVoicePreferences } from './voice-preferences.js';
 
 const logger = createLogger('dictation');
 
@@ -278,8 +279,19 @@ export interface DictationOptions {
 }
 
 /**
+ * Whether the mic can be offered: the server has voice on, and either transcribes itself or
+ * the user allowed the browser's recognizer (Settings, off by default: Chrome sends the audio
+ * to Google) and the browser has one.
+ */
+export function canDictate(status: ServerDictation): boolean {
+  if (!status.enabled || !getVoicePreferences().voice) return false;
+  return status.available || (getVoicePreferences().browserSpeech && !!speechRecognitionClass());
+}
+
+/**
  * One mic button: tap to start, tap again to stop. It records and the server transcribes;
- * when the server can't, the browser's recognizer runs instead (if the browser has one).
+ * when the server can't, the browser's recognizer runs instead, if the user allowed it in
+ * Settings and the browser has one.
  */
 export class DictationController {
   state: DictationState = 'idle';
@@ -315,6 +327,10 @@ export class DictationController {
     // detect the language; the browser recognizer is only the fallback.
     if (canRecord()) {
       await this.startRecording();
+      return;
+    }
+    if (!getVoicePreferences().browserSpeech) {
+      this.options.onError('unsupported');
       return;
     }
     this.startListening();
@@ -394,8 +410,8 @@ export class DictationController {
     if (!canTranscribe) {
       this.releaseMic();
       this.setState('idle');
-      // No transcription on the server: fall back to the browser's recognizer if it has one.
-      if (speechRecognitionClass()) this.startListening();
+      // No transcription on the server: fall back to the browser's recognizer, if allowed.
+      if (getVoicePreferences().browserSpeech && speechRecognitionClass()) this.startListening();
       else this.options.onError('unsupported');
       return;
     }

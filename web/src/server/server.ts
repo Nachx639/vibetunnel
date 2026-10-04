@@ -260,12 +260,12 @@ Environment Variables:
   VIBETUNNEL_FFMPEG, VIBETUNNEL_WHISPER_CLI, VIBETUNNEL_WHISPER_MODEL,
   VIBETUNNEL_WHISPER_SERVER
                         Voice dictation tools (absolute paths; WHISPER_SERVER=off
-                        disables the resident server). Dictation itself needs
-                        "voice": true in config.json; see docs/features/voice-dictation.md
+                        disables the resident server). "voice": false in config.json
+                        turns voice off; see docs/features/voice-dictation.md
   VIBETUNNEL_TTS_ENGINE (kokoro|piper|say), VIBETUNNEL_TTS_DIR, VIBETUNNEL_TTS_PYTHON,
   VIBETUNNEL_KOKORO_MODEL, VIBETUNNEL_KOKORO_VOICES, VIBETUNNEL_PIPER,
   VIBETUNNEL_PIPER_MODEL, VIBETUNNEL_SAY
-                        Read-aloud engines (absolute paths), also behind "voice": true
+                        Read-aloud engines (absolute paths), also behind "voice"
 
 Examples:
   # Run a simple server with authentication
@@ -1212,7 +1212,7 @@ export async function createApp(): Promise<AppInstance> {
   );
   logger.debug('Mounted config routes');
 
-  // Mount voice dictation routes (off unless config.json has "voice": true)
+  // Mount voice dictation routes (on unless config.json has "voice": false)
   app.use('/api', createDictationRoutes({ configService }));
   app.use('/api', createTtsRoutes({ configService }));
   logger.debug('Mounted dictation and read-aloud routes');

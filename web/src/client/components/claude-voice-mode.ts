@@ -24,6 +24,7 @@ import {
   VoicePlayer,
 } from '../utils/voice-io.js';
 import { plainForSpeech, VoiceLoop, type VoicePhase } from '../utils/voice-loop.js';
+import { getVoicePreferences } from '../utils/voice-preferences.js';
 
 const logger = createLogger('voice-mode');
 
@@ -383,6 +384,11 @@ export class ClaudeVoiceMode extends LitElement {
       await this.player.speak(plain, this.languageHint(), signal);
     } catch (error) {
       if (signal.aborted) return;
+      // The browser's voice only if the user allowed browser speech (Settings).
+      if (!getVoicePreferences().browserSpeech) {
+        logger.warn('server voice failed', error);
+        return;
+      }
       logger.warn('server voice failed, using the browser voice', error);
       await this.speakOnPhone(plain, signal);
     } finally {

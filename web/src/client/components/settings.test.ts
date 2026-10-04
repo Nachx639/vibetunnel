@@ -29,6 +29,7 @@ vi.mock('../services/server-config-service.js', () => ({
 
 import { applyAccent } from '../utils/accent-themes.js';
 import { applyThemeMode } from '../utils/theme-mode.js';
+import { getVoicePreferences } from '../utils/voice-preferences.js';
 import { Settings } from './settings.js';
 
 describe('Settings', () => {
@@ -95,6 +96,24 @@ describe('Settings', () => {
 
       expect(button('settings-theme-light')?.getAttribute('aria-pressed')).toBe('true');
       expect(button('settings-accent-gold')?.getAttribute('aria-pressed')).toBe('true');
+    });
+  });
+
+  describe('voice', () => {
+    const toggle = (key: string) =>
+      component.querySelector(`[data-testid="settings-${key}"]`) as HTMLButtonElement | null;
+
+    it('Voice starts on and Browser speech off; each switch is stored', async () => {
+      expect(toggle('voice')?.getAttribute('aria-checked')).toBe('true');
+      expect(toggle('browserSpeech')?.getAttribute('aria-checked')).toBe('false');
+
+      toggle('voice')?.click();
+      toggle('browserSpeech')?.click();
+      await component.updateComplete;
+
+      expect(toggle('voice')?.getAttribute('aria-checked')).toBe('false');
+      expect(toggle('browserSpeech')?.getAttribute('aria-checked')).toBe('true');
+      expect(getVoicePreferences()).toEqual({ voice: false, browserSpeech: true });
     });
   });
 });

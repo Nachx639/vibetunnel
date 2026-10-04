@@ -998,7 +998,7 @@ export const ar: Messages = {
   'chat.yesterday': 'أمس',
   'chat.yourInput': 'مُدخلك',
   'chat.sending': 'جارٍ الإرسال…',
-  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  // Dictation (speech to text into the chat box; when the server has whisper.cpp)
   'chat.dictate': 'إملاء (تحويل الصوت إلى نص)',
   'chat.stopDictation': 'إيقاف الإملاء',
   'dictation.starting': 'جارٍ تجهيز الميكروفون…',
@@ -1016,7 +1016,7 @@ export const ar: Messages = {
   'dictation.error.no-audio':
     'لا يلتقط الميكروفون أي صوت. تأكّد من أنه غير مكتوم ولا يستخدمه تطبيق آخر، ثم حاول مجددًا.',
   'dictation.error.failed': 'فشل الإملاء. حاول مجددًا.',
-  // Read-aloud and voice mode in the Claude chat (off unless the server enables voice)
+  // Read-aloud and voice mode in the Claude chat (when the server has local speech tools)
   'chat.readAloud': 'قراءة بصوت عالٍ',
   'chat.stopReading': 'إيقاف القراءة',
   'chat.codeOmitted': 'تم حذف الكود',
@@ -1042,4 +1042,10 @@ export const ar: Messages = {
   'voice.resume': 'متابعة المحادثة',
   'voice.engine': 'الصوت: {engine}',
   'voice.codeOmitted': 'تم حذف الشيفرة',
+  'settings.voice': 'الصوت',
+  'settings.voice.description':
+    'الإملاء والقراءة بصوت عالٍ ووضع الصوت بأدوات الكلام المحلية في هذا الخادم (whisper.cpp أو Kokoro أو Piper أو say) حيثما كانت مثبتة.',
+  'settings.browserSpeech': 'كلام المتصفح',
+  'settings.browserSpeech.description':
+    'إذا لم تكن لدى الخادم أدوات كلام، يُستخدم التعرّف والأصوات في المتصفح. يرسل Chrome الصوت إلى Google.',
 };

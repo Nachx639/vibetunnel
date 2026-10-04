@@ -999,7 +999,7 @@ export const hi: Messages = {
   'chat.yesterday': 'कल',
   'chat.yourInput': 'आपका इनपुट',
   'chat.sending': 'भेजा जा रहा है…',
-  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  // Dictation (speech to text into the chat box; when the server has whisper.cpp)
   'chat.dictate': 'डिक्टेट करें (आवाज़ से टेक्स्ट)',
   'chat.stopDictation': 'बोलकर लिखना बंद करें',
   'dictation.starting': 'माइक्रोफ़ोन तैयार हो रहा है…',
@@ -1018,7 +1018,7 @@ export const hi: Messages = {
   'dictation.error.no-audio':
     'माइक्रोफ़ोन कोई आवाज़ नहीं पकड़ रहा। जाँचें कि यह म्यूट नहीं है या किसी दूसरे ऐप में इस्तेमाल नहीं हो रहा, फिर कोशिश करें।',
   'dictation.error.failed': 'डिक्टेशन विफल रहा। फिर कोशिश करें।',
-  // Read-aloud and voice mode in the Claude chat (off unless the server enables voice)
+  // Read-aloud and voice mode in the Claude chat (when the server has local speech tools)
   'chat.readAloud': 'ज़ोर से पढ़ें',
   'chat.stopReading': 'पढ़ना बंद करें',
   'chat.codeOmitted': 'कोड छोड़ा गया',
@@ -1044,4 +1044,10 @@ export const hi: Messages = {
   'voice.resume': 'बातचीत जारी रखें',
   'voice.engine': 'आवाज़: {engine}',
   'voice.codeOmitted': 'कोड छोड़ा गया',
+  'settings.voice': 'आवाज़',
+  'settings.voice.description':
+    'इस सर्वर के स्थानीय आवाज़ टूल (whisper.cpp, Kokoro, Piper या say, जहाँ इंस्टॉल हों) से डिक्टेशन, ज़ोर से पढ़ना और वॉइस मोड।',
+  'settings.browserSpeech': 'ब्राउज़र की आवाज़',
+  'settings.browserSpeech.description':
+    'जब सर्वर में आवाज़ टूल न हों, तो ब्राउज़र की पहचान और आवाज़ें इस्तेमाल करें। Chrome ऑडियो Google को भेजता है।',
 };

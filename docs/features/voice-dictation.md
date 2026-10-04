@@ -5,29 +5,32 @@ records the audio and the VibeTunnel server transcribes it locally with
 [whisper.cpp](https://github.com/ggml-org/whisper.cpp). No audio leaves the machine. It works in
 Safari and Chrome on iOS, where the browser's own Web Speech recognizer is missing or unreliable.
 
-## Turning it on
+## Turning it on or off
 
-Everything on this page (dictation, read-aloud and voice mode) is **off by default**, behind
-one switch. For dictation: With it off, the chat view shows no mic button,
-`GET /api/dictation/status` answers `{"enabled": false, "available": false}`, and
-`POST /api/dictation/transcribe` answers `403 {"error": "disabled"}` without reading the upload
-or starting any process.
+Voice is **on by default, wherever the tools are installed**: the chat view shows the mic only
+when this server has whisper.cpp and ffmpeg, Read aloud only when it has a voice engine, and
+Voice mode only when it has both. A server without them shows nothing new.
 
-To turn it on, add this to `~/.vibetunnel/config.json`:
+Two switches in **Settings > Application**, per browser:
+
+- **Voice** (on): dictation, Read aloud and Voice mode with this server's local tools.
+- **Browser speech** (off): when the server lacks a tool, use the browser's own speech
+  recognizer and voices instead. Off by default because Chrome's recognizer sends the audio to
+  Google (and its network voices the text).
+
+To turn voice off for the whole server, add this to `~/.vibetunnel/config.json`:
 
 ```json
 {
-  "voice": true
+  "voice": false
 }
 ```
 
-The same key turns on read-aloud and voice mode (below). The key is read on every request,
-so no restart is needed. Remove it (or set `false`) to turn
-dictation off again; a running `whisper-server` is stopped the next time the status or
-transcribe endpoint is called. `voice` cannot be set through `PUT /api/config`.
-
-With `voice` on but whisper.cpp not installed, the mic falls back to the browser's Web Speech
-recognizer where the browser has one (desktop Chrome and Safari), and explains otherwise.
+Then the chat view shows no mic, Read aloud or Voice mode, `GET /api/dictation/status` answers
+`{"enabled": false, "available": false}`, and `POST /api/dictation/transcribe` answers
+`403 {"error": "disabled"}` without reading the upload or starting any process. The key is read
+on every request, so no restart is needed; a running `whisper-server` is stopped the next time
+the status or transcribe endpoint is called. `voice` cannot be set through `PUT /api/config`.
 
 ## Installing the tools
 
@@ -87,14 +90,14 @@ All tools are started with argument arrays (`execFile`/`spawn`), never through a
 
 ## Read-aloud and voice mode
 
-With `"voice": true`, each Claude answer in the phone chat view gets a **Read aloud** button,
-and the chat's header gets a **Voice mode** button: a full-screen, hands-free conversation that
+With an engine installed, each Claude answer in the phone chat view gets a **Read aloud**
+button, and with whisper.cpp too the chat's header gets a **Voice mode** button: a full-screen, hands-free conversation that
 listens until you pause, transcribes what you said (the dictation pipeline above), sends it
 to Claude, reads the answer aloud and listens again. Speaking over the answer, or **Stop
 talking**, interrupts it. A permission prompt or plan approval is announced and the
 conversation stops: it is never answered by voice.
 
-With `voice` off: no Read aloud or Voice mode buttons, `GET /api/tts/status` answers
+With `"voice": false`: no Read aloud or Voice mode buttons, `GET /api/tts/status` answers
 `{"enabled": false, ...}` without looking for any engine, and `POST /api/tts` answers `403`.
 
 Answers are read by the best local engine available:
@@ -106,8 +109,8 @@ Answers are read by the best local engine available:
    enhanced or premium voice first, never a novelty voice). Without a voice for that language
    the system voice reads it.
 
-If no engine works, the browser's own speech synthesis reads the answer (muted on an iPhone
-in silent mode).
+If no engine works and **Browser speech** is on, the browser's own speech synthesis reads the
+answer (muted on an iPhone in silent mode); otherwise nothing is read.
 
 Kokoro setup (any OS with Python 3.10+):
 

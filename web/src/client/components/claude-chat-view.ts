@@ -13,10 +13,12 @@ import { detectSpeechLanguage, normalizeSpeechLanguage } from '../../shared/tts-
 import { getLocale, LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 import { announce } from '../utils/announce.js';
+import { serverDictation } from '../utils/dictation.js';
 import { isSwallowingGhostClick, swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { endsADrag } from '../utils/pointer-drag.js';
 import { VoicePlayer } from '../utils/voice-io.js';
+import { getVoicePreferences } from '../utils/voice-preferences.js';
 import { closeClaudeModePicker, modeLabel, openClaudeModePicker } from './claude-mode-picker.js';
 import { voiceModeTap } from './claude-voice-mode.js';
 import { openImageLightbox } from './image-lightbox.js';
@@ -408,7 +410,7 @@ function canSpeak(): boolean {
 }
 
 interface ServerVoice {
-  /** config.json `"voice": true`: read-aloud and voice mode are offered at all. */
+  /** The server's `voice` switch (on unless config.json has `"voice": false`). */
   enabled: boolean;
   /** The server has a text-to-speech engine (otherwise the browser's own voice reads). */
   engine: boolean;
@@ -1398,10 +1400,15 @@ export class ClaudeChatView extends LitElement {
 
   /** The answer being read aloud, if any (only one at a time). */
   @state() private speakingId: string | null = null;
-  /** The server has `"voice": true`: read-aloud and voice mode are offered. */
+  /**
+   * Read aloud is offered: the server has voice on, the Voice switch in Settings is on, and
+   * either the server has a voice or the user allowed the browser's own (Browser speech).
+   */
   @state() private voiceEnabled = false;
   /** The server reads answers aloud (see speakWithServer); otherwise the browser's voice. */
   @state() private serverVoice = false;
+  /** Voice mode is offered: read-aloud as above, and the server transcribes (whisper.cpp). */
+  @state() private voiceModeAvailable = false;
   private voicePlayer: VoicePlayer | null = null;
   private speakAbort: AbortController | null = null;
 
@@ -1414,10 +1421,17 @@ export class ClaudeChatView extends LitElement {
     document.addEventListener('focusin', this.trackFieldFocus, true);
     document.addEventListener('focusout', this.trackFieldFocus, true);
     this.trackFieldFocus();
-    void checkServerVoice().then((status) => {
-      this.voiceEnabled = status.enabled;
-      this.serverVoice = status.enabled && status.engine;
-    });
+    void Promise.all([checkServerVoice(), serverDictation(() => authClient.getAuthHeader())]).then(
+      ([status, dictation]) => {
+        const prefs = getVoicePreferences();
+        this.serverVoice = status.enabled && status.engine;
+        this.voiceEnabled =
+          prefs.voice &&
+          status.enabled &&
+          (this.serverVoice || (prefs.browserSpeech && canSpeak()));
+        this.voiceModeAvailable = this.voiceEnabled && dictation.enabled && dictation.available;
+      }
+    );
     this.poll();
   }
 
@@ -2163,8 +2177,8 @@ export class ClaudeChatView extends LitElement {
     }
     const title = this.conversationTitle;
     if (!title && !this.messages.length) return nothing;
-    // Voice mode types what it hears into the session; only when the server has voice on.
-    const voice = this.voiceEnabled;
+    // Voice mode types what it hears into the session; only when the server transcribes.
+    const voice = this.voiceModeAvailable;
     return html`<div class="top ${voice && this.messages.length ? 'two-icons' : ''}">
       <div class="title" title=${title}>${title}</div>
       ${voice ? this.renderVoiceButton(this.messages.length > 0) : nothing}
@@ -2231,7 +2245,9 @@ export class ClaudeChatView extends LitElement {
     if (!text) return;
     const lang = speechLang(text, getLocale());
     if (this.serverVoice) this.speakWithServer(message.id, text, lang);
-    else if (canSpeak()) this.speakOnPhone(message.id, text, lang);
+    else if (getVoicePreferences().browserSpeech && canSpeak()) {
+      this.speakOnPhone(message.id, text, lang);
+    }
   }
 
   /**
@@ -2292,7 +2308,7 @@ export class ClaudeChatView extends LitElement {
         ${COPY_ICON}
       </button>
       ${
-        this.voiceEnabled && (this.serverVoice || canSpeak())
+        this.voiceEnabled
           ? html`<button
               class="msg-action speak-msg ${speaking ? 'active' : ''}"
               aria-label=${speaking ? t('chat.stopReading') : t('chat.readAloud')}

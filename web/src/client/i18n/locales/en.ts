@@ -1020,7 +1020,7 @@ export const en = {
   'chat.yesterday': 'Yesterday',
   'chat.yourInput': 'your input',
   'chat.sending': 'Sending…',
-  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  // Dictation (speech to text into the chat box; when the server has whisper.cpp)
   'chat.dictate': 'Dictate (speech to text)',
   'chat.stopDictation': 'Stop dictation',
   'dictation.starting': 'Getting the microphone ready…',
@@ -1039,7 +1039,7 @@ export const en = {
   'dictation.error.no-audio':
     "The microphone isn't picking up any sound. Check it isn't muted or in use by another app, then try again.",
   'dictation.error.failed': 'Dictation failed. Try again.',
-  // Read-aloud and voice mode in the Claude chat (off unless the server enables voice)
+  // Read-aloud and voice mode in the Claude chat (when the server has local speech tools)
   'chat.readAloud': 'Read aloud',
   'chat.stopReading': 'Stop reading',
   'chat.codeOmitted': 'code omitted',
@@ -1065,6 +1065,12 @@ export const en = {
   'voice.resume': 'Keep talking',
   'voice.engine': 'Voice: {engine}',
   'voice.codeOmitted': 'code omitted',
+  'settings.voice': 'Voice',
+  'settings.voice.description':
+    "Dictation, Read aloud and Voice mode with this server's local speech tools (whisper.cpp, Kokoro, Piper or say), where installed.",
+  'settings.browserSpeech': 'Browser speech',
+  'settings.browserSpeech.description':
+    "When the server has no speech tools, use the browser's recognizer and voices. Chrome sends the audio to Google.",
 };
 
 export type MessageKey = keyof typeof en;

@@ -396,13 +396,10 @@ require('readline').createInterface({ input: process.stdin }).on('line', (line) 
         signal: AbortSignal.timeout(5000),
       });
 
-    it.each([
-      undefined,
-      false,
-    ])('voice=%s: status is off, nothing probed, POST refused', async (voice) => {
+    it('voice=false: status is off, nothing probed, POST refused', async () => {
       fakeSay();
       fakeKokoro();
-      await withServer(voice, async (base) => {
+      await withServer(false, async (base) => {
         const status = await (await fetch(`${base}/tts/status?warm=1`)).json();
         expect(status).toMatchObject({
           enabled: false,
@@ -418,9 +415,12 @@ require('readline').createInterface({ input: process.stdin }).on('line', (line) 
       expect(existsSync(join(dir, 'kokoro.starts'))).toBe(false);
     });
 
-    it('POST /api/tts answers WAV audio and names the engine', async () => {
+    it.each([
+      undefined,
+      true,
+    ])('voice=%s (on by default): POST /api/tts answers WAV audio and names the engine', async (voice) => {
       fakeSay();
-      await withServer(true, async (base) => {
+      await withServer(voice, async (base) => {
         const response = await post(base, { text: 'All done, it works.', lang: 'en-GB' });
         expect(response.status).toBe(200);
         expect(response.headers.get('content-type')).toBe('audio/wav');

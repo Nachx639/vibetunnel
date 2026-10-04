@@ -3,9 +3,10 @@
  * encoded to a 16 kHz WAV on the client) and the server transcribes it locally with
  * whisper.cpp. Nothing leaves the machine.
  *
- * Off unless `~/.vibetunnel/config.json` has `"voice": true` (docs/features/voice-dictation.md).
- * Off, the status says so, the transcribe endpoint answers 403 before reading the body, and
- * no ffmpeg or whisper process is ever started.
+ * On unless `~/.vibetunnel/config.json` has `"voice": false` (docs/features/voice-dictation.md);
+ * the client offers it only when whisper.cpp and ffmpeg are installed here. Off, the status says
+ * so, the transcribe endpoint answers 403 before reading the body, and no ffmpeg or whisper
+ * process is ever started.
  *
  * Mounted behind the /api auth middleware like every other route. ffmpeg, whisper-cli and
  * whisper-server run with argument arrays, never through a shell; one transcription at a time.
@@ -367,10 +368,10 @@ export interface DictationRouteOptions {
   configService: Pick<ConfigService, 'getConfig'>;
 }
 
-/** Whether `"voice": true` is set in config.json (read on every request). */
+/** Voice is on unless config.json has `"voice": false` (read on every request). */
 export function voiceEnabled(configService: Pick<ConfigService, 'getConfig'>): boolean {
   try {
-    return configService.getConfig().voice === true;
+    return configService.getConfig().voice !== false;
   } catch {
     return false;
   }

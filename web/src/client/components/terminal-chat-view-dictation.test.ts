@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { restoreLocalStorage, setupLocalStorageMock } from '../../test/utils/component-helpers.js';
 import { resetDictationForTests } from '../utils/dictation.js';
+import { setVoicePreference } from '../utils/voice-preferences.js';
 import { TerminalChatView } from './terminal-chat-view.js';
 
 function stubStatus(body: unknown) {
@@ -27,14 +29,16 @@ const mic = (component: TerminalChatView) =>
 describe('TerminalChatView dictation', () => {
   let component: TerminalChatView | null = null;
 
+  beforeEach(() => setupLocalStorageMock());
   afterEach(() => {
     component?.remove();
     component = null;
     resetDictationForTests();
     vi.unstubAllGlobals();
+    restoreLocalStorage();
   });
 
-  it('shows no mic when voice is off on the server (the default)', async () => {
+  it('shows no mic when the server has "voice": false', async () => {
     stubStatus({ enabled: false, available: false });
     component = await mount(true);
     expect(mic(component)).toBeNull();
@@ -56,10 +60,30 @@ describe('TerminalChatView dictation', () => {
     expect(mic(component)).toBeNull();
   });
 
-  it('shows the mic when the server has "voice": true', async () => {
+  it('shows the mic by default when the server transcribes (whisper.cpp installed)', async () => {
     stubStatus({ enabled: true, available: true });
     component = await mount(true);
     expect(mic(component)?.getAttribute('aria-label')).toBe('Dictate (speech to text)');
+  });
+
+  it('shows no mic when the server cannot transcribe, unless Browser speech is on', async () => {
+    vi.stubGlobal('webkitSpeechRecognition', class {});
+    stubStatus({ enabled: true, available: false });
+    component = await mount(true);
+    expect(mic(component)).toBeNull();
+    component.remove();
+
+    setVoicePreference('browserSpeech', true);
+    resetDictationForTests();
+    component = await mount(true);
+    expect(mic(component)).toBeTruthy();
+  });
+
+  it('shows no mic with the Voice switch off in Settings', async () => {
+    setVoicePreference('voice', false);
+    stubStatus({ enabled: true, available: true });
+    component = await mount(true);
+    expect(mic(component)).toBeNull();
   });
 
   it('types dictated text through the same delta path as the keyboard', async () => {

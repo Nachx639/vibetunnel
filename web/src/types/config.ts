@@ -31,8 +31,9 @@ export interface VibeTunnelConfig {
    */
   agentChat?: boolean;
   /**
-   * Voice dictation transcribed on this machine with whisper.cpp (`/api/dictation`). Off when
-   * missing: the endpoint refuses and the chat view shows no mic.
+   * Voice on this machine: dictation with whisper.cpp (`/api/dictation`), read-aloud and voice
+   * mode (`/api/tts`). On when missing (the chat offers each only where its local tool is
+   * installed); `false` makes the endpoints refuse and hides the mic and voice buttons.
    */
   voice?: boolean;
 

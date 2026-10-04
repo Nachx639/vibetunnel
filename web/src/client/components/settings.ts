@@ -19,6 +19,11 @@ import { VERSION } from '../version.js';
 import { isQuickSwitcherEnabled, setQuickSwitcherEnabled } from './session-quick-switcher.js';
 import './language-picker.js';
 import './quick-keys-editor.js';
+import {
+  getVoicePreferences,
+  setVoicePreference,
+  type VoicePreferences,
+} from '../utils/voice-preferences.js';
 
 const logger = createLogger('settings');
 
@@ -45,6 +50,7 @@ export class Settings extends LitElement {
   @state() private repositoryCount = 0;
   @state() private isDiscoveringRepositories = false;
   @state() private showQuickKeysEditor = false;
+  @state() private voicePreferences: VoicePreferences = getVoicePreferences();
 
   // Appearance state (shared with the header toggle and the session compact menu)
   @state() private themeMode: ThemeMode = getThemeMode();
@@ -729,6 +735,40 @@ export class Settings extends LitElement {
     `;
   }
 
+  /** A per-browser voice switch (utils/voice-preferences.ts). */
+  private renderVoiceSwitch(key: keyof VoicePreferences, label: string, description: string) {
+    const on = this.voicePreferences[key];
+    return html`
+      <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="text-primary font-medium" id="settings-${key}-label">${label}</label>
+            <p class="text-muted text-xs mt-1">${description}</p>
+          </div>
+          <button
+            role="switch"
+            aria-checked=${on ? 'true' : 'false'}
+            aria-labelledby="settings-${key}-label"
+            data-testid="settings-${key}"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-bg ${
+              on ? 'bg-primary' : 'bg-border'
+            }"
+            @click=${() => {
+              setVoicePreference(key, !on);
+              this.voicePreferences = getVoicePreferences();
+            }}
+          >
+            <span
+              class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+                on ? 'translate-x-5' : 'translate-x-0.5'
+              }"
+            ></span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   private renderAppearance() {
     const modes: Array<[ThemeMode, string]> = [
       ['light', t('theme.light')],
@@ -816,6 +856,9 @@ export class Settings extends LitElement {
         ${this.renderAppearance()}
 
         ${this.renderPhoneLayout()}
+
+        ${this.renderVoiceSwitch('voice', t('settings.voice'), t('settings.voice.description'))}
+        ${this.renderVoiceSwitch('browserSpeech', t('settings.browserSpeech'), t('settings.browserSpeech.description'))}
 
         <!-- Language -->
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">

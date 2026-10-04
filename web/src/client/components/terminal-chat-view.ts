@@ -3,6 +3,7 @@ import { customElement, property, query, state } from 'lit/decorators.js';
 import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 import {
+  canDictate,
   DictationController,
   type DictationState,
   dictationErrorKey,
@@ -2023,8 +2024,9 @@ export class TerminalChatView extends LitElement {
   }
 
   /**
-   * Dictation (speech to text into the box; the user still presses send). Shown only when the
-   * server has `"voice": true` in config.json, so by default this view is unchanged.
+   * Dictation (speech to text into the box; the user still presses send). Shown when the
+   * server can transcribe (or the user allowed the browser's recognizer) and the Voice switch
+   * in Settings is on (canDictate).
    */
   @state() private voiceEnabled = false;
   @state() private dictation: DictationState = 'idle';
@@ -2058,8 +2060,7 @@ export class TerminalChatView extends LitElement {
   });
 
   private async checkVoice() {
-    const { enabled } = await serverDictation(() => authClient.getAuthHeader());
-    this.voiceEnabled = enabled;
+    this.voiceEnabled = canDictate(await serverDictation(() => authClient.getAuthHeader()));
   }
 
   private showDictationNote(note: string) {

@@ -990,7 +990,7 @@ export const zhCN: Messages = {
   'chat.yesterday': '昨天',
   'chat.yourInput': '你的输入',
   'chat.sending': '正在发送…',
-  // Dictation (speech to text into the chat box; off unless the server enables voice)
+  // Dictation (speech to text into the chat box; when the server has whisper.cpp)
   'chat.dictate': '听写（语音转文字）',
   'chat.stopDictation': '停止语音输入',
   'dictation.starting': '正在准备麦克风…',
@@ -1005,7 +1005,7 @@ export const zhCN: Messages = {
   'dictation.error.network': '无法连接服务器进行转写。请检查连接后重试。',
   'dictation.error.no-audio': '麦克风没有收到声音。请确认它未被静音或被其他应用占用后重试。',
   'dictation.error.failed': '听写失败，请重试。',
-  // Read-aloud and voice mode in the Claude chat (off unless the server enables voice)
+  // Read-aloud and voice mode in the Claude chat (when the server has local speech tools)
   'chat.readAloud': '朗读',
   'chat.stopReading': '停止朗读',
   'chat.codeOmitted': '已省略代码',
@@ -1031,4 +1031,10 @@ export const zhCN: Messages = {
   'voice.resume': '继续对话',
   'voice.engine': '语音：{engine}',
   'voice.codeOmitted': '代码已省略',
+  'settings.voice': '语音',
+  'settings.voice.description':
+    '使用此服务器本地的语音工具（whisper.cpp、Kokoro、Piper 或 say，已安装时）进行听写、朗读和语音模式。',
+  'settings.browserSpeech': '浏览器语音',
+  'settings.browserSpeech.description':
+    '服务器没有语音工具时，使用浏览器的识别和语音。Chrome 会把音频发送给 Google。',
 };
