@@ -312,13 +312,52 @@ export class UIStateManager {
     this.callbacks?.requestUpdate();
   }
 
-  toggleChatMode(): void {
+  /**
+   * `remember`: keep the choice for the next session and reload on this phone (agent chat
+   * only; the classic chat mode always starts off, as before).
+   */
+  toggleChatMode(remember = false): void {
     const enteringChatMode = !this.state.chatMode;
     this.state.chatMode = enteringChatMode;
     // Hide quick keys when entering chat mode (chat has its own input)
     if (enteringChatMode) {
       this.state.showQuickKeys = false;
     }
+    if (remember) this.saveChatModePreference(enteringChatMode);
     this.callbacks?.requestUpdate();
+  }
+
+  /**
+   * Phones with agent chat on: open in chat mode if the user last chose it there. Nothing is
+   * stored until the user toggles chat mode, so it starts off as before. Desktop chat mode
+   * hides the terminal entirely, so it is never restored there.
+   */
+  restoreChatModePreference(): void {
+    if (this.state.isMobile && !this.state.chatMode && this.hasChatModePreference()) {
+      this.setChatMode(true);
+    }
+  }
+
+  /** A phone chose chat mode before (only agent chat stores it). */
+  hasChatModePreference(): boolean {
+    try {
+      const stored = localStorage.getItem('vibetunnel_app_preferences');
+      return stored ? JSON.parse(stored).chatMode === true : false;
+    } catch {
+      return false;
+    }
+  }
+
+  private saveChatModePreference(chatMode: boolean): void {
+    try {
+      const stored = localStorage.getItem('vibetunnel_app_preferences');
+      const preferences = stored ? JSON.parse(stored) : {};
+      localStorage.setItem(
+        'vibetunnel_app_preferences',
+        JSON.stringify({ ...preferences, chatMode })
+      );
+    } catch (error) {
+      logger.warn('Failed to save app preferences', error);
+    }
   }
 }

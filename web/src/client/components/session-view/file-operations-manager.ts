@@ -9,12 +9,69 @@
  */
 import type { Session } from '../../../shared/types.js';
 import { t } from '../../i18n/index.js';
+import { authClient } from '../../services/auth-client.js';
 import { createLogger } from '../../utils/logger.js';
 import { shellQuotePath } from '../../utils/shell-quote.js';
 import type { FilePicker } from '../file-picker.js';
 import type { InputManager } from './input-manager.js';
 
 const logger = createLogger('file-operations-manager');
+
+export interface UploadResult {
+  path: string;
+  filename: string;
+  size: number;
+  mimetype: string;
+}
+
+/**
+ * Upload one file to the authenticated `/api/files/upload` route, reporting progress (0–100).
+ * XMLHttpRequest because fetch still has no upload progress in Safari.
+ */
+export function uploadWithProgress(
+  file: File,
+  onProgress: (percent: number) => void,
+  signal?: AbortSignal
+): Promise<UploadResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    signal?.addEventListener('abort', () => xhr.abort());
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && e.total > 0) {
+        onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)));
+      }
+    });
+    xhr.addEventListener('load', () => {
+      let body: { success?: boolean; error?: string } & Partial<UploadResult> = {};
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        // Fall through to the status-based message below.
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && body.success && body.path) {
+        resolve({
+          path: body.path,
+          filename: body.filename ?? file.name,
+          size: body.size ?? file.size,
+          mimetype: body.mimetype ?? file.type,
+        });
+        return;
+      }
+      reject(new Error(body.error || `HTTP ${xhr.status}`));
+    });
+    xhr.addEventListener('error', () => reject(new Error(t('toast.uploadFailed'))));
+    xhr.addEventListener('abort', () => reject(new Error(t('toast.uploadFailed'))));
+
+    xhr.open('POST', '/api/files/upload');
+    for (const [key, value] of Object.entries(authClient.getAuthHeader())) {
+      xhr.setRequestHeader(key, value);
+    }
+    const form = new FormData();
+    form.append('file', file);
+    onProgress(0);
+    xhr.send(form);
+  });
+}
 
 export interface FileOperationsCallbacks {
   getSession: () => Session | null;
@@ -28,6 +85,13 @@ export interface FileOperationsCallbacks {
   getShowImagePicker: () => boolean;
   dispatchEvent: (event: Event) => boolean;
   requestUpdate: () => void;
+  /** Phone chat mode: put the text in the composer instead of the terminal. True if handled. */
+  insertIntoComposer?: (text: string) => boolean;
+  /**
+   * Phone chat mode: hand pasted or dropped files to the composer's attachment strip, so they
+   * go out with the next message instead of being typed into the terminal now. True if handled.
+   */
+  attachToComposer?: (files: File[]) => boolean;
 }
 
 export class FileOperationsManager {
@@ -35,6 +99,7 @@ export class FileOperationsManager {
   private dragCounter = 0;
   private dragLeaveTimer: ReturnType<typeof setTimeout> | null = null;
   private globalDragOverTimer: ReturnType<typeof setTimeout> | null = null;
+  private imageInput: HTMLInputElement | null = null;
 
   // Bound event handlers for cleanup
   private boundHandleDragOver: (e: DragEvent) => void;
@@ -96,6 +161,9 @@ export class FileOperationsManager {
     if (this.callbacks) {
       this.callbacks.setIsDragOver(false);
     }
+
+    this.imageInput?.remove();
+    this.imageInput = null;
   }
 
   // File browser methods
@@ -145,6 +213,31 @@ export class FileOperationsManager {
     }
   }
 
+  /**
+   * Phone chat mode: pick photos for the composer's attachment strip (several at once). The
+   * composer uploads them itself, after downscaling, and types their paths only on Send.
+   */
+  pickImagesForComposer(): void {
+    if (!this.imageInput) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = true;
+      input.style.display = 'none';
+      input.addEventListener('change', () => {
+        const files = Array.from(input.files || []);
+        // Reset so picking the same photo again still fires `change`.
+        input.value = '';
+        if (files.length > 0 && !this.callbacks?.attachToComposer?.(files)) {
+          for (const file of files) void this.uploadFile(file);
+        }
+      });
+      document.body.appendChild(input);
+      this.imageInput = input;
+    }
+    this.imageInput.click();
+  }
+
   openCamera(): void {
     if (!this.callbacks) return;
 
@@ -171,7 +264,7 @@ export class FileOperationsManager {
             type: imageType,
           });
 
-          await this.uploadFile(file);
+          if (!this.callbacks.attachToComposer?.([file])) await this.uploadFile(file);
           logger.log(`Successfully pasted image from clipboard`);
           return;
         }
@@ -236,6 +329,11 @@ export class FileOperationsManager {
 
     // Quote the path for the shell: a name with quotes, `$(...)` or `;` must never run.
     const escapedPath = shellQuotePath(path);
+
+    if (this.callbacks.insertIntoComposer?.(escapedPath)) {
+      logger.log(`inserted ${type} path into the chat composer: ${escapedPath}`);
+      return;
+    }
 
     // Send the path to the terminal
     const inputManager = this.callbacks.getInputManager();
@@ -341,6 +439,8 @@ export class FileOperationsManager {
       return;
     }
 
+    if (this.callbacks?.attachToComposer?.(files)) return;
+
     // Upload all files sequentially
     for (const file of files) {
       try {
@@ -411,6 +511,11 @@ export class FileOperationsManager {
     }
 
     e.preventDefault(); // Prevent default paste behavior for files
+
+    const pasted = fileItems
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (pasted.length > 0 && this.callbacks.attachToComposer?.(pasted)) return;
 
     // Upload all pasted files
     for (const fileItem of fileItems) {

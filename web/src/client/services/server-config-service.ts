@@ -19,6 +19,8 @@ export interface ServerConfig {
   serverConfigured?: boolean;
   quickStartCommands?: QuickStartCommand[];
   notificationPreferences?: NotificationPreferences;
+  /** Phone chat view of agent conversations (config.json `agentChat`). */
+  agentChat?: boolean;
 }
 
 export class ServerConfigService {

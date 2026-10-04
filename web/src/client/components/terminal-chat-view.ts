@@ -1,9 +1,106 @@
-import { css, html, LitElement } from 'lit';
+import { css, html, LitElement, nothing } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
-import { LocaleController, t } from '../i18n/index.js';
+import { LocaleController, type MessageKey, t } from '../i18n/index.js';
+import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
+import { endsADrag } from '../utils/pointer-drag.js';
+import {
+  defaultQuickPrompts,
+  loadCustomQuickPrompts,
+  type QuickPrompt,
+  saveQuickPrompts,
+  templateText,
+} from '../utils/quick-prompts.js';
+import { shellQuotePath } from '../utils/shell-quote.js';
+import { AttachmentQueue, type AttachmentUploader, uploadAttachment } from './chat-attachments.js';
+import type { SentChatMessage, SentChatMessageRef } from './claude-chat-view.js';
 
 const logger = createLogger('terminal-chat-view');
+
+/** How long after the last hand-written key the composer leaves typing to iOS again. */
+const HAND_TYPING_MS = 2000;
+
+/** Claude Code slash commands offered while typing "/" in the phone composer. */
+const SLASH_COMMANDS: Array<[string, MessageKey]> = [
+  ['/clear', 'slash.clear'],
+  ['/compact', 'slash.compact'],
+  ['/model', 'slash.model'],
+  ['/resume', 'slash.resume'],
+  ['/context', 'slash.context'],
+  ['/cost', 'slash.cost'],
+  ['/usage', 'slash.usage'],
+  ['/rewind', 'slash.rewind'],
+  ['/review', 'slash.review'],
+  ['/init', 'slash.init'],
+  ['/memory', 'slash.memory'],
+  ['/agents', 'slash.agents'],
+  ['/mcp', 'slash.mcp'],
+  ['/permissions', 'slash.permissions'],
+  ['/config', 'slash.config'],
+  ['/status', 'slash.status'],
+  ['/export', 'slash.export'],
+  ['/help', 'slash.help'],
+];
+
+const DRAFT_KEY_PREFIX = 'vt-chat-draft:';
+
+function loadDraft(sessionId: string): string {
+  try {
+    return localStorage.getItem(DRAFT_KEY_PREFIX + sessionId) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** Composer drafts survive a session switch or a reload (storage may be blocked: then not). */
+function saveDraft(sessionId: string, text: string) {
+  if (!sessionId) return;
+  try {
+    if (text.trim()) localStorage.setItem(DRAFT_KEY_PREFIX + sessionId, text);
+    else localStorage.removeItem(DRAFT_KEY_PREFIX + sessionId);
+  } catch {
+    // Private mode or storage full: the draft just isn't kept.
+  }
+}
+
+/**
+ * CSS height that fits a textarea's text. scrollHeight already includes the padding, so a
+ * content-box field must subtract it (and a border-box one add its borders). The composer is
+ * content-box: setting height = scrollHeight would count the padding twice, and the first typed
+ * letter would grow the one-line field by an empty extra line.
+ */
+export function composerHeightFor(
+  scrollHeight: number,
+  style: Pick<
+    CSSStyleDeclaration,
+    'boxSizing' | 'paddingTop' | 'paddingBottom' | 'borderTopWidth' | 'borderBottomWidth'
+  >
+): number {
+  const px = (value: string) => Number.parseFloat(value) || 0;
+  if (style.boxSizing === 'border-box') {
+    return scrollHeight + px(style.borderTopWidth) + px(style.borderBottomWidth);
+  }
+  return Math.max(0, scrollHeight - px(style.paddingTop) - px(style.paddingBottom));
+}
+
+const MAX_MESSAGE_LENGTH = 20_000;
+
+/** A message on its way from the phone composer (see send). */
+interface Outgoing {
+  command: string;
+  /** Uploaded images' paths, shell-quoted: typed before the text, in a write of their own. */
+  paths: string;
+  /** performance.now() when the send began, for the chat view's timing line. */
+  startedAt: number;
+  /** Its bubble in the chat view: new, or the one of a message that could not be sent. */
+  id?: string;
+  /** The chat view has been told this attempt is on its way. */
+  announced?: boolean;
+  /** A retry from the chat view: the box is not where it comes from. */
+  retry?: boolean;
+}
+
+let sentCount = 0;
 
 interface ChatMessage {
   type: 'command' | 'output' | 'error' | 'prompt';
@@ -20,6 +117,17 @@ interface InteractiveOption {
 @customElement('terminal-chat-view')
 export class TerminalChatView extends LitElement {
   static styles = css`
+    :host([composerOnly]) {
+      height: auto;
+    }
+
+    :host([composerOnly]) .chat-input-container {
+      align-items: flex-end;
+      /* Home indicator clearance, set by the session view only while the keyboard is down
+         (with the keyboard up the composer sits on it; both would leave a gap). */
+      padding-bottom: calc(0.625rem + var(--composer-safe-bottom, 0px));
+    }
+
     :host {
       display: block;
       height: 100%;
@@ -57,8 +165,8 @@ export class TerminalChatView extends LitElement {
       align-items: center;
       gap: 0.625rem;
       padding: 0.625rem 0.875rem;
-      background-color: rgb(30 35 40);
-      border-top: 1px solid rgb(50 55 60);
+      background-color: var(--color-bg-secondary);
+      border-top: 1px solid var(--color-border);
       position: relative;
       z-index: 100;
     }
@@ -66,10 +174,10 @@ export class TerminalChatView extends LitElement {
     .chat-input {
       flex: 1;
       padding: 0.75rem 1.125rem;
-      background-color: rgb(45 50 55);
-      border: 1px solid rgb(60 65 70);
+      background-color: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border);
       border-radius: 1.5rem;
-      color: #ffffff;
+      color: var(--color-text);
       font-family: inherit;
       font-size: 16px; /* Prevent zoom on iOS */
       outline: none;
@@ -78,14 +186,215 @@ export class TerminalChatView extends LitElement {
       opacity: 1;
     }
 
+    .slash-list {
+      display: flex;
+      flex-direction: column;
+      max-height: 14rem;
+      overflow-y: auto;
+      background: var(--color-bg-secondary);
+      border-top: 1px solid var(--color-border);
+    }
+
+    .slash-list button {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 10px 16px;
+      border: none;
+      border-bottom: 1px solid var(--color-border-light);
+      background: none;
+      color: var(--color-text);
+      text-align: left;
+      font-size: 15px;
+    }
+
+    .slash-list button span {
+      color: var(--color-text-dim);
+      font-size: 13px;
+    }
+
+    /* One-tap prompts above the composer; scrolls sideways, hidden while typing. */
+    .quick-prompts {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 6px 14px 0;
+      background-color: var(--color-bg-secondary);
+      border-top: 1px solid var(--color-border);
+      scrollbar-width: none;
+      touch-action: pan-x;
+      overscroll-behavior-x: contain;
+    }
+
+    .quick-prompts::-webkit-scrollbar {
+      display: none;
+    }
+
+    .quick-prompts + .chat-input-container {
+      border-top: none;
+    }
+
+    .quick-prompt {
+      flex-shrink: 0;
+      min-height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 18px;
+      background-color: var(--color-bg-tertiary);
+      color: var(--color-text);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      font-size: 14px;
+      white-space: nowrap;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .quick-prompt:active {
+      background-color: var(--color-surface-hover);
+    }
+
+    .quick-prompt.edit {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      padding: 0;
+      color: var(--color-text-dim);
+    }
+
+    .prompt-editor {
+      width: min(28rem, calc(100vw - 32px));
+      max-height: 85vh;
+      padding: 0;
+      border: 1px solid var(--color-border);
+      border-radius: 14px;
+      background-color: var(--color-bg-secondary);
+      color: var(--color-text);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+    }
+
+    .prompt-editor::backdrop {
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .prompt-editor h2 {
+      margin: 0;
+      padding: 14px 16px 4px;
+      font-size: 16px;
+    }
+
+    .prompt-editor p {
+      margin: 0;
+      padding: 0 16px 8px;
+      color: var(--color-text-dim);
+      font-size: 13px;
+    }
+
+    .prompt-editor ol {
+      list-style: none;
+      margin: 0;
+      padding: 0 12px;
+      max-height: 55vh;
+      overflow-y: auto;
+    }
+
+    .prompt-editor li {
+      display: grid;
+      grid-template-columns: 1fr repeat(3, 36px);
+      align-items: center;
+      gap: 4px 6px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--color-border-light);
+    }
+
+    .prompt-editor li input {
+      grid-column: 1;
+      min-width: 0;
+      padding: 6px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      background-color: var(--color-bg-tertiary);
+      color: var(--color-text);
+      font: inherit;
+      font-size: 16px; /* Prevent zoom on iOS */
+    }
+
+    .prompt-editor li button {
+      grid-row: 1 / span 2;
+      height: 36px;
+      border: none;
+      border-radius: 8px;
+      background: none;
+      color: var(--color-text-dim);
+      font-size: 18px;
+    }
+
+    .prompt-editor li button:disabled {
+      opacity: 0.3;
+    }
+
+    .prompt-editor footer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .prompt-editor footer button {
+      min-height: 36px;
+      padding: 0 14px;
+      border: 1px solid var(--color-border);
+      border-radius: 18px;
+      background-color: var(--color-bg-tertiary);
+      color: var(--color-text);
+      font: inherit;
+      font-size: 14px;
+    }
+
+    .prompt-editor footer .spacer {
+      flex: 1;
+    }
+
+    .prompt-editor footer .save {
+      border-color: var(--color-primary);
+      background-color: var(--color-primary);
+      color: white;
+    }
+
+    .attach-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.5rem;
+      height: 2.75rem;
+      flex-shrink: 0;
+      border: none;
+      background: none;
+      color: var(--color-text-dim);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .composer-input {
+      resize: none;
+      line-height: 1.35;
+      max-height: 8.5rem;
+      overflow-y: auto;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      border-radius: 1.25rem;
+      display: block;
+    }
+
     .chat-input:focus {
-      border-color: #00a884;
-      background-color: rgb(50 55 60);
-      box-shadow: 0 0 0 2px rgba(0, 168, 132, 0.2);
+      border-color: var(--color-primary);
+      background-color: var(--color-border);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
     }
 
     .chat-input::placeholder {
-      color: rgb(140 145 150);
+      color: var(--color-text-dim);
       opacity: 1;
     }
 
@@ -95,7 +404,7 @@ export class TerminalChatView extends LitElement {
       justify-content: center;
       width: 2.75rem;
       height: 2.75rem;
-      background: linear-gradient(135deg, #00a884 0%, #008f72 100%);
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
       border: none;
       border-radius: 50%;
       color: white;
@@ -103,13 +412,13 @@ export class TerminalChatView extends LitElement {
       transition: all 0.2s ease;
       flex-shrink: 0;
       -webkit-tap-highlight-color: transparent;
-      box-shadow: 0 2px 6px rgba(0, 168, 132, 0.3);
+      box-shadow: 0 2px 6px color-mix(in srgb, var(--color-primary) 30%, transparent);
     }
 
     .send-button:hover:not(:disabled) {
-      background: linear-gradient(135deg, #00c49a 0%, #00a884 100%);
+      background: linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-primary) 100%);
       transform: scale(1.05);
-      box-shadow: 0 3px 10px rgba(0, 168, 132, 0.4);
+      box-shadow: 0 3px 10px color-mix(in srgb, var(--color-primary) 40%, transparent);
     }
 
     .send-button:active:not(:disabled) {
@@ -121,16 +430,26 @@ export class TerminalChatView extends LitElement {
       cursor: not-allowed;
     }
 
+    /* Why a send did nothing (an image still uploading or failed). */
+    .composer-note {
+      margin: 0 12px 6px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.35;
+      color: var(--color-text);
+      background: var(--color-bg-tertiary);
+    }
     .keyboard-dismiss-button {
       display: flex;
       align-items: center;
       justify-content: center;
       width: 2.5rem;
       height: 2.5rem;
-      background-color: rgb(55 60 65);
-      border: 1px solid rgb(70 75 80);
+      background-color: var(--color-bg-tertiary);
+      border: 1px solid var(--color-border);
       border-radius: 50%;
-      color: rgb(150 155 160);
+      color: var(--color-text-dim);
       cursor: pointer;
       transition: all 0.2s ease;
       flex-shrink: 0;
@@ -138,8 +457,8 @@ export class TerminalChatView extends LitElement {
     }
 
     .keyboard-dismiss-button:hover {
-      background-color: rgb(65 70 75);
-      color: rgb(200 205 210);
+      background-color: var(--color-surface-hover);
+      color: var(--color-text-muted);
     }
 
     .keyboard-dismiss-button:active {
@@ -210,6 +529,9 @@ export class TerminalChatView extends LitElement {
     }
 
     .message-content {
+      /* Terminal output stays left-to-right even in RTL languages. */
+      direction: ltr;
+      text-align: left;
       margin: 0;
       white-space: pre-wrap;
       word-break: break-word;
@@ -226,10 +548,10 @@ export class TerminalChatView extends LitElement {
     }
 
     .chat-message.command .message-bubble {
-      background: linear-gradient(135deg, #00a884 0%, #008f72 100%);
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
       color: white;
       border-radius: 1.125rem 1.125rem 0.25rem 1.125rem;
-      box-shadow: 0 1px 3px rgba(0, 168, 132, 0.3);
+      box-shadow: 0 1px 3px color-mix(in srgb, var(--color-primary) 30%, transparent);
     }
 
     /* Output messages (system) - align left, dark bubble */
@@ -240,7 +562,7 @@ export class TerminalChatView extends LitElement {
 
     .chat-message.output .message-bubble,
     .chat-message.prompt .message-bubble {
-      background-color: rgb(45 50 55);
+      background-color: var(--color-bg-tertiary);
       color: var(--color-text);
       border-radius: 1.125rem 1.125rem 1.125rem 0.25rem;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
@@ -252,10 +574,10 @@ export class TerminalChatView extends LitElement {
     }
 
     .chat-message.error .message-bubble {
-      background-color: rgb(60 30 30);
-      color: #ff6b6b;
+      background-color: color-mix(in srgb, var(--color-status-error) 15%, var(--color-bg));
+      color: var(--color-status-error);
       border-radius: 1.125rem 1.125rem 1.125rem 0.25rem;
-      box-shadow: 0 1px 3px rgba(255, 107, 107, 0.2);
+      box-shadow: 0 1px 3px color-mix(in srgb, var(--color-status-error) 20%, transparent);
     }
 
     /* Empty state */
@@ -265,7 +587,7 @@ export class TerminalChatView extends LitElement {
       align-items: center;
       justify-content: center;
       height: 100%;
-      color: rgb(120 130 140);
+      color: var(--color-text-dim);
       text-align: center;
       padding: 2rem;
     }
@@ -280,14 +602,14 @@ export class TerminalChatView extends LitElement {
       font-size: 1.125rem;
       font-weight: 600;
       margin-bottom: 0.5rem;
-      color: rgb(200 205 210);
+      color: var(--color-text-muted);
     }
 
     .empty-state-description {
       font-size: 0.8rem;
       max-width: 320px;
       line-height: 1.5;
-      color: rgb(100 110 120);
+      color: var(--color-text-dim);
     }
 
     /* Scrollbar styling */
@@ -322,10 +644,10 @@ export class TerminalChatView extends LitElement {
       align-items: center;
       gap: 0.5rem;
       padding: 0.625rem 1rem;
-      background: linear-gradient(135deg, rgba(0, 168, 132, 0.15) 0%, rgba(0, 143, 114, 0.2) 100%);
-      border: 1.5px solid rgba(0, 168, 132, 0.5);
+      background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 15%, transparent) 0%, color-mix(in srgb, var(--color-primary-dark) 20%, transparent) 100%);
+      border: 1.5px solid color-mix(in srgb, var(--color-primary) 50%, transparent);
       border-radius: 1.25rem;
-      color: #00d4a4;
+      color: var(--color-primary-light);
       font-family: inherit;
       font-size: 0.8rem;
       font-weight: 500;
@@ -338,15 +660,15 @@ export class TerminalChatView extends LitElement {
     }
 
     .option-button:hover {
-      background: linear-gradient(135deg, rgba(0, 168, 132, 0.25) 0%, rgba(0, 143, 114, 0.3) 100%);
-      border-color: #00a884;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 25%, transparent) 0%, color-mix(in srgb, var(--color-primary-dark) 30%, transparent) 100%);
+      border-color: var(--color-primary);
       transform: scale(1.03);
-      box-shadow: 0 2px 8px rgba(0, 168, 132, 0.25);
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 25%, transparent);
     }
 
     .option-button:active {
       transform: scale(0.97);
-      background: linear-gradient(135deg, rgba(0, 168, 132, 0.35) 0%, rgba(0, 143, 114, 0.4) 100%);
+      background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 35%, transparent) 0%, color-mix(in srgb, var(--color-primary-dark) 40%, transparent) 100%);
     }
 
     .option-number {
@@ -355,7 +677,7 @@ export class TerminalChatView extends LitElement {
       justify-content: center;
       width: 1.25rem;
       height: 1.25rem;
-      background-color: #00a884;
+      background-color: var(--color-primary);
       color: white;
       border-radius: 50%;
       font-size: 0.7rem;
@@ -373,18 +695,42 @@ export class TerminalChatView extends LitElement {
   @property() subscribeToOutput?: (listener: (data: string) => void) => () => void;
   @property() getTerminalInputLine?: () => string;
   @property({ type: Boolean }) active = false;
+  /** Render only the input bar (phones show the live terminal above it). */
+  @property({ type: Boolean }) composerOnly = false;
   @property({ type: String }) pendingInput = '';
   @property({ type: String }) sessionId = '';
+  /** Whether the session runs Claude Code, when the parent knows; quick prompts hide only on false. */
+  @property({ attribute: false }) claudeSession?: boolean;
+  /** Messages the chat view shows as not sent, by its bubble id, for its Retry. */
+  private failedSends = new Map<string, { command: string; paths: string }>();
+  /** Why a send did nothing, shown above the composer for a few seconds. */
+  @state() private composerNote = '';
+  private composerNoteTimer?: ReturnType<typeof setTimeout>;
   private outputUnsubscribe?: () => void;
   private syncInterval?: ReturnType<typeof setInterval>;
   private delayedTasks = new Set<ReturnType<typeof setTimeout>>();
   private lastInputTime = 0;
 
   @state() private messages: ChatMessage[] = [];
+  @state() private slashMatches: Array<[string, MessageKey]> = [];
+  @state() private composerEmpty = true;
+  /** Phone composer: images to send with the next message (uploaded in the background). */
+  @property({ attribute: false }) attachmentUploader?: AttachmentUploader;
+  private attachments = new AttachmentQueue(
+    () => this.requestUpdate(),
+    (file, onProgress, signal) =>
+      (this.attachmentUploader ?? uploadAttachment)(file, onProgress, signal)
+  );
+  @state() private customPrompts: QuickPrompt[] | null = loadCustomQuickPrompts();
+  private quickPromptAt = 0;
+  private longPressTimer?: ReturnType<typeof setTimeout>;
+  private longPressed = false;
+  /** Working copy while the quick-prompt editor is open. */
+  @state() private editingPrompts: QuickPrompt[] | null = null;
   protected readonly i18n = new LocaleController(this);
 
   @query('#chat-input-field')
-  private inputElement!: HTMLInputElement;
+  private inputElement!: HTMLInputElement | HTMLTextAreaElement;
 
   @query('.chat-messages-container')
   private messagesContainer!: HTMLElement;
@@ -397,15 +743,21 @@ export class TerminalChatView extends LitElement {
   }
 
   disconnectedCallback() {
+    clearTimeout(this.longPressTimer);
+    clearTimeout(this.composerNoteTimer);
     this.unsubscribeFromTerminalOutput();
     this.stopTerminalSync();
     this.clearDelayedTasks();
+    this.attachments.clear();
     super.disconnectedCallback();
   }
 
   private subscribeToTerminalOutput(): void {
     this.unsubscribeFromTerminalOutput();
-    if (!this.subscribeToOutput || !this.isConnected) return;
+    // The view stays mounted (hidden) outside chat mode. Listening then appended every
+    // byte of output to one ever-growing message; with redraw-heavy apps (Claude Code)
+    // the string got so large that rendering it crashed Safari's web process.
+    if (!this.active || this.composerOnly || !this.subscribeToOutput || !this.isConnected) return;
 
     this.outputUnsubscribe = this.subscribeToOutput((data: string) => {
       this.processTerminalOutput(data);
@@ -527,16 +879,48 @@ export class TerminalChatView extends LitElement {
   }
 
   updated(changedProperties: Map<string, unknown>) {
+    // This view is reused across sessions: another session's images, note and failed sends
+    // are not this one's.
+    if (changedProperties.has('sessionId') && changedProperties.get('sessionId') !== undefined) {
+      this.attachments.clear();
+      this.composerNote = '';
+      // The chat view drops another session's bubbles: there is nothing left to retry.
+      this.failedSends.clear();
+    }
     super.updated(changedProperties);
     if (changedProperties.has('messages')) {
       this.scrollToBottom();
     }
-    if (changedProperties.has('subscribeToOutput')) {
+    // A modal dialog sits in the top layer, clear of the layout's transforms and the keyboard.
+    const editor = this.shadowRoot?.querySelector<HTMLDialogElement>('.prompt-editor');
+    if (editor && !editor.open) {
+      if (typeof editor.showModal === 'function') editor.showModal();
+      else editor.setAttribute('open', '');
+    }
+    if (changedProperties.has('subscribeToOutput') || changedProperties.has('active')) {
       this.subscribeToTerminalOutput();
+    }
+    // Lit reuses the composer across session switches: a draft belongs to its session, so
+    // show the one this session had (kept in storage as it was typed).
+    if (this.composerOnly && changedProperties.has('sessionId') && this.inputElement) {
+      this.inputElement.value = loadDraft(this.sessionId);
+      this.slashMatches = [];
+      if (this.inputElement instanceof HTMLTextAreaElement) this.autoSize(this.inputElement);
+      this.syncComposerEmpty();
     }
     // Sync input when becoming active
     if (changedProperties.has('active')) {
-      if (this.active) {
+      if (this.active && this.composerOnly) {
+        // Composer: the message is written locally and sent whole, so it never mirrors the
+        // terminal's input line (which for Claude Code holds a ghost suggestion).
+        this.lastSentValue = '';
+        // Leaving chat mode cleared the box; the draft is still in storage.
+        if (this.inputElement && !this.inputElement.value) {
+          this.inputElement.value = loadDraft(this.sessionId);
+          if (this.inputElement instanceof HTMLTextAreaElement) this.autoSize(this.inputElement);
+          this.syncComposerEmpty();
+        }
+      } else if (this.active) {
         // Priority: terminal buffer > pendingInput
         if (this.getTerminalInputLine) {
           // Read from terminal buffer - it has the "truth" of what's on screen
@@ -745,8 +1129,10 @@ export class TerminalChatView extends LitElement {
         return;
       }
 
-      // Normal case: append new content
-      lastMsg.content += (lastMsg.content ? '\n' : '') + content;
+      // Normal case: append new content, keeping only the tail of very long output.
+      const appended = `${lastMsg.content ? `${lastMsg.content}\n` : ''}${content}`;
+      lastMsg.content =
+        appended.length > MAX_MESSAGE_LENGTH ? appended.slice(-MAX_MESSAGE_LENGTH) : appended;
       this.requestUpdate();
       this.scrollToBottom();
     } else {
@@ -914,7 +1300,7 @@ export class TerminalChatView extends LitElement {
     const lastMsg = this.messages[this.messages.length - 1];
     if (lastMsg && lastMsg.type === 'output') {
       // Replace the message content with just the selected option
-      lastMsg.content = `Selected: ${option.label}`;
+      lastMsg.content = t('chat.selected', { option: option.label });
       this.requestUpdate();
     }
 
@@ -1078,6 +1464,10 @@ export class TerminalChatView extends LitElement {
   render() {
     return html`
       <div class="chat-view-container" @click=${this.handleContainerClick}>
+        ${
+          this.composerOnly
+            ? ''
+            : html`
         <div class="chat-messages-container">
           ${
             this.messages.length === 0
@@ -1085,13 +1475,43 @@ export class TerminalChatView extends LitElement {
                 <div class="empty-state">
                   <div class="empty-state-icon">💬</div>
                   <div class="empty-state-title">${t('chat.terminal.emptyTitle')}</div>
-                  <div class="empty-state-description">${t('chat.terminal.emptyDescription')}</div>
+                  <div class="empty-state-description">
+                    ${t('chat.terminal.emptyDescription')}
+                  </div>
                 </div>
               `
               : this.messages.map((msg) => this.renderMessage(msg))
           }
         </div>
+        `
+        }
         
+        ${
+          this.slashMatches.length > 0
+            ? html`<div class="slash-list" role="listbox">
+                ${this.slashMatches.map(
+                  ([command, description]) =>
+                    html`<button
+                      role="option"
+                      @pointerdown=${(e: Event) => e.preventDefault()}
+                      @click=${() => this.pickSlashCommand(command)}
+                    >
+                      <strong dir="ltr">${command}</strong><span>${t(description)}</span>
+                    </button>`
+                )}
+              </div>`
+            : nothing
+        }
+        ${this.renderQuickPrompts()} ${this.renderPromptEditor()} ${this.renderComposerNote()}
+        ${
+          this.composerOnly && this.attachments.items.length > 0
+            ? html`<chat-attachment-strip
+                .items=${this.attachments.items}
+                @attachment-remove=${(e: CustomEvent<{ id: string }>) => this.attachments.remove(e.detail.id)}
+                @attachment-retry=${(e: CustomEvent<{ id: string }>) => this.attachments.retry(e.detail.id)}
+              ></chat-attachment-strip>`
+            : nothing
+        }
         <!-- Chat input area (WhatsApp style) -->
         <div 
           class="chat-input-container"
@@ -1099,20 +1519,54 @@ export class TerminalChatView extends LitElement {
           @keydown=${(e: KeyboardEvent) => e.stopPropagation()}
         >
           <!-- Autocorrect is intentional; spellcheck stays off because commands may contain secrets. -->
-          <input
-            id="chat-input-field"
-            type="text"
-            class="chat-input"
-            placeholder=${t('chat.commandPlaceholder')}
-            autocomplete="off"
-            autocorrect="on"
-            autocapitalize="off"
-            spellcheck="false"
-            @keydown=${this.handleInputKeydown}
-            @input=${this.handleInput}
-            @focus=${() => logger.log('Input focused')}
-            @blur=${() => logger.log('Input blurred')}
-          />
+          ${
+            this.composerOnly
+              ? html`<button
+                  class="attach-button"
+                  title=${t('chat.attach')}
+                  aria-label=${t('chat.attach')}
+                  @click=${() =>
+                    this.dispatchEvent(
+                      new CustomEvent('composer-attach', { bubbles: true, composed: true })
+                    )}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>`
+              : nothing
+          }
+          ${
+            this.composerOnly
+              ? html`<textarea
+                  id="chat-input-field"
+                  class="chat-input composer-input"
+                  rows="1"
+                  placeholder=${t('chat.composerPlaceholder')}
+                  dir="auto"
+                  autocomplete="off"
+                  autocorrect="on"
+                  autocapitalize="sentences"
+                  spellcheck="true"
+                  enterkeyhint="send"
+                  @keydown=${this.handleInputKeydown}
+                  @input=${this.handleInput}
+                  @paste=${this.handleComposerPaste}
+                  @focus=${this.handleComposerFocus}
+                ></textarea>`
+              : html`<input
+                  id="chat-input-field"
+                  type="text"
+                  class="chat-input"
+                  placeholder=${t('chat.commandPlaceholder')}
+                  autocomplete="off"
+                  autocorrect="on"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  @keydown=${this.handleInputKeydown}
+                  @input=${this.handleInput}
+                  @focus=${() => logger.log('Input focused')}
+                  @blur=${() => logger.log('Input blurred')}
+                />`
+          }
           <button
             class="keyboard-dismiss-button"
             @click=${this.handleDismissKeyboard}
@@ -1126,6 +1580,8 @@ export class TerminalChatView extends LitElement {
           <button
             class="send-button"
             @click=${this.handleSend}
+            ?disabled=${this.composerOnly && this.attachments.busy}
+            aria-label=${t('chat.send')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -1136,7 +1592,362 @@ export class TerminalChatView extends LitElement {
     `;
   }
 
+  private showComposerNote(note: string) {
+    clearTimeout(this.composerNoteTimer);
+    this.composerNote = note;
+    if (note) this.composerNoteTimer = setTimeout(() => (this.composerNote = ''), 7000);
+  }
+
+  private renderComposerNote() {
+    if (!this.composerOnly || !this.composerNote) return nothing;
+    return html`<div class="composer-note" role="alert" data-testid="composer-note">
+      ${this.composerNote}
+    </div>`;
+  }
+
+  private updateSlashMatches(value: string) {
+    const typed = value.trimStart();
+    this.slashMatches =
+      typed.startsWith('/') && !/\s/.test(typed)
+        ? SLASH_COMMANDS.filter(([command]) => command.startsWith(typed.toLowerCase())).slice(0, 6)
+        : [];
+  }
+
+  private pickSlashCommand(command: string) {
+    const input = this.inputElement;
+    if (!input) return;
+    input.value = `${command} `;
+    saveDraft(this.sessionId, input.value);
+    this.slashMatches = [];
+    this.syncComposerEmpty();
+    input.focus();
+  }
+
+  /**
+   * Phone composer: queue images to go out with the next message. They upload now and show
+   * as thumbnails; nothing is typed into the terminal until Send.
+   */
+  addAttachments(files: File[]) {
+    if (files.length === 0) return;
+    this.attachments.add(files);
+    this.showComposerNote('');
+  }
+
+  /** A screenshot pasted into the composer joins the attachments instead of the text. */
+  private handleComposerPaste = (e: ClipboardEvent) => {
+    const files = Array.from(e.clipboardData?.items ?? [])
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    if (files.length === 0) return;
+    e.preventDefault();
+    // The session view's document-level paste handler would upload it a second time.
+    e.stopPropagation();
+    this.addAttachments(files);
+  };
+
+  /**
+   * A hardware key's character, typed while nothing had the focus: it starts (or continues)
+   * the message here, and the composer takes the focus for the keys after it.
+   */
+  typeFromKeyboard(text: string): boolean {
+    const input = this.inputElement;
+    if (!this.composerOnly || !input) return false;
+    input.focus();
+    // The caret after it, not a selection the next key would replace.
+    input.setSelectionRange(input.value.length, input.value.length);
+    // iOS starts writing into an element focused from a key event late: keys reaching it in
+    // the meantime fire keydown and are never written ("Reply" would arrive as "R", its next
+    // letter lost). The composer writes them itself until the keys pause.
+    this.handTypingUntil = Date.now() + HAND_TYPING_MS;
+    this.writeAtCaret(input, text);
+    return true;
+  }
+
+  /** Until when hardware keys reaching the composer are written by it (see typeFromKeyboard). */
+  private handTypingUntil = 0;
+
+  /** A key typed while iOS isn't writing into the composer yet (see typeFromKeyboard). */
+  private typeByHand(e: KeyboardEvent): boolean {
+    const input = this.inputElement;
+    // Option types characters ("@" on some layouts); Ctrl and Cmd are shortcuts.
+    if (!input || Date.now() > this.handTypingUntil || e.ctrlKey || e.metaKey) {
+      return false;
+    }
+    if (e.key.length === 1) this.writeAtCaret(input, e.key);
+    else if (e.key === 'Backspace') this.eraseAtCaret(input);
+    else return false;
+    e.preventDefault();
+    this.handTypingUntil = Date.now() + HAND_TYPING_MS;
+    return true;
+  }
+
+  /** Writes typed text at the caret, as typing would (size, draft, suggestions). */
+  private writeAtCaret(input: HTMLInputElement | HTMLTextAreaElement, text: string) {
+    const start = input.selectionStart ?? input.value.length;
+    input.setRangeText(text, start, input.selectionEnd ?? start, 'end');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /** Erases the selection, or the character before the caret (both halves of an emoji). */
+  private eraseAtCaret(input: HTMLInputElement | HTMLTextAreaElement) {
+    const end = input.selectionEnd ?? input.value.length;
+    let start = input.selectionStart ?? end;
+    if (start === end) {
+      if (start === 0) return;
+      start -= /[\uDC00-\uDFFF]/.test(input.value[start - 1]) && start > 1 ? 2 : 1;
+    }
+    input.setRangeText('', start, end, 'end');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /** Append text (e.g. an uploaded file's path) to the composer. */
+  insertText(text: string) {
+    const input = this.inputElement;
+    if (!input) return;
+    const separator = input.value && !input.value.endsWith(' ') ? ' ' : '';
+    input.value = `${input.value}${separator}${text} `;
+    if (input instanceof HTMLTextAreaElement) this.autoSize(input);
+    if (this.composerOnly) saveDraft(this.sessionId, input.value);
+    this.syncComposerEmpty();
+  }
+
+  private syncComposerEmpty() {
+    this.composerEmpty = !this.inputElement?.value.trim();
+  }
+
+  private renderQuickPrompts() {
+    if (!this.composerOnly || !this.composerEmpty) return nothing;
+    // Quick prompts are for Claude Code, not plain shells.
+    if (this.claudeSession === false) return nothing;
+    const prompts = this.customPrompts ?? defaultQuickPrompts();
+    return html`<div
+      class="quick-prompts"
+      role="toolbar"
+      aria-label=${t('prompts.rowLabel')}
+      @click=${(e: Event) => e.stopPropagation()}
+    >
+      ${prompts.map(
+        (prompt) =>
+          html`<button
+            class="quick-prompt"
+            dir="auto"
+            title=${prompt.text}
+            @pointerdown=${this.quickPromptPress}
+            @pointercancel=${this.cancelLongPress}
+            @mousedown=${(e: Event) => e.preventDefault()}
+            @contextmenu=${(e: Event) => e.preventDefault()}
+            @pointerup=${this.quickPromptTap(() => this.runQuickPrompt(prompt))}
+            @click=${this.quickPromptTap(() => this.runQuickPrompt(prompt))}
+          >
+            ${prompt.label}
+          </button>`
+      )}
+      <button
+        class="quick-prompt edit"
+        data-testid="edit-quick-prompts"
+        title=${t('prompts.edit')}
+        aria-label=${t('prompts.edit')}
+        @pointerdown=${(e: Event) => e.preventDefault()}
+        @mousedown=${(e: Event) => e.preventDefault()}
+        @pointerup=${this.quickPromptTap(this.openPromptEditor)}
+        @click=${this.quickPromptTap(this.openPromptEditor)}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+      </button>
+    </div>`;
+  }
+
+  private openPromptEditor = () => {
+    this.editingPrompts = (this.customPrompts ?? defaultQuickPrompts()).map((p) => ({ ...p }));
+  };
+
+  private closePromptEditor() {
+    this.shadowRoot?.querySelector<HTMLDialogElement>('.prompt-editor')?.close?.();
+    this.editingPrompts = null;
+  }
+
+  private savePromptEditor() {
+    const prompts = (this.editingPrompts ?? [])
+      .map((p) => ({ label: p.label.trim() || p.text.trim(), text: p.text.trim() }))
+      .filter((p) => p.text);
+    saveQuickPrompts(prompts);
+    this.customPrompts = prompts;
+    this.closePromptEditor();
+  }
+
+  private resetPromptEditor() {
+    saveQuickPrompts(null);
+    this.customPrompts = null;
+    this.closePromptEditor();
+  }
+
+  private movePrompt(index: number, delta: number) {
+    const prompts = [...(this.editingPrompts ?? [])];
+    const target = index + delta;
+    if (target < 0 || target >= prompts.length) return;
+    [prompts[index], prompts[target]] = [prompts[target], prompts[index]];
+    this.editingPrompts = prompts;
+  }
+
+  private renderPromptEditor() {
+    const prompts = this.editingPrompts;
+    if (!prompts) return nothing;
+    return html`<dialog
+      class="prompt-editor"
+      aria-label=${t('prompts.edit')}
+      @cancel=${(e: Event) => {
+        e.preventDefault();
+        this.closePromptEditor();
+      }}
+      @keydown=${(e: KeyboardEvent) => e.stopPropagation()}
+      @click=${(e: Event) => e.stopPropagation()}
+    >
+      <h2>${t('prompts.edit')}</h2>
+      <p>${t('prompts.hint')}</p>
+      <ol>
+        ${prompts.map(
+          (prompt, index) => html`<li>
+            <input
+              class="prompt-label"
+              dir="auto"
+              placeholder=${t('prompts.label')}
+              aria-label=${t('prompts.label')}
+              .value=${prompt.label}
+              @input=${(e: Event) => {
+                prompt.label = (e.target as HTMLInputElement).value;
+              }}
+            />
+            <input
+              class="prompt-text"
+              dir="auto"
+              placeholder=${t('prompts.text')}
+              aria-label=${t('prompts.text')}
+              .value=${prompt.text}
+              @input=${(e: Event) => {
+                prompt.text = (e.target as HTMLInputElement).value;
+              }}
+            />
+            <button
+              aria-label=${t('prompts.moveUp')}
+              title=${t('prompts.moveUp')}
+              ?disabled=${index === 0}
+              @click=${() => this.movePrompt(index, -1)}
+            >↑</button>
+            <button
+              aria-label=${t('prompts.moveDown')}
+              title=${t('prompts.moveDown')}
+              ?disabled=${index === prompts.length - 1}
+              @click=${() => this.movePrompt(index, 1)}
+            >↓</button>
+            <button
+              class="prompt-remove"
+              aria-label=${t('prompts.remove')}
+              title=${t('prompts.remove')}
+              @click=${() => {
+                this.editingPrompts = prompts.filter((_, i) => i !== index);
+              }}
+            >✕</button>
+          </li>`
+        )}
+      </ol>
+      <footer>
+        <button
+          class="prompt-add"
+          @click=${() => {
+            this.editingPrompts = [...prompts, { label: '', text: '' }];
+          }}
+        >
+          ${t('prompts.add')}
+        </button>
+        <button class="prompt-reset" @click=${this.resetPromptEditor}>${t('prompts.reset')}</button>
+        <span class="spacer"></span>
+        <button @click=${this.closePromptEditor}>${t('common.cancel')}</button>
+        <button class="save" @click=${this.savePromptEditor}>${t('common.save')}</button>
+      </footer>
+    </dialog>`;
+  }
+
+  /** Keeps focus (and the keyboard) on the message field. */
+  private quickPromptPress = (e: PointerEvent) => {
+    e.preventDefault();
+    // Holding a chip opens the editor.
+    this.cancelLongPress();
+    this.longPressed = false;
+    this.longPressTimer = setTimeout(() => {
+      this.longPressed = true;
+      this.openPromptEditor();
+    }, 500);
+  };
+
+  private cancelLongPress = () => {
+    clearTimeout(this.longPressTimer);
+    this.longPressTimer = undefined;
+  };
+
+  /**
+   * Touch acts on pointerup: on iOS the first tap on a button could be taken as a hover and
+   * produce no click. The click that may still follow is ignored; mouse and keyboard use it.
+   */
+  private quickPromptTap(action: () => void) {
+    return (e: Event) => {
+      if (e.type === 'pointerup') this.cancelLongPress();
+      if (this.longPressed && e.type === 'pointerup') {
+        // The press already opened the editor: neither its release nor its click is a tap.
+        this.longPressed = false;
+        this.quickPromptAt = Date.now();
+        swallowNextClick();
+        return;
+      }
+      if (e.type === 'pointerup') {
+        const pointer = e as PointerEvent;
+        if (pointer.pointerType === 'mouse') return;
+        // A drag is not a tap: one that scrolled the row, or began on the pencil.
+        if (endsADrag(pointer)) return;
+        this.quickPromptAt = Date.now();
+      } else if (Date.now() - this.quickPromptAt < 700) {
+        return;
+      }
+      action();
+    };
+  }
+
+  /** Send the prompt as if typed and sent; a "…" template goes into the field instead. */
+  private runQuickPrompt(prompt: QuickPrompt) {
+    const input = this.inputElement;
+    if (!input) return;
+    const template = templateText(prompt.text);
+    if (template !== null) {
+      input.value = template;
+      if (input instanceof HTMLTextAreaElement) this.autoSize(input);
+      saveDraft(this.sessionId, input.value);
+      this.syncComposerEmpty();
+      input.focus();
+      return;
+    }
+    input.value = prompt.text;
+    this.handleSend();
+  }
+
+  /** Lets the session view bring the conversation to its end as the keyboard opens. */
+  private handleComposerFocus = () => {
+    this.dispatchEvent(new CustomEvent('composer-focus', { bubbles: true, composed: true }));
+  };
+
+  /** Grow the composer with its text, up to the CSS max-height (about five lines). */
+  private autoSize(textarea: HTMLTextAreaElement) {
+    if (!textarea.value) {
+      textarea.style.height = '';
+      return;
+    }
+    textarea.style.height = 'auto';
+    textarea.style.height = `${composerHeightFor(textarea.scrollHeight, getComputedStyle(textarea))}px`;
+  }
+
   private handleInputKeydown(e: KeyboardEvent) {
+    // Enter that confirms an IME conversion (Japanese, Chinese...) is not a send.
+    if (e.isComposing || e.keyCode === 229) return;
+    if (this.typeByHand(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       this.handleSend();
@@ -1152,13 +1963,22 @@ export class TerminalChatView extends LitElement {
   private lastSentValue = '';
 
   private handleInput(e: Event) {
-    const input = e.target as HTMLInputElement;
+    const input = e.target as HTMLInputElement | HTMLTextAreaElement;
+    if (input instanceof HTMLTextAreaElement) this.autoSize(input);
+    if (this.composerOnly) {
+      this.updateSlashMatches(input.value);
+      saveDraft(this.sessionId, input.value);
+      this.syncComposerEmpty();
+    }
     if (!this.onSend) return;
 
     // Track when user last typed - used to pause sync during active typing
     this.lastInputTime = Date.now();
 
     const newValue = input.value;
+
+    // Composer: keep editing local (autocorrect and dictation rewrite freely); send on Enter.
+    if (this.composerOnly) return;
 
     // Update pending input for InputManager (for display sync)
     this.onPendingInputChange?.(newValue);
@@ -1206,12 +2026,120 @@ export class TerminalChatView extends LitElement {
     this.lastSentValue = newValue;
   }
 
+  /** Types the composer's message (and image paths) into the terminal, then Enter. */
+  private writeComposer(out: Outgoing) {
+    const { command, paths } = out;
+    const input = this.inputElement;
+    // It leaves the box. A retry from the chat view leaves the box to the message being written
+    // in it, unless that is this one again.
+    if (!out.retry || input?.value.trim() === command) {
+      if (input) {
+        input.value = '';
+        if (input instanceof HTMLTextAreaElement) this.autoSize(input);
+      }
+      saveDraft(this.sessionId, '');
+      this.slashMatches = [];
+      this.syncComposerEmpty();
+    }
+    if (!out.retry || (paths && this.attachmentPaths() === paths)) this.attachments.clear();
+    if (!out.announced) this.announceSent(out);
+    const writes = [paths, paths && command ? ` ${command}` : command].filter(Boolean);
+    // Separate write so the app sees Enter as a key press, not part of the typed text.
+    [...writes, '\r'].forEach((data, i) => {
+      if (i === 0) this.write(out, data);
+      else setTimeout(() => this.write(out, data), 50 * i);
+    });
+  }
+
+  /** One write of a message; a write the session view reports as failed marks it not sent. */
+  private write(out: Outgoing, data: string) {
+    try {
+      const result = this.onSend?.(data) as unknown;
+      if (result instanceof Promise) result.catch(() => this.announceFailed(out));
+    } catch {
+      this.announceFailed(out);
+    }
+  }
+
+  /**
+   * "Retry" on a message the chat view shows as not sent (see claude-chat-view): sent again,
+   * and whatever is being written in the box stays there.
+   */
+  resendMessage(ref: SentChatMessageRef) {
+    const failed = this.failedSends.get(ref.id);
+    if (!this.composerOnly || ref.sessionId !== this.sessionId || !failed) return;
+    this.writeComposer({ ...failed, id: ref.id, retry: true, startedAt: performance.now() });
+  }
+
+  /**
+   * The chat view shows the message at once, "sending…", until the transcript has it: without
+   * this, a sent message showed only once Claude Code had logged it and the chat polled again.
+   */
+  private announceSent(out: Outgoing) {
+    out.id ??= `sent-${++sentCount}`;
+    out.announced = true;
+    this.failedSends.delete(out.id);
+    this.dispatchEvent(
+      new CustomEvent<SentChatMessage>('chat-message-sent', {
+        detail: {
+          sessionId: this.sessionId,
+          id: out.id,
+          text: [out.paths, out.command].filter(Boolean).join(' '),
+          at: Date.now(),
+          startedAt: out.startedAt,
+        },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  /** It did not go: the chat view says so and offers to send it again (resendMessage). */
+  private announceFailed(out: Outgoing) {
+    if (!out.announced || !out.id) return;
+    this.failedSends.set(out.id, { command: out.command, paths: out.paths });
+    this.dispatchEvent(
+      new CustomEvent<SentChatMessageRef>('chat-message-failed', {
+        detail: { sessionId: this.sessionId, id: out.id },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  /** Uploaded images go in the message as their paths (Claude Code turns them into images). */
+  private attachmentPaths(): string {
+    return this.attachments.paths.map(shellQuotePath).join(' ');
+  }
+
   private handleSend() {
+    const startedAt = performance.now();
     // Read directly from the input element to avoid reactive binding issues
     const input = this.inputElement;
     if (!input) return;
 
     const command = input.value.trim();
+
+    if (this.composerOnly) {
+      if (this.attachments.busy) {
+        this.showComposerNote(t('attach.waitUploads'));
+        return;
+      }
+      if (this.attachments.hasErrors) {
+        this.showComposerNote(t('attach.failedSend'));
+        return;
+      }
+      // Typed first and in a write of their own.
+      const paths = this.attachmentPaths();
+      if (!command && !paths) return;
+      // The message the chat view shows as not sent, sent again from the box: the same bubble.
+      const failed = [...this.failedSends].find(
+        ([, sent]) => sent.command === command && sent.paths === paths
+      );
+      this.writeComposer({ command, paths, startedAt, id: failed?.[0] });
+      return;
+    }
+
     if (!command) return;
 
     // Add command to chat

@@ -669,6 +669,25 @@ export class Terminal extends LitElement {
    * Get the current input line (text the user has typed on the current line).
    * Used to sync chat mode input with the terminal state.
    */
+  /** The last `maxLines` lines of the buffer as plain text (trailing spaces trimmed). */
+  public getScreenText(maxLines = 30): string {
+    if (!this.terminal) return '';
+    const buffer = this.terminal.buffer.active;
+    const lines: string[] = [];
+    for (let row = Math.max(0, buffer.length - maxLines); row < buffer.length; row++) {
+      const line = buffer.getLine(row);
+      if (!line) continue;
+      let text = '';
+      for (let col = 0; col < line.length; col++) {
+        const cell = line.getCell(col);
+        if (!cell || cell.getWidth() === 0) continue;
+        text += cell.getChars() || ' ';
+      }
+      lines.push(text.trimEnd());
+    }
+    return lines.join('\n');
+  }
+
   public getCurrentInputLine(): string {
     if (!this.terminal) return '';
 

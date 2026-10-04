@@ -14,7 +14,7 @@
  * @listens browser-cancel - From file browser when cancelled
  */
 import { html, LitElement, type PropertyValues } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import type { Session } from '../../shared/types.js';
 import { LocaleController, t } from '../i18n/index.js';
 import './clickable-path.js';
@@ -23,6 +23,7 @@ import './worktree-manager.js';
 import './terminal-chat-view.js';
 import { authClient } from '../services/auth-client.js';
 import { GitService } from '../services/git-service.js';
+import { agentChatEnabled } from '../utils/agent-chat.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
 import { TERMINAL_IDS } from '../utils/terminal-constants.js';
@@ -52,7 +53,10 @@ import { UIStateManager } from './session-view/ui-state-manager.js';
 import './session-view/terminal-renderer.js';
 import './session-view/overlays-container.js';
 import './mobile-action-bar.js';
+import './claude-chat-view.js';
+import type { ClaudeChatView, SentChatMessage, SentChatMessageRef } from './claude-chat-view.js';
 import type { Terminal } from './terminal.js';
+import type { TerminalChatView } from './terminal-chat-view.js';
 
 // Extend Window interface to include our custom property
 declare global {
@@ -118,6 +122,15 @@ export class SessionView extends LitElement {
       handleBack: () => this.handleBack(),
       handleKeyboardInput: (e: KeyboardEvent) => this.handleKeyboardInput(e),
       getIsMobile: () => this.uiStateManager.getState().isMobile,
+      getChatMode: () => this.phoneChat(),
+      getChatCoversTerminal: () =>
+        this.phoneChat() && this.querySelector('claude-chat-view:not([unavailable])') !== null,
+      typeIntoComposer: (text: string) =>
+        (
+          this.querySelector('terminal-chat-view[composeronly]') as {
+            typeFromKeyboard?: (text: string) => boolean;
+          } | null
+        )?.typeFromKeyboard?.(text) ?? false,
       setIsMobile: (value: boolean) => {
         this.uiStateManager.setIsMobile(value);
       },
@@ -182,8 +195,35 @@ export class SessionView extends LitElement {
     };
   }
 
+  /** The server has agent chat on (config.json `agentChat`): phone chat mode shows the agent. */
+  @state() private agentChat = false;
+  /** The chat view shows this session's conversation, over the terminal. */
+  @state() private chatCovers = false;
+
+  /**
+   * Phone chat mode with agent chat on: the agent's conversation (when the session runs one)
+   * over the live terminal, and a native composer under it. Off, chat mode is the classic one.
+   */
+  private phoneChat(): boolean {
+    const uiState = this.uiStateManager.getState();
+    return uiState.isMobile && uiState.chatMode && this.agentChat;
+  }
+
+  /** `restore`: on opening, bring back the chat mode the user last chose (agent chat only). */
+  private refreshAgentChat(restore = false) {
+    void agentChatEnabled().then((enabled) => {
+      if (enabled !== this.agentChat) this.agentChat = enabled;
+      if (enabled && restore && this.isConnected) {
+        this.uiStateManager.restoreChatModePreference();
+      }
+    });
+  }
+
   connectedCallback() {
     super.connectedCallback();
+    // Only a phone that chose agent chat mode before asks the server on opening; everyone
+    // else asks when chat mode is turned on.
+    if (this.uiStateManager.hasChatModePreference()) this.refreshAgentChat(true);
 
     // Initialize UIStateManager callbacks
     this.uiStateManager.setCallbacks({
@@ -203,6 +243,24 @@ export class SessionView extends LitElement {
       getShowFileBrowser: () => this.uiStateManager.getState().showFileBrowser,
       getShowImagePicker: () => this.uiStateManager.getState().showImagePicker,
       dispatchEvent: (event: Event) => this.dispatchEvent(event),
+      insertIntoComposer: (text: string) => {
+        if (!this.phoneChat()) return false;
+        const composer = this.querySelector('terminal-chat-view[composeronly]') as
+          | (HTMLElement & { insertText?: (text: string) => void })
+          | null;
+        if (!composer?.insertText) return false;
+        composer.insertText(text);
+        return true;
+      },
+      attachToComposer: (files: File[]) => {
+        if (!this.phoneChat()) return false;
+        const composer = this.querySelector('terminal-chat-view[composeronly]') as
+          | (HTMLElement & { addAttachments?: (files: File[]) => void })
+          | null;
+        if (!composer?.addAttachments) return false;
+        composer.addAttachments(files);
+        return true;
+      },
     });
 
     // Initialize TerminalSettingsManager
@@ -756,6 +814,32 @@ export class SessionView extends LitElement {
     }
   }
 
+  /** Tapping the composer opens the keyboard: show the latest message, like a chat app. */
+  private handleComposerFocus = () => {
+    (
+      this.querySelector('claude-chat-view') as (HTMLElement & { followLatest?: () => void }) | null
+    )?.followLatest?.();
+  };
+
+  /**
+   * A message the composer sends shows in the chat at once, until the transcript has it; one
+   * that could not be sent says so there, and its Retry goes back to the composer, which knows
+   * the way it went.
+   */
+  private handleChatMessageSent = (e: CustomEvent<SentChatMessage>) => {
+    (this.querySelector('claude-chat-view') as ClaudeChatView | null)?.addSentMessage(e.detail);
+  };
+
+  private handleChatMessageFailed = (e: CustomEvent<SentChatMessageRef>) => {
+    (this.querySelector('claude-chat-view') as ClaudeChatView | null)?.markSendFailed(e.detail);
+  };
+
+  private handleChatMessageRetry = (e: CustomEvent<SentChatMessageRef>) => {
+    (
+      this.querySelector('terminal-chat-view[composeronly]') as TerminalChatView | null
+    )?.resendMessage(e.detail);
+  };
+
   private handleToggleChatMode() {
     const currentChatMode = this.uiStateManager.getState().chatMode;
     const enteringChatMode = !currentChatMode;
@@ -764,10 +848,17 @@ export class SessionView extends LitElement {
     // This allows the chat input to receive focus and keystrokes
     if (enteringChatMode) {
       this.directKeyboardManager.blurHiddenInput();
+      // Agent chat or the classic one: the server says which (asked at most once a minute,
+      // so a switch turned on in config.json since the page loaded applies from here).
+      void agentChatEnabled().then((enabled) => {
+        if (enabled !== this.agentChat) this.agentChat = enabled;
+        if (!this.uiStateManager.getState().chatMode) this.uiStateManager.toggleChatMode(enabled);
+      });
+      return;
     }
 
-    // Toggle the chat mode
-    this.uiStateManager.toggleChatMode();
+    // Leave chat mode (remembered on phones only while agent chat is on)
+    this.uiStateManager.toggleChatMode(this.agentChat);
   }
   private handleKeyboardButtonClick() {
     // Show quick keys immediately for visual feedback
@@ -837,7 +928,8 @@ export class SessionView extends LitElement {
   }
 
   private scheduleMobileHardwareFocus() {
-    if (!this.uiStateManager.getState().isMobile) {
+    // In phone chat mode the composer takes what is typed (see mobileHardwareKeyboardHandler).
+    if (!this.uiStateManager.getState().isMobile || this.phoneChat()) {
       return;
     }
 
@@ -1190,6 +1282,10 @@ export class SessionView extends LitElement {
 
     // Get UI state once for the entire render method
     const uiState = this.uiStateManager.getState();
+    const phoneChat = this.phoneChat();
+    // Nobody sees the terminal under the agent's conversation: it is not painted and is inert,
+    // so neither its cursor nor any of its inputs can show or take the focus.
+    const terminalUnderChat = phoneChat && this.chatCovers;
 
     return html`
       <style>
@@ -1507,9 +1603,11 @@ export class SessionView extends LitElement {
                 ? html`
               <!-- Enhanced Terminal Component -->
               <div style="position: relative; height: 100%;">
-                <!-- Terminal (hidden when chat mode is active) -->
+                <!-- Terminal (hidden in classic chat mode; phone agent chat keeps it live, and
+                     out of sight and inert while the agent's conversation covers it) -->
                 <terminal-renderer
-                  style="${uiState.chatMode ? 'display: none;' : ''}"
+                  style="${phoneChat ? (terminalUnderChat ? 'visibility: hidden;' : '') : uiState.chatMode ? 'display: none;' : ''}"
+                  ?inert=${terminalUnderChat}
                   id="${TERMINAL_IDS.SESSION_TERMINAL}"
                   .session=${this.session}
                   .terminalFontSize=${uiState.terminalFontSize}
@@ -1525,7 +1623,32 @@ export class SessionView extends LitElement {
                   .onTerminalReady=${this.boundHandleTerminalReady}
                 ></terminal-renderer>
                 
+                <!-- Phone agent chat: the agent's conversation as message bubbles over the live
+                     terminal (it hides itself when the session runs no agent it can read). -->
+                ${
+                  phoneChat && this.session?.id
+                    ? html`
+                <claude-chat-view
+                  style="position: absolute; inset: 0; z-index: 5;"
+                  .sessionId=${this.session.id}
+                  .getScreenTail=${() =>
+                    this.terminalLifecycleManager.getTerminal()?.getScreenText(30) ?? ''}
+                  @claude-chat-open-terminal=${() => this.handleToggleChatMode()}
+                  @claude-chat-availability=${(e: CustomEvent<boolean>) => {
+                    this.chatCovers = e.detail;
+                  }}
+                  @claude-chat-input=${(e: CustomEvent<string>) => this.inputManager?.sendInputText(e.detail)}
+                  @chat-message-retry=${this.handleChatMessageRetry}
+                ></claude-chat-view>
+                `
+                    : ''
+                }
+
                 <!-- Chat view overlay (always rendered but hidden to preserve history) -->
+                ${
+                  phoneChat
+                    ? ''
+                    : html`
                 <terminal-chat-view
                   style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; ${uiState.chatMode ? '' : 'display: none; pointer-events: none;'}"
                   .active=${uiState.chatMode}
@@ -1536,18 +1659,46 @@ export class SessionView extends LitElement {
                   .subscribeToOutput=${(listener: (data: string) => void) => this.subscribeToTerminalOutput(listener)}
                   .getTerminalInputLine=${() => this.terminalLifecycleManager.getTerminal()?.getCurrentInputLine() ?? ''}
                 ></terminal-chat-view>
+                `
+                }
               </div>
             `
                 : ''
           }
         </div>
 
+        <!-- Phone agent chat: a native composer (autocorrect, predictions, dictation, photos)
+             under the live terminal. -->
+        ${
+          phoneChat && uiState.viewMode === 'terminal'
+            ? html`
+          <terminal-chat-view
+            composerOnly
+            .claudeSession=${this.session?.command?.some((part) => /(^|\/)claude$/.test(part)) ?? false}
+            @composer-attach=${() => this.fileOperationsManager.pickImagesForComposer()}
+            @composer-focus=${this.handleComposerFocus}
+            @chat-message-sent=${this.handleChatMessageSent}
+            @chat-message-failed=${this.handleChatMessageFailed}
+            .active=${true}
+            .sessionId=${this.session?.id ?? ''}
+            .pendingInput=${this.inputManager?.getPendingInput() ?? ''}
+            .onSend=${(data: string) =>
+              data.includes('\n')
+                ? this.inputManager?.sendPastedText(data)
+                : this.inputManager?.sendInputText(data)}
+            .onPendingInputChange=${(input: string) => this.inputManager?.setPendingInput(input)}
+            .getTerminalInputLine=${() => this.terminalLifecycleManager.getTerminal()?.getCurrentInputLine() ?? ''}
+          ></terminal-chat-view>
+        `
+            : ''
+        }
+
         <!-- Quick Keys Area / Mobile Action Bar -->
         ${
           uiState.isMobile
             ? html`
           <mobile-action-bar
-            .visible=${!uiState.showQuickKeys}
+            .visible=${!uiState.showQuickKeys && !phoneChat}
             .session=${this.session}
             .keyboardVisible=${uiState.keyboardHeight > 0}
             .keyboardHeight=${uiState.keyboardHeight}

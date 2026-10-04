@@ -315,6 +315,7 @@ export class LifecycleEventManager extends ManagerEventEmitter {
 
     // Mobile's hidden software-keyboard input owns its events. Route only hardware
     // keyboard events that originate outside editable or interactive controls.
+    let fromTerminal = false;
     for (const target of e.composedPath()) {
       const isTerminalKeyboardTarget =
         target instanceof HTMLElement &&
@@ -323,6 +324,7 @@ export class LifecycleEventManager extends ManagerEventEmitter {
             target.matches(
               'textarea, [contenteditable]:not([contenteditable="false"]), .terminal-container, vibe-terminal'
             )));
+      if (isTerminalKeyboardTarget) fromTerminal = true;
       if (
         target instanceof HTMLElement &&
         ((!isTerminalKeyboardTarget &&
@@ -333,6 +335,30 @@ export class LifecycleEventManager extends ManagerEventEmitter {
       ) {
         return;
       }
+    }
+
+    // In phone chat mode, typing that is not in the terminal itself goes to the composer,
+    // never to the terminal under the chat view (after a reconnect the session view could hold
+    // the focus, and a message typed on a hardware keyboard went into the agent's prompt
+    // unsent). Esc and Ctrl+C still reach the terminal (interrupt, cancel); a character starts
+    // the message in the composer, which then has the focus; anything else does nothing here.
+    // Keys from the terminal's own inputs stay there only while the terminal is in sight.
+    if (
+      this.callbacks?.getChatMode?.() &&
+      (!fromTerminal || this.callbacks.getChatCoversTerminal?.())
+    ) {
+      if (e.key === 'Escape' || (e.ctrlKey && e.key.toLowerCase() === 'c')) {
+        this.keyboardHandler(e);
+      } else if (
+        // With Option too: it types "@", "#" or "[" on some layouts.
+        e.key.length === 1 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        this.callbacks.typeIntoComposer?.(e.key)
+      ) {
+        consumeEvent(e);
+      }
+      return;
     }
 
     this.keyboardHandler(e);

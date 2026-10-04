@@ -10,6 +10,12 @@
  */
 export interface StateCallbacks {
   getIsMobile(): boolean;
+  /** Phone chat mode: its composer takes what is typed, not the terminal under the chat. */
+  getChatMode?(): boolean;
+  /** Types a hardware key's character into the chat composer, focusing it; false without one. */
+  typeIntoComposer?(text: string): boolean;
+  /** Chat mode shows the agent's conversation over the terminal, which is then out of sight. */
+  getChatCoversTerminal?(): boolean;
   setIsMobile(value: boolean): void;
   setShowQuickKeys(value: boolean): void;
   setShowFileBrowser(value: boolean): void;
