@@ -131,6 +131,19 @@ describe.sequential('Frontend Logger', () => {
       expect(body.args).toEqual(['message', JSON.stringify(testObj, null, 2)]);
     });
 
+    it('sends an Error with its name and message, not "{}"', async () => {
+      mockFetch.mockResolvedValueOnce(new Response());
+      const logger = createLogger('test-module');
+      logger.error('error loading sessions:', new TypeError('Load failed'));
+      await vi.waitFor(() => expect(mockFetch).toHaveBeenCalled());
+      const logCall = mockFetch.mock.calls.find(
+        (call) => call[0] === '/api/logs/client' && call[1].body.includes('error loading sessions')
+      );
+      if (!logCall) throw new Error('Expected logCall to be defined');
+      const body = JSON.parse(logCall[1].body);
+      expect(body.args[1]).toContain('TypeError: Load failed');
+    });
+
     it('should handle all log levels', async () => {
       mockFetch.mockResolvedValue(new Response());
 

@@ -73,6 +73,11 @@ async function getAuthConfig(): Promise<boolean> {
  */
 function formatArgs(args: unknown[]): unknown[] {
   return args.map((arg) => {
+    // An Error's fields aren't enumerable: JSON gave "{}" and the server log showed
+    // "error loading sessions: {}" with no way to tell what failed.
+    if (arg instanceof Error) {
+      return `${arg.name}: ${arg.message}${arg.stack ? `\n${arg.stack.split('\n').slice(1, 4).join('\n')}` : ''}`;
+    }
     if (typeof arg === 'object' && arg !== null) {
       try {
         // Convert objects to formatted strings to match server logger behavior
