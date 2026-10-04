@@ -328,6 +328,20 @@ describe('SessionManager', () => {
       }
     });
 
+    it('skips a directory with an invalid session id instead of aborting the batch', () => {
+      for (const id of ['a.b', 'good1']) {
+        fs.mkdirSync(path.join(testDir, id));
+        fs.writeFileSync(
+          path.join(testDir, id, 'session.json'),
+          JSON.stringify({ id, name: id, command: ['true'], workingDir: testDir, status: 'exited' })
+        );
+      }
+
+      expect(sessionManager.cleanupExitedSessions()).toEqual(['good1']);
+      expect(fs.existsSync(path.join(testDir, 'good1'))).toBe(false);
+      expect(fs.existsSync(path.join(testDir, 'a.b'))).toBe(true);
+    });
+
     it('should handle non-existent session cleanup gracefully', () => {
       // Should not throw
       expect(() => sessionManager.cleanupSession('nonexistent')).not.toThrow();

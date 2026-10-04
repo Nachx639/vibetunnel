@@ -438,6 +438,23 @@ export class SessionManager {
   }
 
   /**
+   * cleanupSession for a batch: a directory whose name is no valid session id (say "a.b") is
+   * skipped with a warning instead of aborting the whole run. False if skipped.
+   */
+  private cleanupListedSession(sessionId: string): boolean {
+    try {
+      this.cleanupSession(sessionId);
+      return true;
+    } catch (error) {
+      if (error instanceof PtyError && error.code === 'INVALID_SESSION_ID') {
+        logger.warn(`skipping "${sessionId}" in ${this.controlPath}: not a valid session id`);
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Cleanup a specific session
    */
   cleanupSession(sessionId: string): void {
@@ -494,8 +511,7 @@ export class SessionManager {
 
       for (const session of sessions) {
         if (session.status === 'exited' && session.id) {
-          this.cleanupSession(session.id);
-          cleanedSessions.push(session.id);
+          if (this.cleanupListedSession(session.id)) cleanedSessions.push(session.id);
         }
       }
 
@@ -537,8 +553,7 @@ export class SessionManager {
             (session.pid && !ProcessUtils.isProcessRunning(session.pid))
           ) {
             logger.debug(`cleaning up legacy zombie session ${session.id} (no version field)`);
-            this.cleanupSession(session.id);
-            cleanedCount++;
+            if (this.cleanupListedSession(session.id)) cleanedCount++;
           } else {
             logger.debug(`preserving active legacy session ${session.id}`);
           }
@@ -576,8 +591,7 @@ export class SessionManager {
             logger.debug(
               `cleaning up zombie session ${session.id} (version: ${session.version || 'unknown'})`
             );
-            this.cleanupSession(session.id);
-            cleanedCount++;
+            if (this.cleanupListedSession(session.id)) cleanedCount++;
           } else {
             logger.debug(
               `preserving active session ${session.id} (version: ${session.version || 'unknown'})`
