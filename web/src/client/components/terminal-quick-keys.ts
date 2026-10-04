@@ -5,6 +5,7 @@ import { Z_INDEX } from '../utils/constants.js';
 import {
   type QuickKeyRowSizing,
   quickKeyFontClass,
+  quickKeyRowFits,
   quickKeyRowSizing,
 } from '../utils/quick-key-sizing.js';
 import {
@@ -19,6 +20,7 @@ import {
   SYMBOL_QUICK_KEYS,
   subscribeToQuickKeysLayout,
 } from '../utils/quick-keys-layout.js';
+import { ShortLandscapeController } from '../utils/short-landscape.js';
 
 // Common Ctrl key combinations
 const CTRL_SHORTCUTS = [
@@ -98,6 +100,15 @@ export class TerminalQuickKeys extends LitElement {
   @state() private showSymbolKeys = false;
   @state() private isLandscape = false;
   @state() private viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth;
+  /**
+   * A phone on its side (utils/short-landscape.ts), compact layout only: the two rows of keys
+   * took about 90 pt of a screen 300 pt tall, keyboard still down. Both rows go in one when
+   * they fit (singleRow); an expanded row (Ctrl, symbols, F-keys) still opens as a second one.
+   */
+  private readonly shortLandscape = new ShortLandscapeController(this);
+  @state() private singleRow = false;
+  /** The bar's width inside its safe-area padding (px), once laid out; 0 before. */
+  @state() private barContentWidth = 0;
   @state() private quickKeysLayout: QuickKeysLayout = loadQuickKeysLayout();
 
   private keyRepeatInterval: number | null = null;
@@ -161,7 +172,44 @@ export class TerminalQuickKeys extends LitElement {
 
   /** Padding and font for a row with these labels (Done included), so it fits the screen. */
   private getRowSizing(labels: readonly string[]): QuickKeyRowSizing {
-    return quickKeyRowSizing(labels, this.viewportWidth, this.isLandscape);
+    return quickKeyRowSizing(labels, this.rowWidth, this.isLandscape);
+  }
+
+  /**
+   * Room for a row: the bar inside its safe-area padding once measured (a phone on its side
+   * keeps its keys clear of the Dynamic Island), else the window.
+   */
+  private get rowWidth(): number {
+    return this.compact && this.barContentWidth > 0 ? this.barContentWidth : this.viewportWidth;
+  }
+
+  willUpdate(changedProperties: PropertyValues) {
+    super.willUpdate(changedProperties);
+    const rows = this.getQuickKeyRows();
+    const expanded = this.showCtrlKeys || this.showSymbolKeys || this.showFunctionKeys;
+    this.singleRow =
+      this.compact &&
+      this.shortLandscape.value &&
+      rows.length > 1 &&
+      !expanded &&
+      quickKeyRowFits(
+        [...rows.flat().map((definition) => this.quickKeyLabel(definition)), t('quickKeys.done')],
+        this.rowWidth
+      );
+  }
+
+  private measureBar() {
+    // Only the compact layout pads the bar with the safe-area insets; elsewhere the window
+    // width stays the row width.
+    if (!this.compact) return;
+    const bar = this.querySelector<HTMLElement>('.quick-keys-bar');
+    if (!bar?.clientWidth) return;
+    const style = getComputedStyle(bar);
+    const width =
+      bar.clientWidth -
+      (Number.parseFloat(style.paddingLeft) || 0) -
+      (Number.parseFloat(style.paddingRight) || 0);
+    if (width > 0 && Math.abs(width - this.barContentWidth) >= 1) this.barContentWidth = width;
   }
 
   private quickKeyLabel(definition: QuickKeyDefinition): string {
@@ -268,6 +316,7 @@ export class TerminalQuickKeys extends LitElement {
 
   updated(changedProperties: PropertyValues) {
     super.updated(changedProperties);
+    this.measureBar();
     if (changedProperties.has('visible') && !this.visible) {
       this.stopKeyRepeat();
       this.clearStickyModifiers();
@@ -278,6 +327,7 @@ export class TerminalQuickKeys extends LitElement {
       changedProperties.has('showCtrlKeys') ||
       changedProperties.has('showSymbolKeys') ||
       changedProperties.has('isLandscape') ||
+      changedProperties.has('singleRow') ||
       changedProperties.has('quickKeysLayout')
     ) {
       this.dispatchEvent(
@@ -766,6 +816,10 @@ export class TerminalQuickKeys extends LitElement {
            double-tap zoom when double tapping Ctrl or ⌥ to lock them */
         .quick-keys-bar.compact {
           touch-action: none;
+          /* On a phone on its side the keys keep clear of the Dynamic Island and the rounded
+             corners (the insets are 0 upright). */
+          padding-left: env(safe-area-inset-left, 0px);
+          padding-right: env(safe-area-inset-right, 0px);
         }
 
         /* Button rows - ensure full width */
@@ -1001,7 +1055,10 @@ export class TerminalQuickKeys extends LitElement {
         }
       >
         <div class="quick-keys-bar ${this.compact ? 'compact' : ''}">
-          ${quickKeyRow(rows[0], false, 'mb-0.5')}
+          ${
+            this.singleRow
+              ? quickKeyRow(rows.flat(), true, '')
+              : html`${quickKeyRow(rows[0], false, 'mb-0.5')}
           ${
             this.showCtrlKeys
               ? auxiliaryRow(
@@ -1022,7 +1079,8 @@ export class TerminalQuickKeys extends LitElement {
                   ? auxiliaryRow(FUNCTION_KEYS, this.expandedToggle(rows, 'F'), secondRowMargin)
                   : quickKeyRow(rows[1], true, secondRowMargin)
           }
-          ${rows.slice(2).map((row) => quickKeyRow(row, false, ''))}
+          ${rows.slice(2).map((row) => quickKeyRow(row, false, ''))}`
+          }
         </div>
       </div>
       ${this.renderStyles()}

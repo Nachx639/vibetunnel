@@ -106,3 +106,15 @@ export function quickKeyRowSizing(
   }
   return { paddingClass: `px-0 ${verticalClass}`, paddingPx: 0, fontStep: 1 };
 }
+
+/**
+ * Whether a row of these labels fits `rowWidth` px at all: with no padding and word labels one
+ * size down, the tightest quickKeyRowSizing() picks. A phone on its side puts both rows of
+ * keys in one when it does (terminal-quick-keys.ts).
+ */
+export function quickKeyRowFits(labels: readonly string[], rowWidth: number): boolean {
+  const available =
+    rowWidth - QUICK_KEY_ROW_INSET_PX - QUICK_KEY_GAP_PX * Math.max(labels.length - 1, 0);
+  const needed = labels.reduce((sum, label) => sum + quickKeyMinWidth(label, 0, 1), 0);
+  return needed <= available;
+}
