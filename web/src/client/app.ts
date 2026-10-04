@@ -7,7 +7,7 @@ import { keyed } from 'lit/directives/keyed.js';
 
 // Import shared types
 import type { Session } from '../shared/types.js';
-import { HttpMethod } from '../shared/types.js';
+import { HttpMethod, ServerEventType } from '../shared/types.js';
 import { LocaleController, t, whenLocaleReady } from './i18n/index.js';
 import { announce, ensureLiveRegion } from './utils/announce.js';
 import { isBrowserShortcut } from './utils/browser-shortcuts.js';
@@ -38,8 +38,20 @@ import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
+import { VisibilityPoller } from './utils/visibility-poller.js';
 
 const logger = createLogger('app');
+
+/**
+ * Session list poll cadence: every second while things change, slowing to every 2 s after
+ * 10 polls without a change and every 3 s after 30 (about 50 s idle). Any change, a session
+ * starting or exiting, or the page coming back to the foreground returns it to 1 s.
+ */
+export function sessionRefreshDelay(unchangedPolls: number): number {
+  if (unchangedPolls < 10) return TIMING.AUTO_REFRESH_INTERVAL;
+  if (unchangedPolls < 30) return TIMING.AUTO_REFRESH_INTERVAL * 2;
+  return TIMING.AUTO_REFRESH_INTERVAL * 3;
+}
 
 // Interface for session view component's stream connection
 interface SessionViewElement extends HTMLElement {
@@ -102,7 +114,17 @@ export class VibeTunnelApp extends LitElement {
   private hotReloadWs: WebSocket | null = null;
   private errorTimeoutId: number | null = null;
   private successTimeoutId: number | null = null;
-  private autoRefreshIntervalId: number | null = null;
+  /** Polls /api/sessions on the list and session views; paused while the page is hidden. */
+  private autoRefresh = new VisibilityPoller({
+    task: async () => {
+      if (this.currentView === 'list' || this.currentView === 'session') {
+        return this.loadSessions();
+      }
+      return false;
+    },
+    nextDelay: sessionRefreshDelay,
+  });
+  private unsubscribeSessionEvents: Array<() => void> = [];
   private responsiveUnsubscribe?: () => void;
   private resizeCleanupFunctions: (() => void)[] = [];
   private sessionLoadingState: 'idle' | 'loading' | 'loaded' | 'not-found' = 'idle';
@@ -196,10 +218,9 @@ export class VibeTunnelApp extends LitElement {
     // Clean up capture toggle listener
     document.removeEventListener('capture-toggled', this.handleCaptureToggled as EventListener);
     // Clean up auto refresh interval
-    if (this.autoRefreshIntervalId !== null) {
-      clearInterval(this.autoRefreshIntervalId);
-      this.autoRefreshIntervalId = null;
-    }
+    this.autoRefresh.stop();
+    for (const unsubscribe of this.unsubscribeSessionEvents) unsubscribe();
+    this.unsubscribeSessionEvents = [];
     // Clean up responsive observer
     if (this.responsiveUnsubscribe) {
       this.responsiveUnsubscribe();
@@ -673,7 +694,32 @@ export class VibeTunnelApp extends LitElement {
     }
   }
 
-  private async loadSessions() {
+  private loadSessionsInFlight: Promise<boolean> | null = null;
+  private loadSessionsQueued: Promise<boolean> | null = null;
+
+  /**
+   * One /api/sessions request at a time. A caller arriving while one is in flight gets a
+   * single follow-up load (its data may predate what the caller just did, e.g. a kill).
+   */
+  private loadSessions(): Promise<boolean> {
+    if (!this.loadSessionsInFlight) {
+      this.loadSessionsInFlight = this.performLoadSessions().finally(() => {
+        this.loadSessionsInFlight = null;
+      });
+      return this.loadSessionsInFlight;
+    }
+    if (!this.loadSessionsQueued) {
+      this.loadSessionsQueued = this.loadSessionsInFlight.then(() => {
+        this.loadSessionsQueued = null;
+        return this.loadSessions();
+      });
+    }
+    return this.loadSessionsQueued;
+  }
+
+  /** Resolves `false` when the list came back identical to what is shown. */
+  private async performLoadSessions(): Promise<boolean> {
+    let changed = true;
     // Only show loading state on initial load, not on refreshes
     if (!this.initialLoadComplete) {
       this.loading = true;
@@ -711,27 +757,15 @@ export class VibeTunnelApp extends LitElement {
                 return existingSession;
               }
 
-              // Merge changes, preserving Git info if not in new data
+              // Changed: always a NEW object, keeping the Git info the badge filled in when
+              // the server didn't send it. Mutating the old object in place kept the same
+              // reference, so cards holding it never re-rendered: a killed session in a git
+              // repository kept showing as running.
               if (existingSession.gitRepoPath && !newSession.gitRepoPath) {
-                logger.debug('[App] Preserving Git info for session', {
-                  sessionId: existingSession.id,
-                  gitRepoPath: existingSession.gitRepoPath,
-                  gitModifiedCount: existingSession.gitModifiedCount,
-                  gitUntrackedCount: existingSession.gitUntrackedCount,
-                });
-                // Update the existing session object in place to preserve reference
-                existingSession.status = newSession.status;
-                existingSession.name = newSession.name;
-                existingSession.workingDir = newSession.workingDir;
-                existingSession.exitCode = newSession.exitCode;
-                existingSession.lastModified = newSession.lastModified;
-                existingSession.active = newSession.active;
-                existingSession.source = newSession.source;
-                existingSession.remoteId = newSession.remoteId;
-                existingSession.remoteName = newSession.remoteName;
-                existingSession.remoteUrl = newSession.remoteUrl;
-                // Git fields are already in existingSession, so we don't need to copy them
-                return existingSession;
+                const git = Object.fromEntries(
+                  Object.entries(existingSession).filter(([key]) => key.startsWith('git'))
+                );
+                return { ...newSession, ...git } as Session;
               }
             }
 
@@ -739,12 +773,18 @@ export class VibeTunnelApp extends LitElement {
             return newSession;
           });
 
-          // Always assign a new array reference so Lit re-renders reliably.
-          // Note: we still preserve per-session object references above when possible.
-          this.sessions = [...updatedSessions];
-          // Clear session cache when sessions update
-          this._cachedSelectedSession = undefined;
-          this._cachedSelectedSessionId = null;
+          // Re-render only when something shown changed: a new array every poll re-rendered
+          // the whole list once a second on a phone that may sit on it for hours. Sessions
+          // keep their object when unchanged, so identical references mean identical data.
+          changed =
+            updatedSessions.length !== this.sessions.length ||
+            updatedSessions.some((session, index) => session !== this.sessions[index]);
+          if (changed) {
+            this.sessions = [...updatedSessions];
+            // Clear session cache when sessions update
+            this._cachedSelectedSession = undefined;
+            this._cachedSelectedSessionId = null;
+          }
           this.clearError();
 
           // Update page title if we're in list view
@@ -793,10 +833,12 @@ export class VibeTunnelApp extends LitElement {
           this.handleLogout();
           return;
         } else {
+          changed = false;
           this.noteLoadFailure();
         }
       } catch (error) {
         logger.error('error loading sessions:', error);
+        changed = false;
         this.noteLoadFailure();
       } finally {
         this.loading = false;
@@ -854,15 +896,23 @@ export class VibeTunnelApp extends LitElement {
         await performLoad();
       }
     }
+    return changed;
   }
 
   private startAutoRefresh() {
-    // Refresh sessions at configured interval for both list and session views
-    this.autoRefreshIntervalId = window.setInterval(() => {
-      if (this.currentView === 'list' || this.currentView === 'session') {
-        this.loadSessions();
-      }
-    }, TIMING.AUTO_REFRESH_INTERVAL);
+    // A re-login calls this again; the poller never runs twice. Polls stop while the page
+    // is hidden (a phone kept the 1 s poll going with the screen locked) and run at once
+    // when it is shown again.
+    this.autoRefresh.start();
+    // The poll slows down while nothing changes; a session starting or ending is pushed
+    // by the server, so the list still shows it at once.
+    if (this.unsubscribeSessionEvents.length === 0) {
+      const refresh = () => void this.autoRefresh.pollNow();
+      this.unsubscribeSessionEvents = [
+        serverEventService.on(ServerEventType.SessionStart, refresh),
+        serverEventService.on(ServerEventType.SessionExit, refresh),
+      ];
+    }
   }
 
   private async handleSessionCreated(e: CustomEvent) {

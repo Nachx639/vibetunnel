@@ -37,6 +37,9 @@ import { formatPathForDisplay } from '../utils/path-utils.js';
 
 const logger = createLogger('session-list');
 
+/** After a repository's worktrees fail to load, ask again at most this often. */
+const WORKTREE_RETRY_MS = 60_000;
+
 @customElement('session-list')
 export class SessionList extends LitElement {
   // Disable shadow DOM to use Tailwind
@@ -59,6 +62,8 @@ export class SessionList extends LitElement {
   @state() private loadingFollowMode = new Set<string>();
   @state() private showFollowDropdown = new Map<string, boolean>();
   @state() private repoWorktrees = new Map<string, Worktree[]>();
+  /** When loading a repo's worktrees last failed (see WORKTREE_RETRY_MS). */
+  private worktreeFailures = new Map<string, number>();
   @state() private loadingWorktrees = new Set<string>();
   @state() private showWorktreeDropdown = new Map<string, boolean>();
 
@@ -473,8 +478,8 @@ export class SessionList extends LitElement {
 
       // Extract repo path from dropdown key for loading
       const repoPath = dropdownKey.split(':')[0];
-      // Load worktrees and follow mode if not already loaded
-      this.loadWorktreesForRepo(repoPath);
+      // Load worktrees and follow mode if not already loaded (the user asked: retry now)
+      this.loadWorktreesForRepo(repoPath, true);
     }
 
     // Close all worktree dropdowns to avoid conflicts
@@ -588,8 +593,14 @@ export class SessionList extends LitElement {
     `;
   }
 
-  private async loadWorktreesForRepo(repoPath: string) {
+  private async loadWorktreesForRepo(repoPath: string, userRequested = false) {
     if (this.loadingWorktrees.has(repoPath) || this.repoWorktrees.has(repoPath)) {
+      return;
+    }
+    // A repo whose worktrees failed to load was fetched again on every session-list change
+    // (with several repos and a 1 s poll, several requests a second); retry once a minute.
+    const failedAt = this.worktreeFailures.get(repoPath);
+    if (!userRequested && failedAt !== undefined && Date.now() - failedAt < WORKTREE_RETRY_MS) {
       return;
     }
 
@@ -606,10 +617,13 @@ export class SessionList extends LitElement {
         this.repoWorktrees.set(repoPath, data.worktrees || []);
         // Also set follow mode from the worktrees API response
         this.repoFollowMode.set(repoPath, data.followBranch);
+        this.worktreeFailures.delete(repoPath);
       } else {
+        this.worktreeFailures.set(repoPath, Date.now());
         logger.error(`Failed to load worktrees for ${repoPath}`);
       }
     } catch (error) {
+      this.worktreeFailures.set(repoPath, Date.now());
       logger.error('Error loading worktrees:', error);
     } finally {
       this.loadingWorktrees.delete(repoPath);
@@ -629,8 +643,8 @@ export class SessionList extends LitElement {
       newWorktreeDropdown.set(dropdownKey, true);
       // Extract repo path from dropdown key for loading
       const repoPath = dropdownKey.split(':')[0];
-      // Load worktrees if not already loaded
-      this.loadWorktreesForRepo(repoPath);
+      // Load worktrees if not already loaded (the user asked: retry now)
+      this.loadWorktreesForRepo(repoPath, true);
     }
 
     // Update state atomically

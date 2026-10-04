@@ -571,4 +571,30 @@ describe('SessionList', () => {
       expect(cleanupButton).toBeTruthy();
     });
   });
+  describe('worktree loading', () => {
+    const worktreeCalls = () =>
+      [...fetchMock.calls.entries()]
+        .filter(([url]) => url.includes('/api/worktrees'))
+        .reduce((total, [, count]) => total + count, 0);
+    const repoSessions = (suffix: string) =>
+      ['a', 'b'].map((repo) => ({
+        ...createMockSession({ id: `${repo}-${suffix}`, name: suffix }),
+        gitRepoPath: `/repos/${repo}`,
+      }));
+
+    it('retries a failed repo at most once a minute, not on every session update', async () => {
+      const failingFetch = global.fetch;
+      global.fetch = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+        if (!String(url).includes('/api/worktrees')) return failingFetch(url, init);
+        fetchMock.calls.set(String(url), (fetchMock.calls.get(String(url)) || 0) + 1);
+        return Promise.resolve(new Response('{}', { status: 500 }));
+      }) as typeof fetch;
+      for (const suffix of ['1', '2', '3', '4']) {
+        element.sessions = repoSessions(suffix);
+        await element.updateComplete;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      expect(worktreeCalls()).toBe(2);
+    });
+  });
 });
