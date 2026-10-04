@@ -57,6 +57,21 @@ export class ApiSocketServer {
   private server: net.Server | null = null;
   private readonly socketPath: string;
   private serverPort?: number;
+  /**
+   * Handles `vt git-event` in-process (wired by the server to routes/git.ts). It used to POST to
+   * this server's own /api/git/event without credentials, which got 401 whenever auth was on, so
+   * every git hook event was lost; minting a token for it instead would give anyone who can
+   * reach the socket the server's authority over HTTP.
+   */
+  private gitEventHandler:
+    | ((request: { repoPath: string; event: string }) => Promise<{ status: number }>)
+    | null = null;
+
+  setGitEventHandler(
+    handler: (request: { repoPath: string; event: string }) => Promise<{ status: number }>
+  ): void {
+    this.gitEventHandler = handler;
+  }
   private serverUrl?: string;
 
   constructor() {
@@ -103,6 +118,13 @@ export class ApiSocketServer {
       });
 
       this.server.listen(this.socketPath, () => {
+        // Owner only: the socket acts with the server's authority (git events, follow mode),
+        // and a new socket gets the umask's permissions.
+        try {
+          fs.chmodSync(this.socketPath, 0o600);
+        } catch (error) {
+          logger.warn(`could not restrict ${this.socketPath} to its owner:`, error);
+        }
         logger.log(`API socket server listening on ${this.socketPath}`);
         resolve();
       });
@@ -488,28 +510,10 @@ export class ApiSocketServer {
     logger.debug(`Git event notification received: ${event.type} for ${event.repoPath}`);
 
     try {
-      // Forward the event to the HTTP endpoint which contains the sync logic
-      const port = this.serverPort || 4020;
-      const url = `http://localhost:${port}/api/git/event`;
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          repoPath: event.repoPath,
-          event: event.type,
-          // Branch information would need to be extracted from git hooks
-          // For now, we'll let the endpoint handle branch detection
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP endpoint returned ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      if (!this.gitEventHandler) throw new Error('no git event handler');
+      // The handler detects the branch itself.
+      const result = await this.gitEventHandler({ repoPath: event.repoPath, event: event.type });
+      if (result.status !== 200) throw new Error(`git event handler returned ${result.status}`);
       logger.debug('Git event processed successfully:', result);
 
       const ack: GitEventAck = {
@@ -517,7 +521,7 @@ export class ApiSocketServer {
       };
       socket.write(MessageBuilder.gitEventAck(ack));
     } catch (error) {
-      logger.error('Failed to forward git event to HTTP endpoint:', error);
+      logger.error('Failed to handle git event:', error);
 
       const ack: GitEventAck = {
         handled: false,

@@ -20,7 +20,7 @@ import { createAuthRoutes } from './routes/auth.js';
 import { createConfigRoutes } from './routes/config.js';
 import { createFileRoutes } from './routes/files.js';
 import { createFilesystemRoutes } from './routes/filesystem.js';
-import { createGitRoutes } from './routes/git.js';
+import { createGitRoutes, processGitEvent } from './routes/git.js';
 import { createLogRoutes } from './routes/logs.js';
 import { createMultiplexerRoutes } from './routes/multiplexer.js';
 import { createPushRoutes } from './routes/push.js';
@@ -1243,6 +1243,8 @@ export async function createApp(): Promise<AppInstance> {
 
   // Initialize API socket for CLI commands
   try {
+    // `vt git-event` through the API socket runs the same handler as POST /api/git/event.
+    apiSocketServer.setGitEventHandler(processGitEvent);
     await apiSocketServer.start();
     logger.log(chalk.green('API socket server: READY'));
   } catch (error) {

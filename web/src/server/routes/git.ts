@@ -119,6 +119,359 @@ async function execGit(
 }
 
 /**
+ * Handle a Git repository change event (POST /api/git/event, and `vt git-event` through the
+ * API socket, which calls it in-process), with a per-repo lock against races.
+ */
+export async function processGitEvent(
+  request: unknown
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  let lockAcquired = false;
+  let repoPath: string | undefined;
+
+  try {
+    const { repoPath: requestedRepoPath, branch, event } = (request ?? {}) as GitEventRequest;
+
+    if (!requestedRepoPath || typeof requestedRepoPath !== 'string') {
+      return { status: 400, body: { error: 'Missing or invalid repoPath parameter' } };
+    }
+
+    // Normalize the repository path
+    repoPath = path.resolve(requestedRepoPath);
+    logger.debug(`Processing git event for repo: ${repoPath}, branch: ${branch}, event: ${event}`);
+
+    // Acquire lock for this repository
+    await acquireRepoLock(repoPath);
+    lockAcquired = true;
+
+    // Get all sessions and find those within the repository path
+    const sessionManager = new SessionManager();
+    const allSessions = sessionManager.listSessions();
+    const sessionsInRepo = allSessions.filter((session) => {
+      if (!session.workingDir || !repoPath) return false;
+      const sessionPath = path.resolve(session.workingDir);
+      return sessionPath.startsWith(repoPath);
+    });
+
+    logger.debug(`Found ${sessionsInRepo.length} sessions in repository ${repoPath}`);
+
+    const updatedSessionIds: string[] = [];
+
+    // Check follow mode status
+    let followWorktree: string | undefined;
+    let currentBranch: string | undefined;
+    let followMode = false;
+    let isMainRepo = false;
+    let isWorktreeRepo = false;
+    let mainRepoPath = repoPath;
+
+    try {
+      // Check if this is a worktree
+      const { stdout: gitDirOutput } = await execGit(['rev-parse', '--git-dir'], {
+        cwd: repoPath,
+      });
+      const gitDir = gitDirOutput.trim();
+      isWorktreeRepo = gitDir.includes('/.git/worktrees/');
+
+      // If this is a worktree, find the main repo
+      if (isWorktreeRepo) {
+        // Extract main repo from git dir (e.g., /path/to/main/.git/worktrees/branch)
+        mainRepoPath = gitDir.replace(/\/\.git\/worktrees\/.*$/, '');
+        logger.debug(`Worktree detected, main repo: ${mainRepoPath}`);
+      } else {
+        isMainRepo = true;
+      }
+    } catch (error) {
+      logger.debug('Could not determine repository worktree state:', error);
+    }
+
+    try {
+      // Get follow worktree setting from main repo
+      const { stdout: followWorktreeOutput } = await execGit(
+        ['config', 'vibetunnel.followWorktree'],
+        {
+          cwd: mainRepoPath,
+        }
+      );
+      followWorktree = followWorktreeOutput.trim();
+      followMode = !!followWorktree;
+    } catch (error) {
+      logger.debug('Follow worktree is not configured:', error);
+    }
+
+    try {
+      // Get current branch
+      const { stdout: branchOutput } = await execGit(['branch', '--show-current'], {
+        cwd: repoPath,
+      });
+      currentBranch = branchOutput.trim();
+    } catch (error) {
+      logger.debug('Could not determine current branch:', error);
+    }
+
+    // Extract repository name from path
+    const _repoName = path.basename(repoPath);
+
+    // Update session titles for all sessions in the repository
+    for (const session of sessionsInRepo) {
+      try {
+        // Get the branch for this specific session's working directory
+        let _sessionBranch = currentBranch;
+        try {
+          const { stdout: sessionBranchOutput } = await execGit(['branch', '--show-current'], {
+            cwd: session.workingDir,
+          });
+          if (sessionBranchOutput.trim()) {
+            _sessionBranch = sessionBranchOutput.trim();
+          }
+        } catch (_error) {
+          // Use current branch as fallback
+          logger.debug(`Could not get branch for session ${session.id}, using repo branch`);
+        }
+
+        // Extract base session name (remove any existing git info in square brackets at the end)
+        // Use a more specific regex to only match git-related content in brackets
+        const baseSessionName =
+          session.name?.replace(
+            /\s*\[(checkout|branch|merge|rebase|commit|push|pull|fetch|stash|reset|cherry-pick):[^\]]+\]\s*$/,
+            ''
+          ) || 'Terminal';
+
+        // Construct new title with format: baseSessionName [event: branch]
+        let newTitle = baseSessionName;
+        const sessionBranch = branch || _sessionBranch;
+        if (event && sessionBranch) {
+          newTitle = `${baseSessionName} [${event}: ${sessionBranch}]`;
+        }
+
+        // Update the session name
+        sessionManager.updateSessionName(session.id, newTitle);
+        updatedSessionIds.push(session.id);
+
+        logger.debug(`Updated session ${session.id} title to: ${newTitle}`);
+      } catch (error) {
+        logger.error(`Failed to update session ${session.id}:`, error);
+      }
+    }
+
+    // Handle follow mode sync logic
+    if (followMode && followWorktree) {
+      logger.info(`Follow mode active: processing event from ${repoPath}`);
+
+      // Determine which repo we're in and which direction to sync
+      if (repoPath === followWorktree && isWorktreeRepo) {
+        // Event from worktree - sync to main repo
+        logger.info(`Syncing from worktree to main repo`);
+
+        try {
+          // Find the main repo path
+          const { stdout: gitDirOutput } = await execGit(['rev-parse', '--git-dir'], {
+            cwd: repoPath,
+          });
+          const gitDir = gitDirOutput.trim();
+          const mainRepoPath = gitDir.replace(/\/\.git\/worktrees\/.*$/, '');
+
+          // Get the current branch in worktree
+          const { stdout: worktreeBranchOutput } = await execGit(['branch', '--show-current'], {
+            cwd: repoPath,
+          });
+          const worktreeBranch = worktreeBranchOutput.trim();
+
+          if (worktreeBranch) {
+            // Sync main repo to worktree's branch
+            logger.info(`Syncing main repo to branch: ${worktreeBranch}`);
+            await execGit(['checkout', worktreeBranch], { cwd: mainRepoPath });
+
+            // Pull latest changes in main repo
+            await execGit(['pull', '--ff-only'], { cwd: mainRepoPath });
+
+            // Send sync success notification
+            const syncNotif = {
+              level: 'info' as const,
+              title: 'Main Repository Synced',
+              message: `Main repository synced to branch '${worktreeBranch}'`,
+            };
+
+            if (controlUnixHandler.isMacAppConnected()) {
+              const syncNotification = createControlEvent('system', 'notification', syncNotif);
+              controlUnixHandler.sendToMac(syncNotification);
+            } else {
+              pendingNotifications.push({
+                timestamp: Date.now(),
+                notification: syncNotif,
+              });
+            }
+          }
+        } catch (error) {
+          logger.error('Failed to sync from worktree to main:', error);
+
+          // Send error notification
+          const errorNotif = {
+            level: 'error' as const,
+            title: 'Sync Failed',
+            message: `Failed to sync main repository: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          };
+
+          if (controlUnixHandler.isMacAppConnected()) {
+            const errorNotification = createControlEvent('system', 'notification', errorNotif);
+            controlUnixHandler.sendToMac(errorNotification);
+          } else {
+            pendingNotifications.push({
+              timestamp: Date.now(),
+              notification: errorNotif,
+            });
+          }
+        }
+      } else if (isMainRepo && event === 'commit') {
+        // Event from main repo (commit only) - sync to worktree
+        logger.info(`Syncing commit from main repo to worktree`);
+
+        try {
+          // Pull latest changes in worktree
+          await execGit(['pull', '--ff-only'], { cwd: followWorktree });
+
+          // Send sync success notification
+          const syncNotif = {
+            level: 'info' as const,
+            title: 'Worktree Synced',
+            message: `Worktree synced with latest commits`,
+          };
+
+          if (controlUnixHandler.isMacAppConnected()) {
+            const syncNotification = createControlEvent('system', 'notification', syncNotif);
+            controlUnixHandler.sendToMac(syncNotification);
+          } else {
+            pendingNotifications.push({
+              timestamp: Date.now(),
+              notification: syncNotif,
+            });
+          }
+        } catch (error) {
+          logger.error('Failed to sync commit to worktree:', error);
+        }
+      } else if (isMainRepo && event === 'checkout') {
+        // Branch switch in main repo - disable follow mode
+        logger.info('Branch switched in main repo, disabling follow mode');
+
+        try {
+          await execGit(['config', '--local', '--unset', 'vibetunnel.followWorktree'], {
+            cwd: repoPath,
+          });
+
+          followMode = false;
+          followWorktree = undefined;
+
+          // Send notification about follow mode being disabled
+          const disableNotif = {
+            level: 'info' as const,
+            title: 'Follow Mode Disabled',
+            message: `Follow mode disabled due to branch switch in main repository`,
+          };
+
+          if (controlUnixHandler.isMacAppConnected()) {
+            const disableNotification = createControlEvent('system', 'notification', disableNotif);
+            controlUnixHandler.sendToMac(disableNotification);
+          } else {
+            pendingNotifications.push({
+              timestamp: Date.now(),
+              notification: disableNotif,
+            });
+          }
+        } catch (error) {
+          logger.error('Failed to disable follow mode:', error);
+        }
+      }
+    }
+
+    // Create notification payload
+    const notification: GitEventNotification = {
+      type: 'git-event',
+      repoPath,
+      branch: branch || currentBranch,
+      event,
+      followMode,
+      sessionsUpdated: updatedSessionIds,
+    };
+
+    // Prepare notifications
+    const notificationsToSend: Array<{
+      level: 'info' | 'error';
+      title: string;
+      message: string;
+    }> = [];
+
+    // Add specific follow mode notifications
+    if (followMode && followWorktree) {
+      const worktreeName = path.basename(followWorktree);
+      notificationsToSend.push({
+        level: 'info',
+        title: 'Follow Mode Active',
+        message: `Following worktree '${worktreeName}' in ${path.basename(repoPath)}`,
+      });
+    }
+
+    // Send notifications via Unix socket to Mac app if connected
+    if (controlUnixHandler.isMacAppConnected()) {
+      // Send repository changed event
+      const controlMessage = createControlEvent('git', 'repository-changed', notification);
+      controlUnixHandler.sendToMac(controlMessage);
+      logger.debug('Sent git event notification to Mac app');
+
+      // Send specific notifications
+      for (const notif of notificationsToSend) {
+        const notificationMessage = createControlEvent('system', 'notification', notif);
+        controlUnixHandler.sendToMac(notificationMessage);
+      }
+    } else {
+      // Store notifications for web UI when macOS client is not connected
+      const now = Date.now();
+      for (const notif of notificationsToSend) {
+        pendingNotifications.push({
+          timestamp: now,
+          notification: notif,
+        });
+      }
+
+      // Keep only notifications from the last 5 minutes
+      const fiveMinutesAgo = now - 5 * 60 * 1000;
+      while (
+        pendingNotifications.length > 0 &&
+        pendingNotifications[0].timestamp < fiveMinutesAgo
+      ) {
+        pendingNotifications.shift();
+      }
+
+      logger.debug(`Stored ${notificationsToSend.length} notifications for web UI`);
+    }
+
+    // Return success response
+    return {
+      status: 200,
+      body: {
+        success: true,
+        repoPath,
+        sessionsUpdated: updatedSessionIds.length,
+        followMode,
+        notification,
+      },
+    };
+  } catch (error) {
+    logger.error('Error handling git event:', error);
+    return {
+      status: 500,
+      body: {
+        error: 'Failed to process git event',
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  } finally {
+    // Always release the lock
+    if (lockAcquired && repoPath) {
+      releaseRepoLock(repoPath);
+    }
+  }
+}
+
+/**
  * Create Git-related routes
  */
 export function createGitRoutes(): Router {
@@ -185,355 +538,10 @@ export function createGitRoutes(): Router {
 
   /**
    * POST /api/git/event
-   * Handle Git repository change events with locking to prevent race conditions
    */
   router.post('/git/event', async (req, res) => {
-    let lockAcquired = false;
-    let repoPath: string | undefined;
-
-    try {
-      const { repoPath: requestedRepoPath, branch, event } = req.body as GitEventRequest;
-
-      if (!requestedRepoPath || typeof requestedRepoPath !== 'string') {
-        return res.status(400).json({
-          error: 'Missing or invalid repoPath parameter',
-        });
-      }
-
-      // Normalize the repository path
-      repoPath = path.resolve(requestedRepoPath);
-      logger.debug(
-        `Processing git event for repo: ${repoPath}, branch: ${branch}, event: ${event}`
-      );
-
-      // Acquire lock for this repository
-      await acquireRepoLock(repoPath);
-      lockAcquired = true;
-
-      // Get all sessions and find those within the repository path
-      const sessionManager = new SessionManager();
-      const allSessions = sessionManager.listSessions();
-      const sessionsInRepo = allSessions.filter((session) => {
-        if (!session.workingDir || !repoPath) return false;
-        const sessionPath = path.resolve(session.workingDir);
-        return sessionPath.startsWith(repoPath);
-      });
-
-      logger.debug(`Found ${sessionsInRepo.length} sessions in repository ${repoPath}`);
-
-      const updatedSessionIds: string[] = [];
-
-      // Check follow mode status
-      let followWorktree: string | undefined;
-      let currentBranch: string | undefined;
-      let followMode = false;
-      let isMainRepo = false;
-      let isWorktreeRepo = false;
-      let mainRepoPath = repoPath;
-
-      try {
-        // Check if this is a worktree
-        const { stdout: gitDirOutput } = await execGit(['rev-parse', '--git-dir'], {
-          cwd: repoPath,
-        });
-        const gitDir = gitDirOutput.trim();
-        isWorktreeRepo = gitDir.includes('/.git/worktrees/');
-
-        // If this is a worktree, find the main repo
-        if (isWorktreeRepo) {
-          // Extract main repo from git dir (e.g., /path/to/main/.git/worktrees/branch)
-          mainRepoPath = gitDir.replace(/\/\.git\/worktrees\/.*$/, '');
-          logger.debug(`Worktree detected, main repo: ${mainRepoPath}`);
-        } else {
-          isMainRepo = true;
-        }
-      } catch (error) {
-        logger.debug('Could not determine repository worktree state:', error);
-      }
-
-      try {
-        // Get follow worktree setting from main repo
-        const { stdout: followWorktreeOutput } = await execGit(
-          ['config', 'vibetunnel.followWorktree'],
-          {
-            cwd: mainRepoPath,
-          }
-        );
-        followWorktree = followWorktreeOutput.trim();
-        followMode = !!followWorktree;
-      } catch (error) {
-        logger.debug('Follow worktree is not configured:', error);
-      }
-
-      try {
-        // Get current branch
-        const { stdout: branchOutput } = await execGit(['branch', '--show-current'], {
-          cwd: repoPath,
-        });
-        currentBranch = branchOutput.trim();
-      } catch (error) {
-        logger.debug('Could not determine current branch:', error);
-      }
-
-      // Extract repository name from path
-      const _repoName = path.basename(repoPath);
-
-      // Update session titles for all sessions in the repository
-      for (const session of sessionsInRepo) {
-        try {
-          // Get the branch for this specific session's working directory
-          let _sessionBranch = currentBranch;
-          try {
-            const { stdout: sessionBranchOutput } = await execGit(['branch', '--show-current'], {
-              cwd: session.workingDir,
-            });
-            if (sessionBranchOutput.trim()) {
-              _sessionBranch = sessionBranchOutput.trim();
-            }
-          } catch (_error) {
-            // Use current branch as fallback
-            logger.debug(`Could not get branch for session ${session.id}, using repo branch`);
-          }
-
-          // Extract base session name (remove any existing git info in square brackets at the end)
-          // Use a more specific regex to only match git-related content in brackets
-          const baseSessionName =
-            session.name?.replace(
-              /\s*\[(checkout|branch|merge|rebase|commit|push|pull|fetch|stash|reset|cherry-pick):[^\]]+\]\s*$/,
-              ''
-            ) || 'Terminal';
-
-          // Construct new title with format: baseSessionName [event: branch]
-          let newTitle = baseSessionName;
-          const sessionBranch = branch || _sessionBranch;
-          if (event && sessionBranch) {
-            newTitle = `${baseSessionName} [${event}: ${sessionBranch}]`;
-          }
-
-          // Update the session name
-          sessionManager.updateSessionName(session.id, newTitle);
-          updatedSessionIds.push(session.id);
-
-          logger.debug(`Updated session ${session.id} title to: ${newTitle}`);
-        } catch (error) {
-          logger.error(`Failed to update session ${session.id}:`, error);
-        }
-      }
-
-      // Handle follow mode sync logic
-      if (followMode && followWorktree) {
-        logger.info(`Follow mode active: processing event from ${repoPath}`);
-
-        // Determine which repo we're in and which direction to sync
-        if (repoPath === followWorktree && isWorktreeRepo) {
-          // Event from worktree - sync to main repo
-          logger.info(`Syncing from worktree to main repo`);
-
-          try {
-            // Find the main repo path
-            const { stdout: gitDirOutput } = await execGit(['rev-parse', '--git-dir'], {
-              cwd: repoPath,
-            });
-            const gitDir = gitDirOutput.trim();
-            const mainRepoPath = gitDir.replace(/\/\.git\/worktrees\/.*$/, '');
-
-            // Get the current branch in worktree
-            const { stdout: worktreeBranchOutput } = await execGit(['branch', '--show-current'], {
-              cwd: repoPath,
-            });
-            const worktreeBranch = worktreeBranchOutput.trim();
-
-            if (worktreeBranch) {
-              // Sync main repo to worktree's branch
-              logger.info(`Syncing main repo to branch: ${worktreeBranch}`);
-              await execGit(['checkout', worktreeBranch], { cwd: mainRepoPath });
-
-              // Pull latest changes in main repo
-              await execGit(['pull', '--ff-only'], { cwd: mainRepoPath });
-
-              // Send sync success notification
-              const syncNotif = {
-                level: 'info' as const,
-                title: 'Main Repository Synced',
-                message: `Main repository synced to branch '${worktreeBranch}'`,
-              };
-
-              if (controlUnixHandler.isMacAppConnected()) {
-                const syncNotification = createControlEvent('system', 'notification', syncNotif);
-                controlUnixHandler.sendToMac(syncNotification);
-              } else {
-                pendingNotifications.push({
-                  timestamp: Date.now(),
-                  notification: syncNotif,
-                });
-              }
-            }
-          } catch (error) {
-            logger.error('Failed to sync from worktree to main:', error);
-
-            // Send error notification
-            const errorNotif = {
-              level: 'error' as const,
-              title: 'Sync Failed',
-              message: `Failed to sync main repository: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            };
-
-            if (controlUnixHandler.isMacAppConnected()) {
-              const errorNotification = createControlEvent('system', 'notification', errorNotif);
-              controlUnixHandler.sendToMac(errorNotification);
-            } else {
-              pendingNotifications.push({
-                timestamp: Date.now(),
-                notification: errorNotif,
-              });
-            }
-          }
-        } else if (isMainRepo && event === 'commit') {
-          // Event from main repo (commit only) - sync to worktree
-          logger.info(`Syncing commit from main repo to worktree`);
-
-          try {
-            // Pull latest changes in worktree
-            await execGit(['pull', '--ff-only'], { cwd: followWorktree });
-
-            // Send sync success notification
-            const syncNotif = {
-              level: 'info' as const,
-              title: 'Worktree Synced',
-              message: `Worktree synced with latest commits`,
-            };
-
-            if (controlUnixHandler.isMacAppConnected()) {
-              const syncNotification = createControlEvent('system', 'notification', syncNotif);
-              controlUnixHandler.sendToMac(syncNotification);
-            } else {
-              pendingNotifications.push({
-                timestamp: Date.now(),
-                notification: syncNotif,
-              });
-            }
-          } catch (error) {
-            logger.error('Failed to sync commit to worktree:', error);
-          }
-        } else if (isMainRepo && event === 'checkout') {
-          // Branch switch in main repo - disable follow mode
-          logger.info('Branch switched in main repo, disabling follow mode');
-
-          try {
-            await execGit(['config', '--local', '--unset', 'vibetunnel.followWorktree'], {
-              cwd: repoPath,
-            });
-
-            followMode = false;
-            followWorktree = undefined;
-
-            // Send notification about follow mode being disabled
-            const disableNotif = {
-              level: 'info' as const,
-              title: 'Follow Mode Disabled',
-              message: `Follow mode disabled due to branch switch in main repository`,
-            };
-
-            if (controlUnixHandler.isMacAppConnected()) {
-              const disableNotification = createControlEvent(
-                'system',
-                'notification',
-                disableNotif
-              );
-              controlUnixHandler.sendToMac(disableNotification);
-            } else {
-              pendingNotifications.push({
-                timestamp: Date.now(),
-                notification: disableNotif,
-              });
-            }
-          } catch (error) {
-            logger.error('Failed to disable follow mode:', error);
-          }
-        }
-      }
-
-      // Create notification payload
-      const notification: GitEventNotification = {
-        type: 'git-event',
-        repoPath,
-        branch: branch || currentBranch,
-        event,
-        followMode,
-        sessionsUpdated: updatedSessionIds,
-      };
-
-      // Prepare notifications
-      const notificationsToSend: Array<{
-        level: 'info' | 'error';
-        title: string;
-        message: string;
-      }> = [];
-
-      // Add specific follow mode notifications
-      if (followMode && followWorktree) {
-        const worktreeName = path.basename(followWorktree);
-        notificationsToSend.push({
-          level: 'info',
-          title: 'Follow Mode Active',
-          message: `Following worktree '${worktreeName}' in ${path.basename(repoPath)}`,
-        });
-      }
-
-      // Send notifications via Unix socket to Mac app if connected
-      if (controlUnixHandler.isMacAppConnected()) {
-        // Send repository changed event
-        const controlMessage = createControlEvent('git', 'repository-changed', notification);
-        controlUnixHandler.sendToMac(controlMessage);
-        logger.debug('Sent git event notification to Mac app');
-
-        // Send specific notifications
-        for (const notif of notificationsToSend) {
-          const notificationMessage = createControlEvent('system', 'notification', notif);
-          controlUnixHandler.sendToMac(notificationMessage);
-        }
-      } else {
-        // Store notifications for web UI when macOS client is not connected
-        const now = Date.now();
-        for (const notif of notificationsToSend) {
-          pendingNotifications.push({
-            timestamp: now,
-            notification: notif,
-          });
-        }
-
-        // Keep only notifications from the last 5 minutes
-        const fiveMinutesAgo = now - 5 * 60 * 1000;
-        while (
-          pendingNotifications.length > 0 &&
-          pendingNotifications[0].timestamp < fiveMinutesAgo
-        ) {
-          pendingNotifications.shift();
-        }
-
-        logger.debug(`Stored ${notificationsToSend.length} notifications for web UI`);
-      }
-
-      // Return success response
-      res.json({
-        success: true,
-        repoPath,
-        sessionsUpdated: updatedSessionIds.length,
-        followMode,
-        notification,
-      });
-    } catch (error) {
-      logger.error('Error handling git event:', error);
-      return res.status(500).json({
-        error: 'Failed to process git event',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      // Always release the lock
-      if (lockAcquired && repoPath) {
-        releaseRepoLock(repoPath);
-      }
-    }
+    const result = await processGitEvent(req.body);
+    res.status(result.status).json(result.body);
   });
 
   /**
