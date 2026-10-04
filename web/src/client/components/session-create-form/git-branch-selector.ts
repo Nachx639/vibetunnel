@@ -392,7 +392,7 @@ export class GitBranchSelector extends LitElement {
                     <button
                       type="button"
                       @click=${this.handleCreateWorktree}
-                      class="text-[10px] sm:text-xs px-2 py-1 bg-primary text-bg-elevated rounded hover:bg-primary-dark transition-colors disabled:opacity-50"
+                      class="text-[10px] sm:text-xs px-2 py-1 bg-primary text-on-fill rounded hover:bg-primary-light transition-colors disabled:opacity-50"
                       ?disabled=${!this.newBranchName.trim() || (this.useCustomPath && !this.customPath.trim()) || this.disabled || this.isCreating || this.isCreatingWorktree}
                     >
                       ${this.isCreatingWorktree ? t('create.creating') : t('create.create')}

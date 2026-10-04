@@ -377,14 +377,15 @@ export class SlashCommands extends LitElement {
 
   private getCategoryColor(category: string): string {
     const colors = {
-      project: 'text-blue-400',
-      files: 'text-green-400',
-      git: 'text-orange-400',
-      development: 'text-purple-400',
-      ai: 'text-cyan-400',
-      system: 'text-gray-400',
+      // Theme text shades: the palette's -400s were 2–3:1 on the light theme.
+      project: 'text-status-info',
+      files: 'text-status-success',
+      git: 'text-status-warning',
+      development: 'text-text-muted',
+      ai: 'text-primary',
+      system: 'text-text-dim',
     };
-    return colors[category as keyof typeof colors] || 'text-gray-400';
+    return colors[category as keyof typeof colors] || 'text-text-dim';
   }
 
   render() {
@@ -461,7 +462,7 @@ export class SlashCommands extends LitElement {
                   <button
                     class="flex-shrink-0 px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-2 ${
                       this.selectedCategory === category.id
-                        ? 'bg-primary text-primary-foreground'
+                        ? 'bg-primary text-on-fill'
                         : 'bg-bg-tertiary hover:bg-surface-hover text-text-muted hover:text-text'
                     }"
                     @click=${() => this.handleCategorySelect(category.id)}
@@ -625,7 +626,7 @@ export class SlashCommands extends LitElement {
                   ${t('common.cancel')}
                 </button>
                 <button
-                  class="px-6 py-2 bg-primary hover:bg-primary-hover text-primary-foreground font-medium rounded-lg transition-colors flex items-center gap-2"
+                  class="px-6 py-2 bg-primary hover:bg-primary-light text-on-fill font-medium rounded-lg transition-colors flex items-center gap-2"
                   @click=${this.handleCommandInputSubmit}
                 >
                   <span>${t('slash.modal.execute')}</span>

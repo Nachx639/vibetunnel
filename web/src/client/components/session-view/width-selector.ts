@@ -258,7 +258,7 @@ export class TerminalSettingsModal extends LitElement {
                         Number.parseInt(this.customWidth, 10) < 20 ||
                         Number.parseInt(this.customWidth, 10) > 500
                           ? 'bg-bg-secondary border border-border text-text-muted cursor-not-allowed'
-                          : 'bg-primary text-text-bright hover:bg-primary-hover active:scale-95'
+                          : 'bg-primary text-on-fill hover:bg-primary-light active:scale-95'
                       }"
                     @click=${this.handleCustomWidthSubmit}
                     ?disabled=${

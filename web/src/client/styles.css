@@ -16,17 +16,38 @@
   --color-text: rgb(23 23 23);
   --color-text-bright: rgb(0 0 0);
   --color-text-muted: rgb(75 75 75);
-  --color-text-dim: rgb(115 115 115);
+  /* 107 (was 115): 4.5:1 on every light surface, tertiary included. */
+  --color-text-dim: rgb(107 107 107);
   --color-primary: #10B981;
   --color-primary-hover: #059669;
   --color-primary-dark: #047857;
   --color-primary-light: #34D399;
   --color-primary-muted: #10B98133;
   --color-primary-glow: #10B98166;
-  --color-status-error: #EF4444;
+  /* #DF3337 (was #EF4444, 3.8:1): white on it reaches 4.5:1 (error toasts). */
+  --color-status-error: #DF3337;
   --color-status-warning: #F59E0B;
   --color-status-success: #10B981;
   --color-status-info: #3B82F6;
+  /*
+   * The accent and status colors as TEXT. The brand fills are too light for small text on
+   * light surfaces (emerald 2.4:1, gold 1.8:1, amber 2.1:1); text uses a shade that reaches
+   * 4.5:1 in every accent theme, on every surface and on the accent tint. Fills (bg-primary,
+   * dots, badges) keep the brand color. Tailwind's text-primary / text-status-* read these
+   * through @theme's --text-color-* entries. Each is the brand color with only its OKLab
+   * lightness moved, the least that reaches 4.5:1; theme-contrast.test.ts checks every pair.
+   */
+  --color-primary-ink: #007353;
+  --color-primary-text: var(--color-primary-ink);
+  --color-status-warning-text: #B04F01;
+  --color-status-error-text: #C3051E;
+  --color-status-success-text: #006F3D;
+  --color-status-info-text: #1D4ED8;
+  /* Labels and icons on the light fills (accent, success, warning): white was 1.8–4.2:1 on
+     them; black is ≥ 4.96:1 on every accent, in both themes. */
+  --color-on-fill: rgb(0 0 0);
+  /* Placeholders: Tailwind's default was the text at 50%, 3.3:1. */
+  --color-placeholder: var(--color-text-dim);
 }
 
 /* Tailwind v4 Theme Configuration */
@@ -51,6 +72,23 @@
   --color-primary-light: var(--color-primary-light);
   --color-primary-muted: var(--color-primary-muted);
   --color-primary-glow: var(--color-primary-glow);
+  --color-primary-text: var(--color-primary-text);
+  --color-status-warning-text: var(--color-status-warning-text);
+  --color-status-info-text: var(--color-status-info-text);
+  --color-status-error-text: var(--color-status-error-text);
+  --color-status-success-text: var(--color-status-success-text);
+  --color-on-fill: var(--color-on-fill);
+  /* text-primary, text-status-* and friends as TEXT read the text shades, not the fills
+     (Tailwind's text-* checks --text-color-* before --color-*): text-primary labels were
+     2.2:1 emerald on white, text-status-warning ones 2.0:1 amber. */
+  --text-color-primary: var(--color-primary-text);
+  --text-color-accent-primary: var(--color-primary-text);
+  --text-color-status-warning: var(--color-status-warning-text);
+  --text-color-status-error: var(--color-status-error-text);
+  --text-color-accent-red: var(--color-status-error-text);
+  --text-color-status-success: var(--color-status-success-text);
+  --text-color-accent-green: var(--color-status-success-text);
+  --text-color-status-info: var(--color-status-info-text);
   --color-accent-primary: var(--color-primary);
   --color-accent-green: var(--color-status-success);
   --color-accent-red: var(--color-status-error);
@@ -192,7 +230,13 @@
   --color-text: rgb(228 228 228);
   --color-text-bright: rgb(255 255 255);
   --color-text-muted: rgb(163 163 163);
-  --color-text-dim: rgb(115 115 115);
+  /* 156 (was 115, 3.4:1): 4.5:1 on every dark and accent-tinted surface. */
+  --color-text-dim: rgb(156 156 156);
+  --color-primary-text: var(--color-primary-light);
+  --color-status-warning-text: var(--color-status-warning);
+  --color-status-error-text: #FF7972;
+  --color-status-success-text: #34D399;
+  --color-status-info-text: #60A5FA;
   /* Primary and status colors remain the same */
 }
 
@@ -211,7 +255,12 @@
     --color-text: rgb(228 228 228);
     --color-text-bright: rgb(255 255 255);
     --color-text-muted: rgb(163 163 163);
-    --color-text-dim: rgb(115 115 115);
+    --color-text-dim: rgb(156 156 156);
+    --color-primary-text: var(--color-primary-light);
+    --color-status-warning-text: var(--color-status-warning);
+    --color-status-error-text: #FF7972;
+    --color-status-success-text: #34D399;
+    --color-status-info-text: #60A5FA;
   }
 }
 
@@ -252,7 +301,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    color: white;
+    color: var(--color-on-fill);
     font-size: 12px;
     font-weight: bold;
   }
@@ -324,8 +373,8 @@
   }
   
   input[type="file"]::file-selector-button {
-    @apply mr-3 px-3 py-1 rounded bg-primary text-bg;
-    @apply hover:bg-primary-hover;
+    @apply mr-3 px-3 py-1 rounded bg-primary text-on-fill;
+    @apply hover:bg-primary-light;
     @apply cursor-pointer transition-colors duration-200;
     border: none;
     font-weight: 500;
@@ -360,6 +409,13 @@
   }
   :focus-visible:where(:not([tabindex='-1'])) {
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  }
+
+  /* Placeholders: Tailwind's default (the text at 50%) was 3.3:1 on the search and input
+     fields. The dim text token reaches 4.5:1 on every surface. */
+  ::placeholder {
+    color: var(--color-placeholder);
+    opacity: 1;
   }
 
   /* iOS Safe Area Support */
@@ -429,8 +485,8 @@
     @apply font-medium rounded-lg transition-all duration-200 ease-in-out;
     @apply focus:outline-none focus:ring-2 focus:ring-primary/50;
     @apply disabled:opacity-50 disabled:cursor-not-allowed;
-    @apply px-4 py-2 bg-primary text-bg;
-    @apply hover:bg-primary-hover hover:shadow-glow;
+    @apply px-4 py-2 bg-primary text-on-fill;
+    @apply hover:bg-primary-light hover:shadow-glow;
     @apply active:scale-95;
   }
 
@@ -524,7 +580,7 @@
   }
 
   .quick-start-btn.active {
-    @apply bg-primary text-bg border-primary shadow-glow-sm;
+    @apply bg-primary text-on-fill border-primary shadow-glow-sm;
   }
 
   /* Modal backdrop */
@@ -701,11 +757,11 @@
   }
 
   .badge-rsa {
-    @apply bg-status-info text-bg-elevated;
+    @apply bg-status-info text-on-fill;
   }
 
   .badge-ed25519 {
-    @apply bg-primary text-bg-elevated;
+    @apply bg-primary text-on-fill;
   }
 }
 
@@ -2513,6 +2569,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
 }
 
 /* Color themes (utils/accent-themes.ts): accent everywhere, tinted backgrounds in dark mode */
+/* --color-primary-ink: the accent as text on the light theme (4.5:1, theme-contrast.test.ts). */
 [data-accent="ocean"] {
   --color-primary: #3B82F6;
   --color-primary-hover: #2563EB;
@@ -2520,6 +2577,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   --color-primary-light: #60A5FA;
   --color-primary-muted: #3B82F633;
   --color-primary-glow: #3B82F666;
+  --color-primary-ink: #1D4ED8;
 }
 [data-theme="dark"][data-accent="ocean"] {
   --color-bg: #0f1520;
@@ -2538,6 +2596,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   --color-primary-light: #A78BFA;
   --color-primary-muted: #8B5CF633;
   --color-primary-glow: #8B5CF666;
+  --color-primary-ink: #6D28D9;
 }
 [data-theme="dark"][data-accent="violet"] {
   --color-bg: #15111f;
@@ -2556,6 +2615,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   --color-primary-light: #FB923C;
   --color-primary-muted: #F9731633;
   --color-primary-glow: #F9731666;
+  --color-primary-ink: #B63500;
 }
 [data-theme="dark"][data-accent="sunset"] {
   --color-bg: #1a120d;
@@ -2574,6 +2634,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   --color-primary-light: #F472B6;
   --color-primary-muted: #EC489933;
   --color-primary-glow: #EC489966;
+  --color-primary-ink: #BB135B;
 }
 [data-theme="dark"][data-accent="rose"] {
   --color-bg: #1a0f15;
@@ -2592,6 +2653,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   --color-primary-light: #67E8F9;
   --color-primary-muted: #22D3EE33;
   --color-primary-glow: #22D3EE66;
+  --color-primary-ink: #07718D;
 }
 [data-theme="dark"][data-accent="cyber"] {
   --color-bg: #071016;
@@ -2610,6 +2672,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   --color-primary-light: #FACC15;
   --color-primary-muted: #EAB30833;
   --color-primary-glow: #EAB30866;
+  --color-primary-ink: #985A00;
 }
 [data-theme="dark"][data-accent="gold"] {
   --color-bg: #16130a;
@@ -2628,6 +2691,7 @@ body.initial-session-load .session-flex-responsive > session-card:nth-child(n + 
   --color-primary-light: #E8977B;
   --color-primary-muted: #D9775733;
   --color-primary-glow: #D9775766;
+  --color-primary-ink: #A04A2D;
 }
 [data-theme="dark"][data-accent="clay"] {
   --color-bg: #1b1512;

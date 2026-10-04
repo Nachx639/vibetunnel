@@ -216,7 +216,7 @@ export class SSHKeyManager extends LitElement {
           ${
             this.error
               ? html`
-                <div class="bg-status-error text-bg px-4 py-2 rounded mb-4 font-mono text-sm">
+                <div class="bg-status-error text-white px-4 py-2 rounded mb-4 font-mono text-sm">
                   ${this.error}
                   <button
                     @click=${() => {
@@ -235,7 +235,7 @@ export class SSHKeyManager extends LitElement {
             this.success
               ? html`
                 <div
-                  class="bg-status-success text-bg px-4 py-2 rounded mb-4 font-mono text-sm"
+                  class="bg-status-success text-on-fill px-4 py-2 rounded mb-4 font-mono text-sm"
                 >
                   ${this.success}
                   <button
@@ -505,7 +505,7 @@ ${this.sshAgent.getPublicKey(this.instructionsKeyId)}</pre
                           </button>
                           <button
                             @click=${() => this.handleRemoveKey(key.id, key.name)}
-                            class="btn-ghost text-xs text-status-error hover:bg-status-error hover:text-bg"
+                            class="btn-ghost text-xs text-status-error hover:bg-status-error hover:text-white"
                             title=${t('ssh.removeKey')}
                           >
                             🗑️

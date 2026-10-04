@@ -1,6 +1,7 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
+import { a11yBaseStyles } from '../utils/a11y-base-styles.js';
 import { reducedMotionStyles } from '../utils/reduced-motion.js';
 
 /**
@@ -18,6 +19,7 @@ export class InlineEdit extends LitElement {
 
   static override styles = [
     reducedMotionStyles,
+    a11yBaseStyles,
     css`
     :host {
       display: block;

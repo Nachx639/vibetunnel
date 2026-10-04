@@ -199,7 +199,7 @@ export class AuthLogin extends LitElement {
             this.error
               ? html`
                 <div
-                  class="bg-status-error text-bg px-3 py-1.5 rounded mb-3 font-mono text-xs sm:text-sm"
+                  class="bg-status-error text-white px-3 py-1.5 rounded mb-3 font-mono text-xs sm:text-sm"
                   data-testid="error-message"
                 >
                   ${this.error}
@@ -221,7 +221,7 @@ export class AuthLogin extends LitElement {
             this.success
               ? html`
                 <div
-                  class="bg-status-success text-bg px-3 py-1.5 rounded mb-3 font-mono text-xs sm:text-sm"
+                  class="bg-status-success text-on-fill px-3 py-1.5 rounded mb-3 font-mono text-xs sm:text-sm"
                 >
                   ${this.success}
                   <button

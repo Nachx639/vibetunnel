@@ -381,14 +381,14 @@ export class WorktreeManager extends LitElement {
                           ${
                             worktree.isMainWorktree
                               ? html`
-                            <span class="px-2 py-1 text-xs bg-primary text-bg-elevated rounded">${t('worktrees.main')}</span>
+                            <span class="px-2 py-1 text-xs bg-primary text-on-fill rounded">${t('worktrees.main')}</span>
                           `
                               : ''
                           }
                           ${
                             worktree.isCurrentWorktree
                               ? html`
-                            <span class="px-2 py-1 text-xs bg-status-success text-bg-elevated rounded">${t('worktrees.current')}</span>
+                            <span class="px-2 py-1 text-xs bg-status-success text-on-fill rounded">${t('worktrees.current')}</span>
                           `
                               : ''
                           }
@@ -436,7 +436,7 @@ export class WorktreeManager extends LitElement {
                             @click=${() => this.handleToggleFollow(worktree.branch, this.followBranch !== worktree.branch)}
                             class="px-3 py-1 text-sm font-medium ${
                               this.followBranch === worktree.branch
-                                ? 'text-bg-elevated bg-status-success hover:bg-status-success/90'
+                                ? 'text-on-fill bg-status-success hover:bg-status-success/90'
                                 : 'text-text bg-surface hover:bg-surface-hover border border-border'
                             } rounded transition-colors"
                             title=${this.followBranch === worktree.branch ? t('worktrees.disableFollow') : t('worktrees.enableFollow')}
@@ -451,7 +451,7 @@ export class WorktreeManager extends LitElement {
                             ? html`
                           <button
                             @click=${() => this.handleSwitchBranch(worktree.branch)}
-                            class="px-3 py-1 text-sm font-medium text-bg-elevated bg-primary rounded hover:bg-primary-hover transition-colors"
+                            class="px-3 py-1 text-sm font-medium text-on-fill bg-primary rounded hover:bg-primary-light transition-colors"
                           >
                             ${t('worktrees.switch')}
                           </button>
@@ -463,7 +463,7 @@ export class WorktreeManager extends LitElement {
                             ? html`
                           <button
                             @click=${() => this.handleDeleteWorktree(worktree.branch, worktree.hasUncommittedChanges || false)}
-                            class="px-3 py-1 text-sm font-medium text-bg-elevated bg-status-error rounded hover:bg-status-error/90 transition-colors"
+                            class="px-3 py-1 text-sm font-medium text-white bg-status-error rounded hover:bg-status-error/90 transition-colors"
                           >
                             ${t('worktrees.delete')}
                           </button>
@@ -486,7 +486,7 @@ export class WorktreeManager extends LitElement {
               @click=${() => {
                 this.showCreateWorktree = true;
               }}
-              class="px-4 py-2 text-sm font-medium text-bg-elevated bg-primary rounded hover:bg-primary-hover transition-colors flex items-center gap-2"
+              class="px-4 py-2 text-sm font-medium text-on-fill bg-primary rounded hover:bg-primary-light transition-colors flex items-center gap-2"
               ?disabled=${this.loading}
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -616,7 +616,7 @@ export class WorktreeManager extends LitElement {
                   </button>
                   <button
                     @click=${this.handleCreateWorktree}
-                    class="px-4 py-2 text-sm font-medium text-bg-elevated bg-primary rounded hover:bg-primary-hover transition-colors disabled:opacity-50"
+                    class="px-4 py-2 text-sm font-medium text-on-fill bg-primary rounded hover:bg-primary-light transition-colors disabled:opacity-50"
                     ?disabled=${!this.newBranchName.trim() || !!this.validateBranchName(this.newBranchName.trim()) || (this.useCustomPath && !this.newWorktreePath.trim()) || this.isCreatingWorktree}
                   >
                     ${this.isCreatingWorktree ? t('create.creating') : t('worktrees.createSubmit')}
@@ -655,7 +655,7 @@ export class WorktreeManager extends LitElement {
                 </button>
                 <button
                   @click=${this.confirmDelete}
-                  class="px-4 py-2 text-sm font-medium text-bg-elevated bg-status-error rounded hover:bg-status-error/90 transition-colors"
+                  class="px-4 py-2 text-sm font-medium text-white bg-status-error rounded hover:bg-status-error/90 transition-colors"
                 >
                   ${t('worktrees.delete')}
                 </button>

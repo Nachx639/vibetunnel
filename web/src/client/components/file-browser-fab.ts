@@ -1,12 +1,14 @@
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
+import { a11yBaseStyles } from '../utils/a11y-base-styles.js';
 import { reducedMotionStyles } from '../utils/reduced-motion.js';
 
 @customElement('file-browser-fab')
 export class FileBrowserFAB extends LitElement {
   static styles = [
     reducedMotionStyles,
+    a11yBaseStyles,
     css`
     :host {
       position: fixed;

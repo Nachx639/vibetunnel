@@ -381,7 +381,7 @@ export class SessionHeader extends LitElement {
               <div class="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                 <!-- Chat mode toggle button (always visible outside menu) -->
                 <button
-                  class="bg-bg-tertiary border border-border rounded-md w-11 h-11 p-0 md:w-auto md:h-auto md:p-2 text-primary transition-all duration-200 hover:bg-surface-hover hover:border-primary flex items-center justify-center flex-shrink-0 ${this.chatMode ? 'bg-primary text-white border-primary' : ''}"
+                  class="border rounded-md w-11 h-11 p-0 md:w-auto md:h-auto md:p-2 transition-all duration-200 hover:border-primary flex items-center justify-center flex-shrink-0 ${this.chatMode ? 'bg-primary text-on-fill border-primary' : 'bg-bg-tertiary border-border text-primary hover:bg-surface-hover'}"
                   @click=${() => this.onToggleChatMode?.()}
                   title="${this.chatMode ? t('header.switchToTerminal') : t('header.switchToChat')}"
                   aria-label="${this.chatMode ? t('header.switchToTerminal') : t('header.switchToChat')}"
@@ -438,7 +438,7 @@ export class SessionHeader extends LitElement {
 
                 <!-- Chat mode toggle button -->
                 <button
-                  class="bg-bg-tertiary border border-border rounded-md p-2 text-primary transition-all duration-200 hover:bg-surface-hover hover:border-primary flex-shrink-0 ${this.chatMode ? 'bg-primary text-white border-primary' : ''}"
+                  class="border rounded-md p-2 transition-all duration-200 hover:border-primary flex-shrink-0 ${this.chatMode ? 'bg-primary text-on-fill border-primary' : 'bg-bg-tertiary border-border text-primary hover:bg-surface-hover'}"
                   @click=${() => this.onToggleChatMode?.()}
                   title="${this.chatMode ? t('header.switchToTerminal') : t('header.switchToChat')}"
                   data-testid="chat-mode-toggle-button"

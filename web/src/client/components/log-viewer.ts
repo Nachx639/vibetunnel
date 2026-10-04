@@ -345,7 +345,7 @@ export class LogViewer extends LitElement {
                 <button
                   class="p-2 text-xs uppercase font-bold rounded transition-colors ${
                     this.autoScroll
-                      ? 'bg-primary text-bg'
+                      ? 'bg-primary text-on-fill'
                       : 'bg-bg-tertiary text-text-muted border border-border/50'
                   }"
                   @click=${() => {
@@ -732,7 +732,7 @@ export class LogViewer extends LitElement {
               ${t('logs.download')}
             </button>
             <button
-              class="px-3 py-1 bg-bg border border-status-error text-status-error rounded hover:bg-status-error hover:text-text-bright transition-colors"
+              class="px-3 py-1 bg-bg border border-status-error text-status-error rounded hover:bg-status-error hover:text-white transition-colors"
               @click=${this.clearLogs}
             >
               ${t('logs.clear')}

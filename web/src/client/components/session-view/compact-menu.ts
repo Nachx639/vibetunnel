@@ -355,7 +355,7 @@ export class CompactMenu extends LitElement {
             ).map(
               ([mode, label]) => html`
                 <button
-                  class="flex-1 px-2 py-1.5 text-xs font-mono ${this.currentTheme === mode ? 'bg-primary text-bg' : 'text-primary hover:bg-surface-hover'}"
+                  class="flex-1 px-2 py-1.5 text-xs font-mono ${this.currentTheme === mode ? 'bg-primary text-on-fill' : 'text-primary hover:bg-surface-hover'}"
                   aria-pressed=${this.currentTheme === mode ? 'true' : 'false'}
                   data-testid="compact-theme-${mode}"
                   tabindex="${this.showMenu ? '0' : '-1'}"

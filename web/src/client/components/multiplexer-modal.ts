@@ -418,7 +418,7 @@ export class MultiplexerModal extends LitElement {
                             <div class="text-center py-12 text-text-muted">
                               <h3 class="m-0 mb-2 text-text">${t('tmux.noSessions.title', { multiplexer: this.activeTab })}</h3>
                               <p>${t('tmux.noSessions.body', { multiplexer: this.activeTab })}</p>
-                              <button class="mt-4 px-6 py-3 bg-primary text-white border-none rounded-md text-sm cursor-pointer transition-colors hover:bg-primary-hover" @click=${this.createNewSession}>
+                              <button class="mt-4 px-6 py-3 bg-primary text-on-fill border-none rounded-md text-sm cursor-pointer transition-colors hover:bg-primary-light" @click=${this.createNewSession}>
                                 ${t('tmux.createSession')}
                               </button>
                             </div>
@@ -472,7 +472,7 @@ export class MultiplexerModal extends LitElement {
                                     : null
                                 }
                                 <button
-                                  class="px-3 py-1.5 bg-primary text-white border-none rounded text-xs font-medium cursor-pointer transition-colors hover:bg-primary-hover active:scale-95"
+                                  class="px-3 py-1.5 bg-primary text-on-fill border-none rounded text-xs font-medium cursor-pointer transition-colors hover:bg-primary-light active:scale-95"
                                   @click=${(e: Event) => {
                                     e.stopPropagation();
                                     this.attachToSession({
@@ -622,7 +622,7 @@ export class MultiplexerModal extends LitElement {
               ${
                 !this.loading && activeMultiplexer?.available
                   ? html`
-                    <button class="px-4 py-2 bg-primary text-white border border-primary rounded-md text-sm cursor-pointer transition-colors hover:bg-primary-hover" @click=${this.createNewSession}>
+                    <button class="px-4 py-2 bg-primary text-on-fill border border-primary rounded-md text-sm cursor-pointer transition-colors hover:bg-primary-light" @click=${this.createNewSession}>
                       ${t('actionBar.newSession')}
                     </button>
                   `

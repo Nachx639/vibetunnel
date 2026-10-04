@@ -1759,7 +1759,7 @@ export class VibeTunnelApp extends LitElement {
           ? html`
             <div class="fixed top-4 right-4" style="z-index: ${Z_INDEX.MODAL_BACKDROP};">
               <div
-                class="bg-status-error text-bg-elevated px-4 py-2 rounded shadow-lg font-mono text-sm"
+                class="bg-status-error text-white px-4 py-2 rounded shadow-lg font-mono text-sm"
               >
                 ${this.errorMessage}
                 <button
@@ -1785,7 +1785,7 @@ export class VibeTunnelApp extends LitElement {
           ? html`
             <div class="fixed top-4 right-4" style="z-index: ${Z_INDEX.MODAL_BACKDROP};">
               <div
-                class="bg-status-success text-bg-elevated px-4 py-2 rounded shadow-lg font-mono text-sm"
+                class="bg-status-success text-on-fill px-4 py-2 rounded shadow-lg font-mono text-sm"
               >
                 ${this.successMessage}
                 <button

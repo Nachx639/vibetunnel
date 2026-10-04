@@ -360,7 +360,7 @@ export class ClipboardManager extends LitElement {
                     </div>
                     
                     <button
-                      class="w-full bg-primary hover:bg-primary-hover text-primary-foreground font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 ${this.isMobile ? 'text-base' : 'text-sm'}"
+                      class="w-full bg-primary hover:bg-primary-light text-on-fill font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 ${this.isMobile ? 'text-base' : 'text-sm'}"
                       @click=${this.handlePasteCurrent}
                     >
                       <span class="text-lg">📤</span>
