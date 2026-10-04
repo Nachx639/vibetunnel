@@ -232,7 +232,15 @@ describe('finding and reading a session chat', () => {
   it('picks the newest chat started after the session, skipping older and claimed ones', () => {
     const old = new Date(Date.UTC(2025, 9, 1));
     writeChat(hashDir(projectDir), `session-${stamp(at(-3600))}-aaaaaaaa`, [], false, old);
-    const mine = writeChat(hashDir(projectDir), `session-${stamp(at(60))}-bbbbbbbb`, []);
+    // Written a minute apart: two files written back to back can share an mtime (coarse
+    // timestamps on some file systems), and then neither is the newest.
+    const mine = writeChat(
+      hashDir(projectDir),
+      `session-${stamp(at(60))}-bbbbbbbb`,
+      [],
+      false,
+      new Date(Date.now() - 60_000)
+    );
     const other = writeChat(hashDir(projectDir), `session-${stamp(at(120))}-cccccccc`, []);
     expect(findGeminiChat(geminiDir, projectDir, Date.parse(at(0)))).toBe(other);
     expect(findGeminiChat(geminiDir, projectDir, Date.parse(at(0)), new Set([other]))).toBe(mine);
