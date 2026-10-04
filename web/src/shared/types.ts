@@ -99,6 +99,24 @@ export interface SessionInfo {
   claudeSessionId?: string;
   /** Claude's conversation title, kept after the session exits. */
   claudeTitle?: string;
+  /**
+   * Shielded session: the program runs in a private tmux session and survives restarts of the
+   * VibeTunnel server, which attaches to it again on start.
+   */
+  shielded?: boolean;
+  /**
+   * How a shielded session ended: killed by the user, its program ended by itself, its tmux
+   * server went away under it (reboot, tmux killed), restoring it kept failing, or
+   * `shieldRestore` said not to restore it. Only
+   * 'tmux-lost' (and a session still marked running) can be brought back on the next start.
+   */
+  shieldEnd?: 'killed' | 'program-exit' | 'tmux-lost' | 'restore-failed' | 'not-restored';
+  /** When this shielded session was recreated after its tmux session was lost. */
+  restoredAt?: string;
+  /** Why it was recreated: found gone at start (reboot) or tmux died while running. */
+  restoredFrom?: 'reboot' | 'tmux-lost';
+  /** Times (epoch ms) of recent automatic restores, to stop restore loops. */
+  shieldRestores?: number[];
 }
 
 /**
@@ -185,6 +203,8 @@ export interface SessionCreateOptions {
   gitHasChanges?: boolean;
   gitIsWorktree?: boolean;
   gitMainRepoPath?: string;
+  /** Run the program in a shielded (tmux-backed) session that survives server restarts. */
+  shielded?: boolean;
 }
 
 /**

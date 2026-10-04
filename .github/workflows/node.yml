@@ -37,7 +37,8 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libpam0g-dev
+        # tmux: the shielded-session tests run a private tmux server (skipped without it)
+        sudo apt-get install -y libpam0g-dev tmux
 
     - name: Setup Rust
       run: |

@@ -8,6 +8,7 @@ import {
   type VibeTunnelConfig,
 } from '../../types/config.js';
 import type { ConfigService } from '../services/config-service.js';
+import { type ShieldRestoreMode, shieldRestoreMode } from '../services/shielded-tmux.js';
 import { agentChatEnabled } from '../utils/agent-chat.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -39,11 +40,18 @@ export interface AppConfig {
   quickStartCommands?: QuickStartCommand[];
   /** Phone chat view of agent conversations (config.json `agentChat` or VIBETUNNEL_AGENT_CHAT). */
   agentChat: boolean;
+  /** New web/phone sessions are shielded (config.json `shieldNewSessions`, off when missing). */
+  shieldNewSessions: boolean;
+  /** What a start does with shielded sessions lost to a reboot (`shieldRestore`, 'off'). */
+  shieldRestore: ShieldRestoreMode;
+  /** tmux is installed on the server, so sessions can be shielded at all. */
+  shieldAvailable: boolean;
   notificationPreferences?: NotificationPreferences;
 }
 
 interface ConfigRouteOptions {
   configService: ConfigService;
+  isShieldAvailable?: () => boolean;
 }
 
 /**
@@ -68,6 +76,9 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         serverConfigured: true, // Always configured when server is running
         quickStartCommands: vibeTunnelConfig.quickStartCommands,
         agentChat: agentChatEnabled(vibeTunnelConfig),
+        shieldNewSessions: vibeTunnelConfig.shieldNewSessions === true,
+        shieldRestore: shieldRestoreMode(vibeTunnelConfig.shieldRestore),
+        shieldAvailable: options.isShieldAvailable?.() ?? false,
         notificationPreferences: configService.getNotificationPreferences(),
       };
 
@@ -85,7 +96,13 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
    */
   router.put('/config', (req, res) => {
     try {
-      const { quickStartCommands, repositoryBasePath, notificationPreferences } = req.body;
+      const {
+        quickStartCommands,
+        repositoryBasePath,
+        notificationPreferences,
+        shieldNewSessions,
+        shieldRestore,
+      } = req.body;
       const updates: { [key: string]: unknown } = {};
       let validatedCommands: QuickStartCommand[] | undefined;
       let validatedPath: string | undefined;
@@ -143,9 +160,22 @@ export function createConfigRoutes(options: ConfigRouteOptions): Router {
         }
       }
 
+      if (typeof shieldNewSessions === 'boolean') {
+        updates.shieldNewSessions = shieldNewSessions;
+      }
+      if (shieldRestore === 'off' || shieldRestore === 'agents' || shieldRestore === 'all') {
+        updates.shieldRestore = shieldRestore;
+      }
+
       if (Object.keys(updates).length > 0) {
         const currentConfig = configService.getConfig();
         const updatedConfig: VibeTunnelConfig = { ...currentConfig };
+        if (typeof updates.shieldNewSessions === 'boolean') {
+          updatedConfig.shieldNewSessions = updates.shieldNewSessions;
+        }
+        if (updates.shieldRestore) {
+          updatedConfig.shieldRestore = updates.shieldRestore as ShieldRestoreMode;
+        }
 
         if (validatedCommands) {
           updatedConfig.quickStartCommands = validatedCommands;

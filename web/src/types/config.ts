@@ -35,6 +35,17 @@ export interface VibeTunnelConfig {
    * VIBETUNNEL_AGENT_CHAT=1|0 overrides it.
    */
   agentChat?: boolean;
+  /**
+   * New web/phone sessions run shielded (in a private tmux server, surviving server restarts).
+   * Off when missing; a request's `shielded` still decides for itself.
+   */
+  shieldNewSessions?: boolean;
+  /**
+   * After a reboot, shielded sessions that were still running are: 'off' (default) marked
+   * exited, nothing runs; 'agents' Claude Code conversations resumed; 'all' also every other
+   * command started again. Permission-bypass flags are never carried over.
+   */
+  shieldRestore?: 'off' | 'agents' | 'all';
 
   // Extended configuration sections - matches Mac ConfigManager
   server?: {

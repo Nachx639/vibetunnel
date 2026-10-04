@@ -33,7 +33,7 @@ import { createTmuxRoutes } from './routes/tmux.js';
 import { createWorktreeRoutes } from './routes/worktrees.js';
 import { AuthService } from './services/auth-service.js';
 import { CastOutputHub } from './services/cast-output-hub.js';
-import { ClaudeStatusNotifier } from './services/claude-status-notifier.js';
+import { ClaudeStatusNotifier, watchedSessions } from './services/claude-status-notifier.js';
 import { CloudflareService } from './services/cloudflare-service.js';
 import { ConfigService } from './services/config-service.js';
 import { ControlDirWatcher } from './services/control-dir-watcher.js';
@@ -44,6 +44,8 @@ import { NgrokService } from './services/ngrok-service.js';
 import { PushNotificationService } from './services/push-notification-service.js';
 import { RemoteRegistry } from './services/remote-registry.js';
 import { SessionMonitor } from './services/session-monitor.js';
+import { shieldRestoreMode } from './services/shielded-tmux.js';
+import { isShuttingDown, setShuttingDown } from './services/shutdown-state.js';
 import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { LARGE_REPLAY_MAX_BYTES, TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
@@ -93,16 +95,9 @@ const globalTunnelState = global as typeof global & GlobalTunnelState;
 
 const logger = createLogger('server');
 
-// Global shutdown state management
-let shuttingDown = false;
-
-export function isShuttingDown(): boolean {
-  return shuttingDown;
-}
-
-export function setShuttingDown(value: boolean): void {
-  shuttingDown = value;
-}
+// One shutdown flag for the whole server (services/shutdown-state.ts): the PTY manager reads
+// it to leave shielded sessions running (and record nothing) while the server goes down.
+export { isShuttingDown, setShuttingDown };
 
 interface Config {
   port: number | null;
@@ -597,10 +592,21 @@ export async function createApp(): Promise<AppInstance> {
     logger.debug(`Using existing control directory: ${CONTROL_DIR}`);
   }
 
+  // Initialize configuration service (the PTY manager reads `shieldRestore` from it on start)
+  const configService = new ConfigService();
+  configService.startWatching();
+  logger.debug('Initialized configuration service');
+
   // Initialize PTY manager with fallback support
   await PtyManager.initialize();
-  const ptyManager = new PtyManager(CONTROL_DIR);
+  const ptyManager = new PtyManager(CONTROL_DIR, {
+    shieldRestoreMode: () => shieldRestoreMode(configService.getConfig().shieldRestore),
+  });
   logger.debug('Initialized PTY manager');
+
+  // Shielded sessions kept running in tmux while the server was down: attach to them again
+  // before any cleanup looks at their (dead) client pid.
+  await ptyManager.reattachShieldedSessions();
 
   // Clean up sessions from old VibeTunnel versions
   const sessionManager = ptyManager.getSessionManager();
@@ -635,11 +641,6 @@ export async function createApp(): Promise<AppInstance> {
   // Set the session monitor on PTY manager for data tracking
   ptyManager.setSessionMonitor(sessionMonitor);
   logger.debug('Initialized session monitor');
-
-  // Initialize configuration service
-  const configService = new ConfigService();
-  configService.startWatching();
-  logger.debug('Initialized configuration service');
 
   // Initialize push notification services
   let vapidManager: VapidManager | null = null;
@@ -679,13 +680,8 @@ export async function createApp(): Promise<AppInstance> {
   if (pushNotificationService) {
     const pushService = pushNotificationService;
     const claudeNotifier = new ClaudeStatusNotifier(
-      () =>
-        ptyManager.listSessions().map((session) => ({
-          id: session.id,
-          name: session.name,
-          pid: session.pid,
-          status: session.status,
-        })),
+      // A shielded session's pid is its tmux client: Claude runs under the program in tmux.
+      () => watchedSessions(ptyManager),
       (payload) => {
         logger.log(`Claude status push: ${payload.type} for session ${payload.data?.sessionId}`);
         pushService.sendNotification(payload).catch((error) => {
@@ -708,6 +704,7 @@ export async function createApp(): Promise<AppInstance> {
       },
       {
         log: (message) => logger.log(message),
+        refreshPids: () => ptyManager.refreshProgramPids(),
         enabled: () => {
           const preferences = configService.getNotificationPreferences();
           return preferences.enabled === true && preferences.agentStatus === true;
@@ -1208,6 +1205,8 @@ export async function createApp(): Promise<AppInstance> {
       remoteRegistry,
       isHQMode: config.isHQMode,
       agentChatEnabled: () => agentChatEnabled(configService.getConfig()),
+      // Off unless config.json (Settings) has "shieldNewSessions": true.
+      shieldNewSessionsByDefault: () => configService.getConfig().shieldNewSessions === true,
     })
   );
   logger.debug('Mounted session routes');
@@ -1242,6 +1241,7 @@ export async function createApp(): Promise<AppInstance> {
     '/api',
     createConfigRoutes({
       configService,
+      isShieldAvailable: () => ptyManager.isShieldAvailable(),
     })
   );
   logger.debug('Mounted config routes');

@@ -17,6 +17,31 @@ export interface WatchedSession {
   status: string;
 }
 
+/** A session as the PTY manager lists it, and how it finds the program running in one. */
+export interface WatchedSessionSource {
+  listSessions(): Array<{
+    id: string;
+    name: string;
+    pid?: number;
+    status: string;
+    shielded?: boolean;
+  }>;
+  programRootPid(session: { id: string; pid?: number; shielded?: boolean }): number | undefined;
+}
+
+/**
+ * The sessions to watch, each with the pid its agent runs under: the program inside tmux for
+ * a shielded session (its own pid is tmux's client there, with no Claude under it).
+ */
+export function watchedSessions(source: WatchedSessionSource): WatchedSession[] {
+  return source.listSessions().map((session) => ({
+    id: session.id,
+    name: session.name,
+    pid: source.programRootPid(session),
+    status: session.status,
+  }));
+}
+
 type Notify = (payload: NotificationPayload) => void;
 
 /** Busy only because background agents or tasks run: the reply is over. */
@@ -39,6 +64,12 @@ export interface ClaudeStatusNotifierOptions {
    * and what was seen is forgotten, so turning it on again starts from a first sighting.
    */
   enabled?: () => boolean;
+  /**
+   * Awaited before each look: brings the pids `listSessions` answers up to date (a shielded
+   * session's program runs inside tmux, see PtyManager.refreshProgramPids). A failure is
+   * reported and the look goes on.
+   */
+  refreshPids?: () => Promise<void>;
 }
 
 /**
@@ -108,6 +139,7 @@ export class ClaudeStatusNotifier {
     }
     this.ticking = true;
     try {
+      await this.options.refreshPids?.().catch((error) => this.onError?.(error));
       const sessions = this.listSessions().filter((s) => s.status === 'running' && s.pid);
       if (sessions.length === 0) {
         this.last.clear();

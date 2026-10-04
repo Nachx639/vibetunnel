@@ -37,6 +37,7 @@ function setup(
   const sendInput = vi.fn();
   const ptyManager = {
     getSession: vi.fn(() => ({ id: 's1', pid: 42, status: 'running', ...session })),
+    programRootPid: (current: { pid?: number }) => current.pid,
     sendInput,
   };
   const terminalManager = {

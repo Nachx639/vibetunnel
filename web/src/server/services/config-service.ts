@@ -25,6 +25,8 @@ const ConfigSchema = z.object({
   ),
   repositoryBasePath: z.string().optional(),
   agentChat: z.boolean().optional(),
+  shieldNewSessions: z.boolean().optional(),
+  shieldRestore: z.enum(['off', 'agents', 'all']).optional(),
   // Extended configuration sections - we parse but don't use most of these yet
   server: z
     .object({

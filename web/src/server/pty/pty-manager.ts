@@ -11,6 +11,7 @@ import { EventEmitter, once } from 'events';
 import * as fs from 'fs';
 import * as net from 'net';
 import type { IPty, IPtyForkOptions } from 'node-pty';
+import * as os from 'os';
 import * as path from 'path';
 
 // Import node-pty with fallback support
@@ -29,6 +30,19 @@ import type {
 import { TitleMode } from '../../shared/types.js';
 import { ProcessTreeAnalyzer } from '../services/process-tree-analyzer.js';
 import type { SessionMonitor } from '../services/session-monitor.js';
+import {
+  lastCastSize,
+  recentShieldRestores,
+  SHIELD_RESTORE_GRACE_MS,
+  SHIELD_RESTORED_BANNER,
+  type ShieldRestoreMode,
+  ShieldTmux,
+  shieldClientEndReason,
+  shieldRestorePlan,
+  shieldStartupAction,
+  tmuxEnv,
+} from '../services/shielded-tmux.js';
+import { isShuttingDown } from '../services/shutdown-state.js';
 import { TitleSequenceFilter } from '../utils/ansi-title-filter.js';
 import { createLogger } from '../utils/logger.js';
 import {
@@ -44,6 +58,7 @@ import { AsciinemaWriter } from './asciinema-writer.js';
 import { FishHandler } from './fish-handler.js';
 import { ProcessUtils } from './process-utils.js';
 import { SessionManager } from './session-manager.js';
+import { ShieldProgramPids } from './shield-program-pids.js';
 import {
   type ControlCommand,
   frameMessage,
@@ -148,9 +163,21 @@ export class PtyManager extends EventEmitter {
     }
   >();
 
-  constructor(controlPath?: string) {
+  private shieldTmux: ShieldTmux;
+  /** pid of the program inside each shielded session (the session's pid is the tmux client). */
+  private shieldProgramPids: ShieldProgramPids;
+  /** What a start does with shielded sessions lost to a reboot (config.json `shieldRestore`). */
+  private shieldRestoreMode: () => ShieldRestoreMode;
+
+  constructor(controlPath?: string, options: { shieldRestoreMode?: () => ShieldRestoreMode } = {}) {
     super();
     this.sessionManager = new SessionManager(controlPath);
+    this.shieldTmux = new ShieldTmux(this.sessionManager.getControlPath());
+    this.shieldProgramPids = new ShieldProgramPids(
+      (sessionId) => this.shieldTmux.panePid(sessionId),
+      (pid) => ProcessUtils.isProcessRunning(pid)
+    );
+    this.shieldRestoreMode = options.shieldRestoreMode ?? (() => 'off');
     this.processTreeAnalyzer = new ProcessTreeAnalyzer();
     this.setupTerminalResizeDetection();
 
@@ -365,7 +392,15 @@ export class PtyManager extends EventEmitter {
         gitIsWorktree: options.gitIsWorktree,
         gitMainRepoPath: options.gitMainRepoPath,
         attachedViaVT,
+        ...(options.shielded ? { shielded: true } : {}),
       };
+
+      if (options.shielded && !this.shieldTmux.isAvailable()) {
+        throw new PtyError(
+          'Shielded sessions need tmux, which is not installed',
+          'SHIELD_UNAVAILABLE'
+        );
+      }
 
       // Save initial session info
       this.sessionManager.saveSessionInfo(sessionId, sessionInfo);
@@ -436,7 +471,27 @@ export class PtyManager extends EventEmitter {
           spawnOptions.rows = rows;
         }
 
-        ptyProcess = pty.spawn(finalCommand, finalArgs, spawnOptions);
+        if (options.shielded) {
+          // The program runs in the shield tmux server; this PTY is only a client attached to it.
+          await this.shieldTmux.create({
+            sessionId,
+            command: resolvedCommand,
+            cwd: workingDir,
+            cols,
+            rows,
+            env: tmuxEnv(ptyEnv),
+          });
+          const programPid = await this.shieldTmux.panePid(sessionId);
+          if (programPid) this.shieldProgramPids.set(sessionId, programPid);
+          const attach = this.shieldTmux.attachCommand(sessionId);
+          // A server started from inside tmux must not hand its $TMUX to the client.
+          ptyProcess = pty.spawn(attach.command, attach.args, {
+            ...spawnOptions,
+            env: tmuxEnv(ptyEnv),
+          });
+        } else {
+          ptyProcess = pty.spawn(finalCommand, finalArgs, spawnOptions);
+        }
 
         // Add immediate exit handler to catch CI issues
         const exitHandler = (event: { exitCode: number; signal?: number }) => {
@@ -580,6 +635,7 @@ export class PtyManager extends EventEmitter {
       };
     } catch (error) {
       // Cleanup on failure
+      if (options.shielded) await this.shieldTmux.kill(sessionId);
       try {
         this.sessionManager.cleanupSession(sessionId);
       } catch (cleanupError) {
@@ -650,6 +706,9 @@ export class PtyManager extends EventEmitter {
 
       // Track output activity for active/idle detection
       session.lastOutputTimestamp = Date.now();
+      if (session.sessionInfo.shielded) {
+        session.shieldOutputTail = ((session.shieldOutputTail ?? '') + data).slice(-256);
+      }
 
       // If title mode is not NONE, filter out any title sequences the process might
       // have written to the stream.
@@ -690,6 +749,54 @@ export class PtyManager extends EventEmitter {
     // Handle PTY exit
     ptyProcess.onExit(async ({ exitCode, signal }: { exitCode: number; signal?: number }) => {
       try {
+        if (session.sessionInfo.shielded && !session.shieldKilling) {
+          // Only the tmux client ended. While the server shuts down the program keeps running
+          // and the next start attaches again: record nothing.
+          if (isShuttingDown()) return;
+          const tmuxAlive = await this.shieldTmux.has(session.id);
+          const current = this.sessions.get(session.id) === session;
+          if (tmuxAlive && current) {
+            this.cleanupSessionResources(session);
+            this.sessions.delete(session.id);
+            if (asciinemaWriter?.isOpen()) await asciinemaWriter.close().catch(() => {});
+            const now = Date.now();
+            const recent = (session.shieldReattachTimes ?? []).filter((t) => now - t < 60_000);
+            if (recent.length < 5) {
+              logger.warn(`tmux client of shielded session ${session.id} ended; attaching again`);
+              await this.reattachShieldedSession(session.id, [...recent, now]);
+              return;
+            }
+            logger.error(`shielded session ${session.id}: tmux client keeps exiting, giving up`);
+          } else if (
+            !tmuxAlive &&
+            current &&
+            shieldClientEndReason(session.shieldOutputTail ?? '') === 'server-lost'
+          ) {
+            // The tmux server went away under a running program (shutdown, tmux killed). If
+            // this server is going down too, record nothing: the next start decides. Otherwise
+            // decide now (see restoreOrFinishShieldedSession).
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            if (isShuttingDown()) return;
+            this.cleanupSessionResources(session);
+            this.sessions.delete(session.id);
+            if (asciinemaWriter?.isOpen()) await asciinemaWriter.close().catch(() => {});
+            this.patchSessionInfo(session.id, { shieldEnd: 'tmux-lost' });
+            logger.warn(`tmux server of shielded session ${session.id} went away`);
+            await this.restoreOrFinishShieldedSession(session.id, 'tmux-lost');
+            return;
+          } else if (!tmuxAlive) {
+            // The program ended by itself: never revived. A restored program that dies right
+            // away counts as a failed restore.
+            const restoredAt = Date.parse(session.sessionInfo.restoredAt ?? '');
+            this.patchSessionInfo(session.id, {
+              shieldEnd:
+                Number.isFinite(restoredAt) && Date.now() - restoredAt < SHIELD_RESTORE_GRACE_MS
+                  ? 'restore-failed'
+                  : 'program-exit',
+            });
+            void this.shieldTmux.releaseIfIdle().catch(() => {});
+          }
+        }
         // Mark session as exiting to prevent false bell notifications
         this.sessionExitTimes.set(session.id, Date.now());
         // Write exit event to asciinema
@@ -1476,6 +1583,25 @@ export class PtyManager extends EventEmitter {
     const memorySession = this.sessions.get(sessionId);
 
     try {
+      // A shielded session's program lives in tmux: end it there (the attach client then exits
+      // and the normal exit path records the session as exited).
+      const info = memorySession?.sessionInfo ?? this.sessionManager.loadSessionInfo(sessionId);
+      if (info?.shielded) {
+        if (memorySession) memorySession.shieldKilling = true;
+        // Killed on purpose: never brought back after a reboot.
+        this.patchSessionInfo(sessionId, { shieldEnd: 'killed' });
+        await this.shieldTmux.kill(sessionId);
+        if (!memorySession?.ptyProcess) {
+          this.sessionManager.updateSessionStatus(sessionId, 'exited', undefined, 0);
+          this.emit('sessionExited', sessionId, info.name || info.command.join(' '), 0);
+          return;
+        }
+        for (let i = 0; i < 20 && this.sessions.get(sessionId) === memorySession; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        if (this.sessions.get(sessionId) !== memorySession) return;
+      }
+
       // Special handling for tmux attachment sessions
       if (memorySession?.isTmuxAttachment) {
         const detached = await this.detachFromTmux(sessionId);
@@ -1858,6 +1984,284 @@ export class PtyManager extends EventEmitter {
       }
     }
     this.resizeEventListeners.length = 0;
+  }
+
+  /**
+   * Server start: attach again to every shielded session whose tmux session survived, under
+   * the same id (phones reconnect on their own). Shielded sessions whose tmux session is gone
+   * while they were still running (a reboot, tmux killed) are handled by
+   * restoreOrFinishShieldedSession; ones the user killed or whose program ended stay exited.
+   * Runs before any cleanup so none of them is discarded.
+   */
+  async reattachShieldedSessions(): Promise<{
+    reattached: string[];
+    restored: string[];
+    finished: string[];
+  }> {
+    const reattached: string[] = [];
+    const restored: string[] = [];
+    const finished: string[] = [];
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(this.sessionManager.getControlPath(), { withFileTypes: true });
+    } catch {
+      return { reattached, restored, finished };
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || this.sessions.has(entry.name)) continue;
+      const info = this.sessionManager.loadSessionInfo(entry.name);
+      if (!info?.shielded) continue;
+      const action = shieldStartupAction(info, await this.shieldTmux.has(entry.name));
+      if (action === 'reattach') {
+        if (await this.reattachShieldedSession(entry.name)) reattached.push(entry.name);
+      } else if (action === 'restore' || action === 'give-up') {
+        if (await this.restoreOrFinishShieldedSession(entry.name, 'reboot')) {
+          restored.push(entry.name);
+        } else {
+          finished.push(entry.name);
+        }
+      } else if (action === 'mark-exited') {
+        this.sessionManager.updateSessionStatus(entry.name, 'exited', undefined, 0);
+        finished.push(entry.name);
+      }
+    }
+    if (reattached.length || restored.length || finished.length) {
+      logger.log(
+        chalk.green(
+          `shielded sessions: ${reattached.length} re-attached, ${restored.length} restored, ${finished.length} finished`
+        )
+      );
+    }
+    return { reattached, restored, finished };
+  }
+
+  /** Finish a lost shielded session for good, recording why. */
+  private finishLostShieldedSession(
+    sessionId: string,
+    reason: string,
+    end: 'restore-failed' | 'not-restored' = 'restore-failed'
+  ): void {
+    if (end === 'restore-failed')
+      logger.error(`shielded session ${sessionId} not restored: ${reason}`);
+    else logger.log(`shielded session ${sessionId} not restored: ${reason}`);
+    this.patchSessionInfo(sessionId, { shieldEnd: end });
+    try {
+      this.sessionManager.updateSessionStatus(
+        sessionId,
+        'exited',
+        undefined,
+        end === 'restore-failed' ? 1 : 0
+      );
+    } catch {
+      // session.json is gone.
+    }
+  }
+
+  /**
+   * A shielded session whose tmux session is gone while it was running. With `shieldRestore`
+   * 'off' (the default) it is marked exited and nothing runs. Otherwise it is recreated under
+   * the same id, name, folder and size, as shieldRestorePlan says (Claude resumes its
+   * conversation; under 'all' anything else starts again). The old output stays in the cast,
+   * followed by a "restored" line. Returns false (and marks the session exited) when nothing is
+   * restored: the setting, the loop guard, or a failed restore.
+   */
+  async restoreOrFinishShieldedSession(
+    sessionId: string,
+    from: 'reboot' | 'tmux-lost'
+  ): Promise<boolean> {
+    const info = this.sessionManager.loadSessionInfo(sessionId);
+    const paths = this.sessionManager.getSessionPaths(sessionId);
+    if (!info || !paths) return false;
+    const plan = shieldRestorePlan(info, this.shieldRestoreMode());
+    if (!plan) {
+      this.finishLostShieldedSession(
+        sessionId,
+        `its tmux session is gone (${from}); shieldRestore does not restore it`,
+        'not-restored'
+      );
+      return false;
+    }
+    const now = Date.now();
+    const action = shieldStartupAction({ ...info, shieldEnd: 'tmux-lost' }, false, now);
+    if (action === 'give-up') {
+      this.finishLostShieldedSession(sessionId, 'restored too many times in the last hour');
+      return false;
+    }
+    if (!this.shieldTmux.isAvailable()) {
+      this.finishLostShieldedSession(sessionId, 'tmux is not installed');
+      return false;
+    }
+
+    const cwd = fs.existsSync(info.workingDir) ? info.workingDir : os.homedir();
+    const size = lastCastSize(paths.stdoutPath) ?? {
+      cols: info.initialCols ?? 120,
+      rows: info.initialRows ?? 30,
+    };
+    const restores = [...recentShieldRestores(info, now), now];
+    try {
+      const resolved = ProcessUtils.resolveCommand(plan.command);
+      await this.shieldTmux.create({
+        sessionId,
+        command: [resolved.command, ...resolved.args],
+        cwd,
+        cols: size.cols,
+        rows: size.rows,
+        env: tmuxEnv({ ...process.env, TERM: this.defaultTerm, VIBETUNNEL_SESSION_ID: sessionId }),
+      });
+    } catch (error) {
+      this.patchSessionInfo(sessionId, { shieldRestores: restores });
+      this.finishLostShieldedSession(
+        sessionId,
+        `cannot start ${plan.command.join(' ')}: ${error instanceof Error ? error.message : error}`
+      );
+      return false;
+    }
+    this.patchSessionInfo(sessionId, {
+      status: 'running',
+      exitCode: undefined,
+      shieldEnd: undefined,
+      restoredAt: new Date(now).toISOString(),
+      restoredFrom: from,
+      shieldRestores: restores,
+    });
+    logger.log(
+      chalk.green(
+        `restored shielded session ${sessionId} (${plan.kind}): ${plan.command.join(' ')} in ${cwd}`
+      )
+    );
+    if (await this.reattachShieldedSession(sessionId, [], SHIELD_RESTORED_BANNER)) return true;
+    await this.shieldTmux.kill(sessionId);
+    this.finishLostShieldedSession(sessionId, 'cannot attach to the recreated tmux session');
+    return false;
+  }
+
+  /** Merge fields into a session's session.json (and its in-memory copy). */
+  private patchSessionInfo(sessionId: string, patch: Partial<SessionInfo>): void {
+    try {
+      const info = this.sessionManager.loadSessionInfo(sessionId);
+      if (!info) return;
+      Object.assign(info, patch);
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === undefined) delete (info as unknown as Record<string, unknown>)[key];
+      }
+      this.sessionManager.saveSessionInfo(sessionId, info);
+      const memory = this.sessions.get(sessionId);
+      if (memory) Object.assign(memory.sessionInfo, patch);
+    } catch (error) {
+      logger.warn(`cannot update session.json of ${sessionId}:`, error);
+    }
+  }
+
+  /** Attach a new tmux client PTY to a live shielded session, keeping its id and cast file. */
+  async reattachShieldedSession(
+    sessionId: string,
+    reattachTimes: number[] = [],
+    banner?: string
+  ): Promise<boolean> {
+    const info = this.sessionManager.loadSessionInfo(sessionId);
+    const paths = this.sessionManager.getSessionPaths(sessionId);
+    if (!info || !paths) return false;
+    const size = (await this.shieldTmux.windowSize(sessionId)) ?? {
+      cols: info.initialCols ?? 120,
+      rows: info.initialRows ?? 30,
+    };
+    const programPid = await this.shieldTmux.panePid(sessionId);
+    if (programPid) this.shieldProgramPids.set(sessionId, programPid);
+    const asciinemaWriter = AsciinemaWriter.resume(paths.stdoutPath, size.cols, size.rows);
+    if (banner) {
+      // Recreated session: say so in the history, after the output from before the restart.
+      asciinemaWriter.writeOutput(Buffer.from(banner));
+      asciinemaWriter.writeMarker('VibeTunnel: session restored');
+    }
+    // tmux repaints the screen when a client attaches: that clear must not hide the output
+    // from before the restart when clients replay the cast.
+    const attachedAt = Date.now();
+    asciinemaWriter.onPruningSequence(({ position }) => {
+      if (Date.now() - attachedAt < 3000) return;
+      const current = this.sessionManager.loadSessionInfo(sessionId);
+      if (!current) return;
+      current.lastClearOffset = position;
+      this.sessionManager.saveSessionInfo(sessionId, current);
+    });
+
+    let ptyProcess: IPty;
+    try {
+      const attach = this.shieldTmux.attachCommand(sessionId);
+      ptyProcess = pty.spawn(attach.command, attach.args, {
+        name: this.defaultTerm,
+        cwd: fs.existsSync(info.workingDir) ? info.workingDir : process.cwd(),
+        env: tmuxEnv({ ...process.env, TERM: this.defaultTerm, VIBETUNNEL_SESSION_ID: sessionId }),
+        cols: size.cols,
+        rows: size.rows,
+      });
+    } catch (error) {
+      logger.error(`cannot attach to shielded session ${sessionId}:`, error);
+      await asciinemaWriter.close().catch(() => {});
+      return false;
+    }
+
+    const sessionInfo: SessionInfo = {
+      ...info,
+      status: 'running',
+      pid: ptyProcess.pid,
+      exitCode: undefined,
+    };
+    const session: PtySession = {
+      id: sessionId,
+      sessionInfo,
+      ptyProcess,
+      asciinemaWriter,
+      controlDir: paths.controlDir,
+      stdoutPath: paths.stdoutPath,
+      stdinPath: paths.stdinPath,
+      sessionJsonPath: paths.sessionJsonPath,
+      startTime: new Date(),
+      titleMode: TitleMode.NONE,
+      isExternalTerminal: false,
+      currentWorkingDir: info.workingDir,
+      titleFilter: new TitleSequenceFilter(),
+      isTmuxAttachment: false,
+      shieldReattachTimes: reattachTimes,
+    };
+    this.sessions.set(sessionId, session);
+    this.sessionManager.saveSessionInfo(sessionId, sessionInfo);
+    this.setupPtyHandlers(session, false);
+    this.startForegroundProcessTracking(session);
+    logger.log(
+      chalk.green(`re-attached shielded session ${sessionId} (client PID: ${ptyProcess.pid})`)
+    );
+    return true;
+  }
+
+  /**
+   * Re-read the program pid of running shielded sessions whose stored one died (a respawned
+   * pane), and of all of them now and then. Cheap: no tmux call while the stored pids live.
+   * The Claude status notifier awaits it before each look.
+   */
+  async refreshProgramPids(): Promise<void> {
+    const shielded = [...this.sessions.values()]
+      .filter((session) => session.sessionInfo.shielded && session.sessionInfo.status === 'running')
+      .map((session) => session.id);
+    for (const { sessionId, from, to } of await this.shieldProgramPids.refresh(shielded)) {
+      logger.log(`shielded session ${sessionId}: program pid ${from ?? 'unknown'} → ${to}`);
+    }
+  }
+
+  /**
+   * Root of a session's process tree for detecting what runs in it (Claude): the program
+   * inside tmux for a shielded session, else the session's own pid.
+   */
+  programRootPid(session: Pick<SessionInfo, 'id' | 'pid' | 'shielded'>): number | undefined {
+    return (session.shielded && this.shieldProgramPids.get(session.id)) || session.pid;
+  }
+
+  /** pid of the program inside a shielded session (diagnostics and tests). */
+  async shieldedProgramPid(sessionId: string): Promise<number | null> {
+    return this.shieldTmux.panePid(sessionId);
+  }
+
+  isShieldAvailable(): boolean {
+    return this.shieldTmux.isAvailable();
   }
 
   /**

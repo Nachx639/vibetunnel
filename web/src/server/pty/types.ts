@@ -108,6 +108,12 @@ export interface PtySession {
   processPollingInterval?: NodeJS.Timeout; // Interval for checking process state
   // Tmux attachment tracking
   isTmuxAttachment?: boolean; // True if this session is attached to tmux
+  // Shielded sessions: killSession is ending the tmux session (the client exit is final)
+  shieldKilling?: boolean;
+  // When the tmux client of this shielded session was re-attached (loop guard)
+  shieldReattachTimes?: number[];
+  /** Last output of a shielded session's tmux client: tells a program exit from a lost tmux. */
+  shieldOutputTail?: string;
 }
 
 export class PtyError extends Error {

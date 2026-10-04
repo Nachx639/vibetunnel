@@ -25,7 +25,10 @@ const running = {
 
 function chatRoute(options: { enabled?: () => boolean; session?: unknown }): Handler {
   const router = createSessionRoutes({
-    ptyManager: { getSession: vi.fn(() => options.session) } as never,
+    ptyManager: {
+      getSession: vi.fn(() => options.session),
+      programRootPid: (session: { pid?: number }) => session.pid,
+    } as never,
     terminalManager: {} as never,
     remoteRegistry: null,
     isHQMode: false,
@@ -85,7 +88,10 @@ describe('GET /sessions/:sessionId/claude-chat', () => {
   it("serves the session's conversation with a fingerprint, then leaves an unchanged list out", async () => {
     const handler = chatRoute({ enabled: () => true, session: running });
     const first = await call(handler);
-    expect(readSessionChat).toHaveBeenCalledWith(expect.objectContaining({ id: 's1', pid: 4242 }));
+    expect(readSessionChat).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 's1', pid: 4242 }),
+      4242
+    );
     const answer = first.json.mock.calls[0][0] as { messagesVersion: string; messages: unknown[] };
     expect(answer.messages).toEqual(chat.messages);
 

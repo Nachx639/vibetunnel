@@ -9,6 +9,7 @@ import {
   sameMenuKey,
   takesReply,
 } from '../../shared/claude-screen.js';
+import { isForwardedSession } from '../../shared/forwarded-session.js';
 import { cellsToText } from '../../shared/terminal-text-formatter.js';
 import type { ServerStatus, Session, TitleMode } from '../../shared/types.js';
 import { HttpMethod } from '../../shared/types.js';
@@ -24,6 +25,7 @@ import type { RemoteRegistry } from '../services/remote-registry.js';
 import { createScreenMenu } from '../services/screen-menu.js';
 import { chatAnswer, readSessionChat } from '../services/session-chat.js';
 import { createLastLineReader } from '../services/session-last-line.js';
+import { shieldReopenPlan } from '../services/shielded-tmux.js';
 import { tailscaleServeService } from '../services/tailscale-serve-service.js';
 import { LARGE_REPLAY_MAX_BYTES, type TerminalManager } from '../services/terminal-manager.js';
 import { detectGitInfo } from '../utils/git-info.js';
@@ -42,6 +44,8 @@ interface SessionRoutesConfig {
   terminalManager: TerminalManager;
   remoteRegistry: RemoteRegistry | null;
   isHQMode: boolean;
+  /** New sessions without an explicit `shielded` are shielded (config.json, off by default). */
+  shieldNewSessionsByDefault?: () => boolean;
   /**
    * Agent chat is on (config.json `agentChat` / VIBETUNNEL_AGENT_CHAT): asked on every
    * request, so the switch applies without a restart. Missing means off.
@@ -181,7 +185,8 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       {
         isRunning: running,
         claudeStatus: async () => {
-          const pid = ptyManager.getSession(sessionId)?.pid;
+          const current = ptyManager.getSession(sessionId);
+          const pid = current ? ptyManager.programRootPid(current) : undefined;
           return pid ? (await readClaudeStatuses([pid])).get(pid)?.status : undefined;
         },
         dialogOnScreen: async () => (await readScreenChoices(sessionId)) !== null,
@@ -351,13 +356,16 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
   /** Claude Code's status, title and preview on each running local session (agent chat). */
   async function addClaudeStatuses(sessions: Session[]): Promise<void> {
     try {
+      // A shielded session's pid is its tmux client: look under the program inside tmux.
+      const rootPid = (session: Session) =>
+        session.status === 'running' ? ptyManager.programRootPid(session) : undefined;
       const runningPids = sessions
-        .filter((session) => session.status === 'running' && session.pid)
-        .map((session) => session.pid as number);
+        .map(rootPid)
+        .filter((pid): pid is number => typeof pid === 'number');
       const claudeStatuses = await readClaudeStatuses(runningPids);
       for (const session of sessions) {
-        const claudeStatus =
-          session.status === 'running' && session.pid ? claudeStatuses.get(session.pid) : undefined;
+        const pid = rootPid(session);
+        const claudeStatus = pid ? claudeStatuses.get(pid) : undefined;
         if (!claudeStatus) continue;
         const { sessionId: claudeSessionId, ...status } = claudeStatus;
         session.claudeStatus = status;
@@ -519,7 +527,19 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
 
   // Create new session (local or on remote)
   router.post('/sessions', async (req, res) => {
-    const { command, workingDir, name, remoteId, spawn_terminal, cols, rows, titleMode } = req.body;
+    const { command, workingDir, name, remoteId, cols, rows, titleMode } = req.body;
+    // Shielded sessions run in tmux on this server, never in a terminal window. Without an
+    // explicit choice, local web/phone sessions are shielded only when the user turned
+    // "shield new sessions" on and tmux is there. Terminal-window and remote (HQ) sessions
+    // are never shielded by default.
+    const shielded =
+      req.body.shielded === true ||
+      (req.body.shielded === undefined &&
+        req.body.spawn_terminal !== true &&
+        !remoteId &&
+        (config.shieldNewSessionsByDefault?.() ?? false) &&
+        ptyManager.isShieldAvailable());
+    const spawn_terminal = shielded ? false : req.body.spawn_terminal;
     logger.debug(
       `creating new session: command=${JSON.stringify(command)}, remoteId=${remoteId || 'local'}, spawn_terminal=${spawn_terminal}, cols=${cols}, rows=${rows}`
     );
@@ -556,6 +576,7 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
             cols,
             rows,
             titleMode,
+            ...(shielded ? { shielded } : {}),
             // Don't forward remoteId to avoid recursion
           }),
           signal: AbortSignal.timeout(10000), // 10 second timeout
@@ -670,12 +691,19 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
         )
       );
 
+      if (shielded && !ptyManager.isShieldAvailable()) {
+        return res
+          .status(501)
+          .json({ error: 'Shielded sessions need tmux, which is not installed on the server' });
+      }
+
       const result = await ptyManager.createSession(command, {
         name: sessionName,
         workingDir: cwd,
         cols,
         rows,
         titleMode,
+        shielded,
         gitRepoPath: gitInfo.gitRepoPath,
         gitBranch: gitInfo.gitBranch,
         gitAheadCount: gitInfo.gitAheadCount,
@@ -1088,7 +1116,9 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
       return res.json({ available: false, messages: [] });
     }
     try {
-      const chat = await readSessionChat({ ...session, pid: session.pid });
+      // A shielded session's pid is its tmux client: look under the program inside tmux.
+      const programPid = ptyManager.programRootPid(session) ?? session.pid;
+      const chat = await readSessionChat({ ...session, pid: session.pid }, programPid);
       // `?have=<fingerprint>`: the client already shows these messages; leave them out.
       res.json(chatAnswer(chat, req.query?.have));
     } catch (error) {
@@ -1268,7 +1298,8 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
 
   /** Claude Code's status for a running session, read live (not the list's cached one). */
   async function liveClaudeStatus(sessionId: string) {
-    const pid = ptyManager.getSession(sessionId)?.pid;
+    const session = ptyManager.getSession(sessionId);
+    const pid = session ? ptyManager.programRootPid(session) : undefined;
     return pid ? (await readClaudeStatuses([pid])).get(pid) : undefined;
   }
 
@@ -1467,6 +1498,58 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
   });
 
   // Update session name
+  /**
+   * Shield a session: a running process can't be moved into tmux, so this opens a new shielded
+   * session in the same folder. A Claude session continues its conversation there
+   * (`claude --resume`) and the old one is closed; anything else is started again and the old
+   * session is left as it is.
+   */
+  router.post('/sessions/:sessionId/shield', async (req, res) => {
+    const { sessionId } = req.params;
+    const session = ptyManager.getSession(sessionId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.shielded && session.status !== 'exited') {
+      return res.status(409).json({ error: 'Session is already shielded' });
+    }
+    // Its program runs in a terminal window (vt) and survives restarts there; reopening it
+    // shielded would first close it in that window.
+    if (isForwardedSession(session)) {
+      return res.status(409).json({
+        error: 'Session runs in a terminal window',
+        details: 'It was opened with vt in a terminal window and keeps running there',
+      });
+    }
+    if (!ptyManager.isShieldAvailable()) {
+      return res
+        .status(501)
+        .json({ error: 'Shielded sessions need tmux, which is not installed on the server' });
+    }
+    const plan = shieldReopenPlan(session);
+    try {
+      if (plan.replacesOld && session.status !== 'exited') {
+        await ptyManager.killSession(sessionId);
+      }
+      const cwd = fs.existsSync(session.workingDir) ? session.workingDir : process.cwd();
+      const gitInfo = await detectGitInfo(cwd);
+      const result = await ptyManager.createSession(plan.command, {
+        name: session.name,
+        workingDir: cwd,
+        cols: session.initialCols ?? 120,
+        rows: session.initialRows ?? 30,
+        shielded: true,
+        ...gitInfo,
+      });
+      logger.log(chalk.green(`session ${sessionId} reopened shielded as ${result.sessionId}`));
+      res.json({ sessionId: result.sessionId, replaced: plan.replacesOld });
+    } catch (error) {
+      logger.error('error reopening session shielded:', error);
+      res.status(500).json({
+        error: 'Failed to open shielded session',
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
   router.patch('/sessions/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
     logger.log(chalk.yellow(`[PATCH] Received rename request for session ${sessionId}`));

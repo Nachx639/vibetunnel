@@ -89,9 +89,10 @@ export class AsciinemaWriter {
 
   constructor(
     private filePath: string,
-    private header: AsciinemaHeader
+    private header: AsciinemaHeader,
+    append?: { size: number; startTime: Date }
   ) {
-    this.startTime = new Date();
+    this.startTime = append?.startTime ?? new Date();
 
     // Ensure directory exists
     const dir = path.dirname(filePath);
@@ -101,7 +102,7 @@ export class AsciinemaWriter {
 
     // Create write stream with no buffering for real-time performance
     this.writeStream = fs.createWriteStream(filePath, {
-      flags: 'w',
+      flags: append ? 'a' : 'w',
       encoding: 'utf8',
       highWaterMark: 0, // Disable internal buffering
     });
@@ -111,7 +112,53 @@ export class AsciinemaWriter {
       this.fd = fd;
     });
 
+    if (append) {
+      // The file already has its header and events: positions continue after them.
+      this.bytesWritten = append.size;
+      this.lastValidatedPosition = append.size;
+      this.headerWritten = true;
+      return;
+    }
     this.writeHeader();
+  }
+
+  /**
+   * Keep writing to an existing cast file (a shielded session re-attached after a server
+   * restart). Event times continue from the file's start, so the gap shows as a pause.
+   * Falls back to a new file when the existing one has no readable header.
+   */
+  static resume(filePath: string, width = 80, height = 24): AsciinemaWriter {
+    try {
+      const fd = fs.openSync(filePath, 'r');
+      let firstLine = '';
+      let lastByte = '';
+      let size = 0;
+      try {
+        size = fs.fstatSync(fd).size;
+        const head = Buffer.alloc(Math.min(size, 64 * 1024));
+        fs.readSync(fd, head, 0, head.length, 0);
+        firstLine = head.toString('utf8').split('\n', 1)[0];
+        if (size > 0) {
+          const last = Buffer.alloc(1);
+          fs.readSync(fd, last, 0, 1, size - 1);
+          lastByte = last.toString('utf8');
+        }
+      } finally {
+        fs.closeSync(fd);
+      }
+      const header = JSON.parse(firstLine) as AsciinemaHeader;
+      if (header?.version !== 2) throw new Error('not an asciinema v2 file');
+      // A server killed mid-write can leave half a line: start ours on a fresh one.
+      if (lastByte !== '\n') {
+        fs.appendFileSync(filePath, '\n');
+        size += 1;
+      }
+      const startTime = header.timestamp ? new Date(header.timestamp * 1000) : new Date();
+      return new AsciinemaWriter(filePath, header, { size, startTime });
+    } catch (error) {
+      _logger.warn(`cannot resume cast file ${filePath}, starting a new one:`, error);
+      return AsciinemaWriter.create(filePath, width, height);
+    }
   }
 
   /**

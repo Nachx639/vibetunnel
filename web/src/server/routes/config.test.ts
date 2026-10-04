@@ -60,6 +60,9 @@ describe('Config Routes', () => {
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
         agentChat: false,
+        shieldNewSessions: false,
+        shieldRestore: 'off',
+        shieldAvailable: false,
       });
 
       expect(mockConfigService.getConfig).toHaveBeenCalledOnce();
@@ -79,6 +82,9 @@ describe('Config Routes', () => {
         serverConfigured: true,
         quickStartCommands: defaultConfig.quickStartCommands,
         agentChat: false,
+        shieldNewSessions: false,
+        shieldRestore: 'off',
+        shieldAvailable: false,
       });
     });
 
@@ -119,6 +125,31 @@ describe('Config Routes', () => {
       expect(response.status).toBe(200);
       const written = vi.mocked(mockConfigService.updateConfig).mock.calls.map((c) => c[0]);
       for (const config of written) expect(config).not.toHaveProperty('agentChat', true);
+    });
+  });
+
+  describe('shielded sessions', () => {
+    it('are off and restore nothing unless config.json says so', async () => {
+      const off = (await request(app).get('/api/config')).body;
+      expect(off).toMatchObject({ shieldNewSessions: false, shieldRestore: 'off' });
+      mockConfigService.getConfig = vi.fn(() => ({
+        ...defaultConfig,
+        shieldNewSessions: true,
+        shieldRestore: 'agents' as const,
+      }));
+      const on = (await request(app).get('/api/config')).body;
+      expect(on).toMatchObject({ shieldNewSessions: true, shieldRestore: 'agents' });
+    });
+
+    it('are set from Settings, and an unknown restore mode is ignored', async () => {
+      await request(app).put('/api/config').send({ shieldNewSessions: true, shieldRestore: 'all' });
+      const written = vi.mocked(mockConfigService.updateConfig).mock.calls.at(-1)?.[0];
+      expect(written).toMatchObject({ shieldNewSessions: true, shieldRestore: 'all' });
+
+      vi.mocked(mockConfigService.updateConfig).mockClear();
+      const response = await request(app).put('/api/config').send({ shieldRestore: 'everything' });
+      expect(response.status).toBe(400);
+      expect(mockConfigService.updateConfig).not.toHaveBeenCalled();
     });
   });
 
@@ -347,6 +378,9 @@ describe('Config Routes', () => {
           serverConfigured: true,
           quickStartCommands: defaultConfig.quickStartCommands,
           agentChat: false,
+          shieldNewSessions: false,
+          shieldRestore: 'off',
+          shieldAvailable: false,
           notificationPreferences,
         });
       });
