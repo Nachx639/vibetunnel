@@ -1095,13 +1095,31 @@ export function createSessionRoutes(config: SessionRoutesConfig): Router {
   });
 
   // Mute or unmute push notifications for one session
-  router.post('/sessions/:sessionId/mute', (req, res) => {
+  router.post('/sessions/:sessionId/mute', async (req, res) => {
     const { sessionId } = req.params;
     const muted = req.body?.muted;
     if (typeof muted !== 'boolean') {
       return res.status(400).json({ error: 'muted must be a boolean' });
     }
     try {
+      // In HQ mode the flag lives with the session, on the remote that sends its pushes
+      if (remoteRegistry) {
+        const remote = remoteRegistry.getRemoteBySessionId(sessionId);
+        if (remote) {
+          logger.debug(`forwarding mute to remote ${remote.id}`);
+          const response = await fetch(`${remote.url}/api/sessions/${sessionId}/mute`, {
+            method: HttpMethod.POST,
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${remote.token}`,
+            },
+            body: JSON.stringify({ muted }),
+          });
+          const result = await response.json().catch(() => ({}));
+          return res.status(response.status).json(result);
+        }
+      }
+
       if (!ptyManager.setSessionMuted(sessionId, muted)) {
         return res.status(404).json({ error: 'Session not found' });
       }

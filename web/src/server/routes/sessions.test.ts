@@ -1191,12 +1191,12 @@ describe('sessions routes', () => {
     });
   });
   describe('POST /sessions/:sessionId/mute', () => {
-    function muteHandler(ptyManager: unknown) {
+    function muteHandler(ptyManager: unknown, remoteRegistry: unknown = null) {
       const router = createSessionRoutes({
         ptyManager,
         terminalManager: mockTerminalManager,
-        remoteRegistry: null,
-        isHQMode: false,
+        remoteRegistry,
+        isHQMode: remoteRegistry !== null,
       } as unknown as Parameters<typeof createSessionRoutes>[0]);
       const layer = (
         router as unknown as {
@@ -1249,6 +1249,56 @@ describe('sessions routes', () => {
         missing
       );
       expect(missing.status).toHaveBeenCalledWith(404);
+    });
+
+    it('forwards to the remote that owns the session in HQ mode', async () => {
+      const originalFetch = global.fetch;
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, muted: true }),
+      }));
+      global.fetch = fetchMock as unknown as typeof fetch;
+      try {
+        const setSessionMuted = vi.fn(() => false);
+        const remoteRegistry = {
+          getRemoteBySessionId: vi.fn((id: string) =>
+            id === 'remote-1'
+              ? { id: 'r1', url: 'http://remote.example:4100', token: 'remote-token' }
+              : undefined
+          ),
+        };
+        const handle = muteHandler({ ...mockPtyManager, setSessionMuted }, remoteRegistry);
+        const res = mockRes();
+        await handle(
+          { params: { sessionId: 'remote-1' }, body: { muted: true } } as unknown as Request,
+          res
+        );
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          'http://remote.example:4100/api/sessions/remote-1/mute',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ muted: true }),
+            headers: expect.objectContaining({ Authorization: 'Bearer remote-token' }),
+          })
+        );
+        expect(setSessionMuted).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({ success: true, muted: true });
+
+        // A session of this server is still muted here
+        setSessionMuted.mockReturnValue(true);
+        const local = mockRes();
+        await handle(
+          { params: { sessionId: 'local-1' }, body: { muted: false } } as unknown as Request,
+          local
+        );
+        expect(setSessionMuted).toHaveBeenCalledWith('local-1', false);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      } finally {
+        global.fetch = originalFetch;
+      }
     });
   });
 });
