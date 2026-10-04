@@ -47,6 +47,10 @@ final class ConfigManager {
     var notificationSoundEnabled: Bool = true
     var notificationVibrationEnabled: Bool = true
     var showInNotificationCenter: Bool = true
+    /// Server-side notification switches the app doesn't show. Kept as read (nil = not in the
+    /// file) so a save from the app never drops or changes what the web UI set.
+    var notificationSkipWhenViewing: Bool?
+    var notificationAgentStatus: Bool?
 
     // Remote access
     var ngrokEnabled: Bool = false
@@ -107,6 +111,8 @@ final class ConfigManager {
         var soundEnabled: Bool
         var vibrationEnabled: Bool
         var showInNotificationCenter: Bool?
+        var skipWhenViewing: Bool?
+        var agentStatus: Bool?
     }
 
     private struct RemoteAccessConfig: Codable {
@@ -196,6 +202,8 @@ final class ConfigManager {
                         if let showInCenter = notif.showInNotificationCenter {
                             self.showInNotificationCenter = showInCenter
                         }
+                        self.notificationSkipWhenViewing = notif.skipWhenViewing
+                        self.notificationAgentStatus = notif.agentStatus
                     }
                 }
 
@@ -239,6 +247,8 @@ final class ConfigManager {
         self.notificationSoundEnabled = true
         self.notificationVibrationEnabled = true
         self.showInNotificationCenter = true
+        self.notificationSkipWhenViewing = nil
+        self.notificationAgentStatus = nil
 
         self.saveConfiguration()
     }
@@ -281,7 +291,9 @@ final class ConfigManager {
                 bell: self.notificationBell,
                 soundEnabled: self.notificationSoundEnabled,
                 vibrationEnabled: self.notificationVibrationEnabled,
-                showInNotificationCenter: self.showInNotificationCenter))
+                showInNotificationCenter: self.showInNotificationCenter,
+                skipWhenViewing: self.notificationSkipWhenViewing,
+                agentStatus: self.notificationAgentStatus))
 
         // Remote access
         config.remoteAccess = RemoteAccessConfig(
