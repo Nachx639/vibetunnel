@@ -20,6 +20,7 @@ import { createLogger } from '../utils/logger.js';
 import { renameSession } from '../utils/session-actions.js';
 import { TerminalPreferencesManager } from '../utils/terminal-preferences.js';
 import type { TerminalThemeId } from '../utils/terminal-themes.js';
+import { isTmuxAttachment } from '../utils/tmux-attachment.js';
 
 const logger = createLogger('session-card');
 
@@ -401,7 +402,7 @@ export class SessionCard extends LitElement {
                     @click=${this.handleKillClick}
                     ?disabled=${this.killing}
                     id="session-kill-button"
-                    title="${this.session.status === 'running' ? t('sessions.row.kill') : t('status.cleanUp')}"
+                    title="${this.session.status === 'running' ? t(isTmuxAttachment(this.session) ? 'sessions.row.disconnect' : 'sessions.row.kill') : t('status.cleanUp')}"
                     data-testid="kill-session-button"
                   >
                     ${

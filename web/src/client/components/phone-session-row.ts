@@ -31,6 +31,7 @@ import { formatPathForDisplay } from '../utils/path-utils.js';
 import { endsADrag } from '../utils/pointer-drag.js';
 import { renameSession } from '../utils/session-actions.js';
 import { focusSheet, holdSheetFocus } from '../utils/sheet-a11y.js';
+import { isTmuxAttachment } from '../utils/tmux-attachment.js';
 
 const LONG_PRESS_MS = 550;
 /** Width of one swipe action button. */
@@ -363,6 +364,8 @@ export class PhoneSessionRow extends LitElement {
   private renderSheet(confirmKill = false) {
     if (!this.sheetHost) return;
     const exited = this.session.status === 'exited';
+    // Attached to a tmux session: ending it only detaches, the tmux session keeps running.
+    const disconnects = isTmuxAttachment(this.session);
     // The click finishing the tap that opened the sheet lands on whatever is now under the
     // finger: near the bottom of the screen that is the sheet's own (red) Kill button.
     const action = (fn: () => void) => () => {
@@ -395,10 +398,10 @@ export class PhoneSessionRow extends LitElement {
           <div class="psr-sheet open" role="alertdialog" aria-modal="true" aria-label=${this.displayTitle()}>
             <div class="psr-sheet-group">
               <div class="psr-sheet-title question">
-                <bdi>${t('sessions.row.killConfirm', { name: this.displayTitle() })}</bdi>
+                <bdi>${t(disconnects ? 'sessions.row.disconnectConfirm' : 'sessions.row.killConfirm', { name: this.displayTitle() })}</bdi>
               </div>
               <button class="destructive" data-testid="psr-kill-confirm" @click=${action(() => void this.kill())}>
-                ${t('sessions.row.kill')}
+                ${t(disconnects ? 'sessions.row.disconnect' : 'sessions.row.kill')}
               </button>
             </div>
             <button class="psr-sheet-cancel" @click=${this.handleBackdropClick}>${t('common.cancel')}</button>
@@ -446,7 +449,7 @@ export class PhoneSessionRow extends LitElement {
                     }
               }
             >
-              ${t(exited ? 'sessions.row.clear' : 'sessions.row.kill')}
+              ${t(exited ? 'sessions.row.clear' : disconnects ? 'sessions.row.disconnect' : 'sessions.row.kill')}
             </button>
           </div>
           <button class="psr-sheet-cancel" @click=${this.closeSheet}>${t('common.cancel')}</button>
@@ -767,7 +770,7 @@ export class PhoneSessionRow extends LitElement {
           @pointerup=${swipeAction(() => (exited ? void this.kill() : this.openSheet(true)))}
           @click=${swipeAction(() => (exited ? void this.kill() : this.openSheet(true)))}
         >
-          ${t(exited ? 'phoneList.swipeClear' : 'phoneList.swipeKill')}
+          ${t(exited ? 'phoneList.swipeClear' : isTmuxAttachment(session) ? 'sessions.row.disconnect' : 'phoneList.swipeKill')}
         </button>
       </div>
       <div

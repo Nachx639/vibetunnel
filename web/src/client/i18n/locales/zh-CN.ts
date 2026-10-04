@@ -1066,4 +1066,7 @@ export const zhCN: Messages = {
   'gemini.slash.settings': '查看和编辑 Gemini CLI 设置',
   'gemini.slash.init': '创建 GEMINI.md',
   'gemini.slash.quit': '退出 Gemini CLI',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': '断开连接',
+  'sessions.row.disconnectConfirm': '断开与“{name}”的连接？它会继续在 tmux 中运行。',
 };

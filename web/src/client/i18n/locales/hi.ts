@@ -1077,4 +1077,7 @@ export const hi: Messages = {
   'gemini.slash.settings': 'Gemini CLI की सेटिंग देखें और बदलें',
   'gemini.slash.init': 'GEMINI.md बनाएँ',
   'gemini.slash.quit': 'Gemini CLI से बाहर निकलें',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'डिस्कनेक्ट करें',
+  'sessions.row.disconnectConfirm': '“{name}” से डिस्कनेक्ट करें? यह tmux में चलता रहेगा।',
 };

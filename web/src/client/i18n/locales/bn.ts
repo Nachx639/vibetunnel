@@ -1079,4 +1079,7 @@ export const bn: Messages = {
   'gemini.slash.settings': 'Gemini CLI-এর সেটিংস দেখুন ও সম্পাদনা করুন',
   'gemini.slash.init': 'GEMINI.md তৈরি করুন',
   'gemini.slash.quit': 'Gemini CLI থেকে বেরিয়ে যান',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'বিচ্ছিন্ন করুন',
+  'sessions.row.disconnectConfirm': '“{name}” থেকে বিচ্ছিন্ন হবেন? এটি tmux-এ চলতে থাকবে।',
 };

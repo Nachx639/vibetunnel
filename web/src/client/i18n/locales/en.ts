@@ -1098,6 +1098,9 @@ export const en = {
   'gemini.slash.settings': 'View and edit Gemini CLI settings',
   'gemini.slash.init': 'Create GEMINI.md',
   'gemini.slash.quit': 'Exit Gemini CLI',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'Disconnect',
+  'sessions.row.disconnectConfirm': 'Disconnect from “{name}”? It keeps running in tmux.',
 };
 
 export type MessageKey = keyof typeof en;

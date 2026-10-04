@@ -1116,4 +1116,8 @@ export const fr: Messages = {
   'gemini.slash.settings': 'Afficher et modifier les réglages de Gemini CLI',
   'gemini.slash.init': 'Créer GEMINI.md',
   'gemini.slash.quit': 'Quitter Gemini CLI',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'Déconnecter',
+  'sessions.row.disconnectConfirm':
+    'Se déconnecter de « {name} » ? Elle continue de tourner dans tmux.',
 };

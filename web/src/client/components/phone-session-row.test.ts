@@ -121,6 +121,36 @@ describe('PhoneSessionRow', () => {
     del.mockRestore();
   });
 
+  it('offers Disconnect, not Kill, for a session attached to a tmux session', async () => {
+    const del = vi
+      .spyOn(sessionActionService, 'deleteSession')
+      .mockResolvedValue({ success: true } as never);
+    const row = await renderRow(
+      session({ name: 'tmux: main', command: ['tmux', 'attach-session', '-t', 'main'] })
+    );
+    expect(row.querySelector('[data-testid="psr-swipe-kill"]')?.textContent?.trim()).toBe(
+      'Disconnect'
+    );
+    vi.useFakeTimers();
+    (row.querySelector('.psr-menu') as HTMLButtonElement).click();
+    vi.advanceTimersByTime(600);
+    const buttons = [...document.body.querySelectorAll('.psr-sheet button')];
+    expect(buttons.some((b) => b.textContent?.includes('Kill session'))).toBe(false);
+    (buttons.find((b) => b.textContent?.trim() === 'Disconnect') as HTMLButtonElement).click();
+    // Still asked first, saying the tmux session keeps running.
+    expect(document.body.querySelector('.psr-sheet-title')?.textContent).toContain(
+      'Disconnect from “tmux: main”? It keeps running in tmux.'
+    );
+    const confirm = document.body.querySelector(
+      '[data-testid="psr-kill-confirm"]'
+    ) as HTMLButtonElement;
+    expect(confirm.textContent?.trim()).toBe('Disconnect');
+    vi.advanceTimersByTime(600);
+    confirm.click();
+    expect(del).toHaveBeenCalledTimes(1);
+    del.mockRestore();
+  });
+
   it('clears an exited session from the sheet without a confirm step', async () => {
     const del = vi
       .spyOn(sessionActionService, 'deleteSession')

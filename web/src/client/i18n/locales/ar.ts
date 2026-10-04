@@ -1076,4 +1076,7 @@ export const ar: Messages = {
   'gemini.slash.settings': 'عرض إعدادات Gemini CLI وتعديلها',
   'gemini.slash.init': 'إنشاء GEMINI.md',
   'gemini.slash.quit': 'الخروج من Gemini CLI',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'قطع الاتصال',
+  'sessions.row.disconnectConfirm': 'قطع الاتصال بـ «{name}»؟ ستستمر في العمل داخل tmux.',
 };

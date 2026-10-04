@@ -1103,4 +1103,7 @@ export const ptBR: Messages = {
   'gemini.slash.settings': 'Ver e editar as configurações do Gemini CLI',
   'gemini.slash.init': 'Criar GEMINI.md',
   'gemini.slash.quit': 'Sair do Gemini CLI',
+  // tmux attachments: ending one only detaches
+  'sessions.row.disconnect': 'Desconectar',
+  'sessions.row.disconnectConfirm': 'Desconectar de “{name}”? Ela continua rodando no tmux.',
 };
