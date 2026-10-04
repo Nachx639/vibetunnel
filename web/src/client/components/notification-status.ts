@@ -1,5 +1,6 @@
 import { html, LitElement } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import { serverEventService } from '../services/server-event-service.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -13,6 +14,7 @@ export class NotificationStatus extends LitElement {
   }
 
   @state() private isWsConnected = false;
+  protected readonly i18n = new LocaleController(this);
 
   private connectionStateUnsubscribe?: () => void;
 
@@ -50,14 +52,14 @@ export class NotificationStatus extends LitElement {
     if (this.isWsConnected) {
       return {
         color: 'text-status-success',
-        tooltip: 'Notifications (Connected)',
+        tooltip: t('header.notifications.connected'),
       };
     }
 
     // Default color when WS is not connected
     return {
       color: 'text-muted',
-      tooltip: 'Notifications (Disconnected)',
+      tooltip: t('header.notifications.disconnected'),
     };
   }
 

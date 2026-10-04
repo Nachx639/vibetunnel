@@ -1,4 +1,5 @@
 import { HttpMethod } from '../../shared/types.js';
+import { t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger.js';
 import { BrowserSSHAgent } from './ssh-agent.js';
 
@@ -175,7 +176,7 @@ export class AuthClient {
     try {
       // Check if SSH agent is unlocked
       if (!this.sshAgent.isUnlocked()) {
-        return { success: false, error: 'SSH agent is locked' };
+        return { success: false, error: t('login.error.sshLocked') };
       }
 
       // Create challenge
@@ -186,7 +187,7 @@ export class AuthClient {
       const publicKey = this.sshAgent.getPublicKey(keyId);
 
       if (!publicKey) {
-        return { success: false, error: 'SSH key not found' };
+        return { success: false, error: t('login.error.sshKeyNotFound') };
       }
 
       // Send authentication request
@@ -219,7 +220,7 @@ export class AuthClient {
       return result;
     } catch (error) {
       logger.error('SSH key authentication failed:', error);
-      return { success: false, error: 'SSH key authentication failed' };
+      return { success: false, error: t('login.error.ssh') };
     }
   }
 
@@ -248,7 +249,7 @@ export class AuthClient {
       return result;
     } catch (error) {
       logger.error('Password authentication failed:', error);
-      return { success: false, error: 'Password authentication failed' };
+      return { success: false, error: t('login.error.password') };
     }
   }
 
@@ -288,7 +289,7 @@ export class AuthClient {
     // SSH key auth failed or no keys available
     return {
       success: false,
-      error: 'SSH key authentication failed. Password authentication required.',
+      error: t('login.error.sshPasswordRequired'),
     };
   }
 

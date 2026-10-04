@@ -2,6 +2,7 @@ import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { DEFAULT_REPOSITORY_BASE_PATH } from '../../shared/constants.js';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '../../types/config.js';
+import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import {
   type NotificationPreferences,
@@ -12,6 +13,7 @@ import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
 import { createLogger } from '../utils/logger.js';
 import { VERSION } from '../version.js';
+import './language-picker.js';
 import './quick-keys-editor.js';
 
 const logger = createLogger('settings');
@@ -44,6 +46,7 @@ export class Settings extends LitElement {
   private subscriptionChangeUnsubscribe?: () => void;
   private repositoryService?: RepositoryService;
   private serverConfigService?: ServerConfigService;
+  protected readonly i18n = new LocaleController(this);
 
   connectedCallback() {
     super.connectedCallback();
@@ -258,15 +261,14 @@ export class Settings extends LitElement {
           } else {
             this.dispatchEvent(
               new CustomEvent('error', {
-                detail: 'Failed to subscribe to notifications',
+                detail: t('settings.error.subscribe'),
               })
             );
           }
         } else {
           this.dispatchEvent(
             new CustomEvent('error', {
-              detail:
-                'Notification permission denied. Please enable notifications in your browser settings.',
+              detail: t('settings.error.permissionDenied'),
             })
           );
         }
@@ -275,7 +277,7 @@ export class Settings extends LitElement {
       logger.error('Failed to toggle notifications:', error);
       this.dispatchEvent(
         new CustomEvent('error', {
-          detail: 'Failed to toggle notifications',
+          detail: t('settings.error.toggle'),
         })
       );
     } finally {
@@ -337,12 +339,12 @@ export class Settings extends LitElement {
 
       // Step 5: Send test notification
       logger.debug('Step 5: Sending test notification');
-      await pushNotificationService.sendTestNotification('Test notification from VibeTunnel');
+      await pushNotificationService.sendTestNotification(t('settings.testNotification.body'));
 
       logger.log('✅ Test notification sent successfully');
       this.dispatchEvent(
         new CustomEvent('success', {
-          detail: 'Test notification sent successfully',
+          detail: t('settings.testNotification.sent'),
         })
       );
     } catch (error) {
@@ -352,20 +354,20 @@ export class Settings extends LitElement {
       // Provide specific guidance based on error
       let guidance = '';
       if (errorMessage.includes('permission')) {
-        guidance = 'Please grant notification permissions in your browser settings';
+        guidance = t('settings.guidance.permission');
       } else if (errorMessage.includes('subscription')) {
-        guidance = 'Please enable notifications in settings first';
+        guidance = t('settings.guidance.subscription');
       } else if (errorMessage.includes('server')) {
-        guidance = 'Server push notification service is not available';
+        guidance = t('settings.guidance.server');
       } else if (errorMessage.includes('VAPID')) {
-        guidance = 'VAPID keys are not properly configured';
+        guidance = t('settings.guidance.vapid');
       } else {
-        guidance = 'Check browser console for more details';
+        guidance = t('settings.guidance.console');
       }
 
       this.dispatchEvent(
         new CustomEvent('error', {
-          detail: `Test notification failed: ${errorMessage}. ${guidance}`,
+          detail: t('settings.testNotification.failed', { error: errorMessage, guidance }),
         })
       );
     } finally {
@@ -390,8 +392,8 @@ export class Settings extends LitElement {
 
     try {
       // Show notification directly
-      await registration.showNotification('VibeTunnel Notifications Enabled', {
-        body: "You'll now receive notifications for session events",
+      await registration.showNotification(t('settings.welcomeNotification.title'), {
+        body: t('settings.welcomeNotification.body'),
         icon: '/apple-touch-icon.png',
         badge: '/favicon-32.png',
         tag: 'vibetunnel-settings-welcome',
@@ -438,21 +440,21 @@ export class Settings extends LitElement {
       return html`
         <div class="flex items-center space-x-2">
           <span class="text-status-success font-mono">✓</span>
-          <span class="text-sm text-primary">Active</span>
+          <span class="text-sm text-primary">${t('settings.status.active')}</span>
         </div>
       `;
     } else if (this.permission === 'granted') {
       return html`
         <div class="flex items-center space-x-2">
           <span class="text-status-warning font-mono">!</span>
-          <span class="text-sm text-primary">Not subscribed</span>
+          <span class="text-sm text-primary">${t('settings.status.notSubscribed')}</span>
         </div>
       `;
     } else {
       return html`
         <div class="flex items-center space-x-2">
           <span class="text-status-error font-mono">✗</span>
-          <span class="text-sm text-primary">Disabled</span>
+          <span class="text-sm text-primary">${t('settings.status.disabled')}</span>
         </div>
       `;
     }
@@ -482,12 +484,12 @@ export class Settings extends LitElement {
         >
           <!-- Header -->
           <div class="p-4 pb-4 border-b border-border/50 relative flex-shrink-0">
-            <h2 class="text-primary text-lg font-bold">Settings</h2>
+            <h2 class="text-primary text-lg font-bold">${t('common.settings')}</h2>
             <button
               class="absolute top-4 right-4 text-text-muted hover:text-primary transition-colors p-1"
               @click=${this.handleClose}
-              title="Close"
-              aria-label="Close settings"
+              title=${t('common.close')}
+              aria-label=${t('settings.close')}
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -506,7 +508,7 @@ export class Settings extends LitElement {
             <div class="flex items-center justify-between text-xs font-mono">
               <span class="text-muted">v${VERSION}</span>
               <a href="/logs" class="text-primary hover:text-primary-hover transition-colors" target="_blank">
-                View Logs
+                ${t('settings.viewLogs')}
               </a>
             </div>
           </div>
@@ -529,7 +531,7 @@ export class Settings extends LitElement {
     return html`
       <div class="space-y-4">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-md font-bold text-primary">Notifications</h3>
+          <h3 class="text-md font-bold text-primary">${t('settings.notifications')}</h3>
           ${this.renderSubscriptionStatus()}
         </div>
         
@@ -541,22 +543,22 @@ export class Settings extends LitElement {
                   isIOSSafari && !isStandalone
                     ? html`
                       <p class="text-sm text-status-warning mb-2">
-                        Push notifications require installing this app to your home screen.
+                        ${t('settings.ios.installRequired')}
                       </p>
                       <p class="text-xs text-status-warning opacity-80">
-                        Tap the share button in Safari and select "Add to Home Screen" to enable push notifications.
+                        ${t('settings.ios.installHint')}
                       </p>
                     `
                     : !window.isSecureContext
                       ? html`
                       <p class="text-sm text-status-warning mb-2">
-                        ⚠️ Push notifications require a secure connection
+                        ⚠️ ${t('settings.secure.required')}
                       </p>
                       <p class="text-xs text-status-warning opacity-80 mb-2">
-                        You're accessing VibeTunnel via ${window.location.protocol}//${window.location.hostname}
+                        ${t('settings.secure.accessingVia', { origin: `${window.location.protocol}//${window.location.hostname}` })}
                       </p>
                       <p class="text-xs text-status-info opacity-90">
-                        To enable notifications, access VibeTunnel using:
+                        ${t('settings.secure.useInstead')}
                         <br>• https://${window.location.hostname}${window.location.port ? `:${window.location.port}` : ''}
                         <br>• http://localhost:${window.location.port || '4020'}
                         <br>• http://127.0.0.1:${window.location.port || '4020'}
@@ -564,7 +566,7 @@ export class Settings extends LitElement {
                     `
                       : html`
                       <p class="text-sm text-status-warning">
-                        Push notifications are not supported in this browser.
+                        ${t('settings.unsupported')}
                       </p>
                     `
                 }
@@ -574,9 +576,9 @@ export class Settings extends LitElement {
               <!-- Main toggle -->
               <div class="flex items-center justify-between p-4 bg-bg-tertiary rounded-lg border border-border/50">
                 <div class="flex-1">
-                  <label class="text-primary font-medium">Enable Notifications</label>
+                  <label class="text-primary font-medium">${t('settings.enableNotifications')}</label>
                   <p class="text-muted text-xs mt-1">
-                    Receive alerts for session events
+                    ${t('settings.enableNotifications.description')}
                   </p>
                 </div>
                 <button
@@ -602,35 +604,35 @@ export class Settings extends LitElement {
                     <!-- Notification types -->
                     <div class="mt-4 space-y-4">
                       <div>
-                        <h4 class="text-sm font-medium text-text-muted mb-3">Notification Types</h4>
+                        <h4 class="text-sm font-medium text-text-muted mb-3">${t('settings.notificationTypes')}</h4>
                         <div class="space-y-2 bg-bg rounded-lg p-3">
-                          ${this.renderNotificationToggle('sessionExit', 'Session Exit', 'When a session terminates or crashes (shows exit code)')}
-                          ${this.renderNotificationToggle('sessionStart', 'Session Start', 'When a new session starts (useful for shared terminals)')}
-                          ${this.renderNotificationToggle('commandError', 'Session Errors', 'When commands fail with non-zero exit codes')}
-                          ${this.renderNotificationToggle('commandCompletion', 'Command Completion', 'When commands taking >3 seconds finish (builds, tests, etc.)')}
-                          ${this.renderNotificationToggle('bell', 'System Alerts', 'Terminal bell (^G) from vim, IRC mentions, completion sounds')}
+                          ${this.renderNotificationToggle('sessionExit', t('settings.notify.sessionExit'), t('settings.notify.sessionExit.description'))}
+                          ${this.renderNotificationToggle('sessionStart', t('settings.notify.sessionStart'), t('settings.notify.sessionStart.description'))}
+                          ${this.renderNotificationToggle('commandError', t('settings.notify.commandError'), t('settings.notify.commandError.description'))}
+                          ${this.renderNotificationToggle('commandCompletion', t('settings.notify.commandCompletion'), t('settings.notify.commandCompletion.description'))}
+                          ${this.renderNotificationToggle('bell', t('settings.notify.bell'), t('settings.notify.bell.description'))}
                         </div>
                       </div>
 
                       <!-- Sound and vibration -->
                       <div>
-                        <h4 class="text-sm font-medium text-text-muted mb-3">Notification Behavior</h4>
+                        <h4 class="text-sm font-medium text-text-muted mb-3">${t('settings.notificationBehavior')}</h4>
                         <div class="space-y-2 bg-bg rounded-lg p-3">
-                          ${this.renderNotificationToggle('soundEnabled', 'Sound', 'Play a notification sound when alerts are triggered')}
-                          ${this.renderNotificationToggle('vibrationEnabled', 'Vibration', 'Vibrate device with notifications (mobile devices only)')}
+                          ${this.renderNotificationToggle('soundEnabled', t('settings.notify.sound'), t('settings.notify.sound.description'))}
+                          ${this.renderNotificationToggle('vibrationEnabled', t('settings.notify.vibration'), t('settings.notify.vibration.description'))}
                         </div>
                       </div>
                     </div>
 
                     <!-- Test button -->
                     <div class="flex items-center justify-between pt-3 mt-3 border-t border-border/50">
-                      <p class="text-xs text-muted">Test your notification settings</p>
+                      <p class="text-xs text-muted">${t('settings.testNotification.hint')}</p>
                       <button
                         class="btn-secondary text-xs px-3 py-1.5"
                         @click=${this.handleTestNotification}
                         ?disabled=${this.testingNotification || !canTest}
                       >
-                        ${this.testingNotification ? 'Testing...' : 'Test Notification'}
+                        ${this.testingNotification ? t('settings.testNotification.testing') : t('settings.testNotification.button')}
                       </button>
                     </div>
 
@@ -696,24 +698,35 @@ export class Settings extends LitElement {
   private renderAppSettings() {
     return html`
       <div class="space-y-4">
-        <h3 class="text-md font-bold text-primary mb-3">Application</h3>
-        
+        <h3 class="text-md font-bold text-primary mb-3">${t('settings.application')}</h3>
+
+        <!-- Language -->
+        <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <label class="text-primary font-medium" for="language-picker">${t('language.label')}</label>
+              <p class="text-muted text-xs mt-1">${t('language.description')}</p>
+            </div>
+            <language-picker></language-picker>
+          </div>
+        </div>
+
         <!-- Repository Base Path -->
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">
           <div class="mb-3">
             <div class="flex items-center justify-between">
-              <label class="text-primary font-medium">Repository Base Path</label>
+              <label class="text-primary font-medium">${t('settings.repoBasePath')}</label>
               <div class="flex items-center gap-2">
                 ${
                   this.isDiscoveringRepositories
-                    ? html`<span id="repository-status" class="text-muted text-xs">Scanning...</span>`
-                    : html`<span id="repository-status" class="text-muted text-xs">${this.repositoryCount} repositories found</span>`
+                    ? html`<span id="repository-status" class="text-muted text-xs">${t('settings.repoScanning')}</span>`
+                    : html`<span id="repository-status" class="text-muted text-xs">${t('settings.repoCount', { count: this.repositoryCount })}</span>`
                 }
                 <button
                   @click=${() => this.discoverRepositories()}
                   ?disabled=${this.isDiscoveringRepositories}
                   class="text-primary hover:text-primary-hover text-xs transition-colors duration-200"
-                  title="Refresh repository list"
+                  title=${t('settings.repoRefresh')}
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
@@ -723,7 +736,7 @@ export class Settings extends LitElement {
               </div>
             </div>
             <p class="text-muted text-xs mt-1">
-              Default directory for new sessions and repository discovery.
+              ${t('settings.repoBasePath.description')}
             </p>
           </div>
           <div class="flex gap-2">
@@ -743,9 +756,9 @@ export class Settings extends LitElement {
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">
           <div class="flex items-center justify-between gap-4">
             <div>
-              <label class="text-primary font-medium">Mobile Quick Keys</label>
+              <label class="text-primary font-medium">${t('settings.quickKeys')}</label>
               <p class="text-muted text-xs mt-1">
-                Reorder or hide terminal shortcuts on this browser.
+                ${t('settings.quickKeys.description')}
               </p>
             </div>
             <button
@@ -755,7 +768,7 @@ export class Settings extends LitElement {
                 this.showQuickKeysEditor = true;
               }}
             >
-              Customize
+              ${t('settings.quickKeys.customize')}
             </button>
           </div>
         </div>

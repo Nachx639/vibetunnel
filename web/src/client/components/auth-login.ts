@@ -1,7 +1,9 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import { responsiveObserver } from '../utils/responsive-utils.js';
+import './language-picker.js';
 import './terminal-icon.js';
 
 @customElement('auth-login')
@@ -26,6 +28,7 @@ export class AuthLogin extends LitElement {
   };
   @state() private isMobile = false;
   private unsubscribeResponsive?: () => void;
+  protected readonly i18n = new LocaleController(this);
 
   async connectedCallback() {
     super.connectedCallback();
@@ -84,7 +87,7 @@ export class AuthLogin extends LitElement {
         );
       }
     } catch (_error) {
-      this.error = 'Failed to load user information';
+      this.error = t('login.error.loadUser');
     }
   }
 
@@ -107,10 +110,10 @@ export class AuthLogin extends LitElement {
         this.loginPassword = '';
         this.dispatchEvent(new CustomEvent('auth-success', { detail: result }));
       } else {
-        this.error = result.error || 'Password authentication failed';
+        this.error = result.error || t('login.error.password');
       }
     } catch (_error) {
-      this.error = 'Password authentication failed';
+      this.error = t('login.error.password');
     } finally {
       this.loading = false;
     }
@@ -130,12 +133,11 @@ export class AuthLogin extends LitElement {
       if (authResult.success) {
         this.dispatchEvent(new CustomEvent('auth-success', { detail: authResult }));
       } else {
-        this.error =
-          authResult.error || 'SSH key authentication failed. Please try password login.';
+        this.error = authResult.error || t('login.error.sshTryPassword');
       }
     } catch (error) {
       console.error('SSH key authentication error:', error);
-      this.error = 'SSH key authentication failed';
+      this.error = t('login.error.ssh');
     } finally {
       this.loading = false;
     }
@@ -165,11 +167,16 @@ export class AuthLogin extends LitElement {
 
     return html`
       <div class="auth-container">
+        <!-- Language picker in top left corner -->
+        <div class="absolute top-4 left-4">
+          <language-picker compact></language-picker>
+        </div>
+
         <!-- Settings button in top right corner -->
         <button
           class="absolute top-4 right-4 p-2 text-text-muted hover:text-primary transition-colors"
           @click=${this.handleOpenSettings}
-          title="Settings"
+          title=${t('common.settings')}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
@@ -184,7 +191,7 @@ export class AuthLogin extends LitElement {
                 style="filter: drop-shadow(0 0 15px rgb(var(--color-primary) / 0.4));"
               ></terminal-icon>
               <h2 class="auth-title text-2xl sm:text-3xl mt-1 sm:mt-2">VibeTunnel</h2>
-              <p class="auth-subtitle text-xs sm:text-sm">Please authenticate to continue</p>
+              <p class="auth-subtitle text-xs sm:text-sm">${t('login.subtitle')}</p>
             </div>
           </div>
 
@@ -245,7 +252,7 @@ export class AuthLogin extends LitElement {
                             ? html`
                               <img
                                 src="${this.userAvatar}"
-                                alt="User Avatar"
+                                alt=${t('login.avatarAlt')}
                                 class="w-full h-full object-cover"
                                 width="80"
                                 height="80"
@@ -267,7 +274,7 @@ export class AuthLogin extends LitElement {
                         }
                       </div>
                       <p class="text-primary text-base sm:text-lg font-medium">
-                        Welcome back, ${this.currentUserId || '...'}
+                        ${t('login.welcomeBack', { user: this.currentUserId || '...' })}
                       </p>
                     </div>
                     <form @submit=${this.handlePasswordLogin} class="space-y-3">
@@ -278,8 +285,8 @@ export class AuthLogin extends LitElement {
                         >
                           ${
                             this.usesConfiguredPassword
-                              ? 'Configured VibeTunnel password'
-                              : 'Computer login password'
+                              ? t('login.configuredPassword')
+                              : t('login.computerPassword')
                           }
                         </label>
                         <input
@@ -289,8 +296,8 @@ export class AuthLogin extends LitElement {
                           data-testid="password-input"
                           placeholder=${
                             this.usesConfiguredPassword
-                              ? 'Enter the configured password'
-                              : 'Enter your login password'
+                              ? t('login.placeholder.configured')
+                              : t('login.placeholder.computer')
                           }
                           autocomplete="current-password"
                           aria-describedby="password-help"
@@ -307,12 +314,9 @@ export class AuthLogin extends LitElement {
                         >
                           ${
                             this.usesConfiguredPassword
-                              ? 'Sent to the VibeTunnel host for verification.'
-                              : 'Sent to the VibeTunnel host for operating system verification.'
+                              ? t('login.passwordHelp.sentConfigured')
+                              : t('login.passwordHelp.sentComputer')
                           }
-                          VibeTunnel does not save it. To avoid entering
-                          ${this.usesConfiguredPassword ? 'a password' : 'your computer password'}
-                          in the browser, enable SSH Keys in VibeTunnel Settings &gt; Remote.
                         </p>
                       </div>
                       <button
@@ -323,10 +327,10 @@ export class AuthLogin extends LitElement {
                       >
                         ${
                           this.loading
-                            ? 'Authenticating...'
+                            ? t('login.authenticating')
                             : this.usesConfiguredPassword
-                              ? 'Log in with configured password'
-                              : 'Log in with computer password'
+                              ? t('login.logInConfigured')
+                              : t('login.logInComputer')
                         }
                       </button>
                     </form>
@@ -348,7 +352,7 @@ export class AuthLogin extends LitElement {
                             ? html`
                               <img
                                 src="${this.userAvatar}"
-                                alt="User Avatar"
+                                alt=${t('login.avatarAlt')}
                                 class="w-full h-full object-cover"
                                 width="80"
                                 height="80"
@@ -372,12 +376,12 @@ export class AuthLogin extends LitElement {
                       <p class="text-primary text-xs sm:text-sm">
                         ${
                           this.currentUserId
-                            ? `Welcome back, ${this.currentUserId}`
-                            : 'Please authenticate to continue'
+                            ? t('login.welcomeBack', { user: this.currentUserId })
+                            : t('login.subtitle')
                         }
                       </p>
                       <p class="text-text-muted text-xs mt-1 sm:mt-2">
-                        SSH key authentication required
+                        ${t('login.sshRequired')}
                       </p>
                     </div>
                   </div>
@@ -392,7 +396,7 @@ export class AuthLogin extends LitElement {
                     !this.authConfig.disallowUserPassword
                       ? html`
                         <div class="auth-divider py-2 sm:py-3">
-                          <span>or</span>
+                          <span>${t('login.or')}</span>
                         </div>
                       `
                       : ''
@@ -403,24 +407,24 @@ export class AuthLogin extends LitElement {
                     <div class="flex items-center justify-between mb-3 sm:mb-4">
                       <div class="flex items-center gap-2">
                         <div class="w-2 h-2 rounded-full bg-primary"></div>
-                        <span class="font-mono text-xs sm:text-sm">SSH Key Management</span>
+                        <span class="font-mono text-xs sm:text-sm">${t('login.sshKeyManagement')}</span>
                       </div>
                       <button
                         class="btn-ghost text-xs"
                         data-testid="manage-keys"
                         @click=${this.handleShowSSHKeyManager}
                       >
-                        Manage Keys
+                        ${t('login.manageKeys')}
                       </button>
                     </div>
 
                     <div class="space-y-3">
                       <div class="bg-bg border border-border rounded p-3">
                         <p class="text-text-muted text-xs mb-2">
-                          Generate SSH keys for browser-based authentication
+                          ${t('login.sshGenerateHint')}
                         </p>
                         <p class="text-text-muted text-xs">
-                          💡 SSH keys work in both browser and terminal
+                          💡 ${t('login.sshBothHint')}
                         </p>
                       </div>
 
@@ -430,7 +434,7 @@ export class AuthLogin extends LitElement {
                         @click=${this.handleSSHKeyAuth}
                         ?disabled=${this.loading}
                       >
-                        ${this.loading ? 'Authenticating...' : 'Login with SSH Key'}
+                        ${this.loading ? t('login.authenticating') : t('login.sshLogin')}
                       </button>
                     </div>
                   </div>

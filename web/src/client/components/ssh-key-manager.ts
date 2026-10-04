@@ -1,5 +1,6 @@
 import { html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { LocaleController, t } from '../i18n/index.js';
 import type { BrowserSSHAgent } from '../services/ssh-agent.js';
 import './modal-wrapper.js';
 
@@ -22,6 +23,7 @@ export class SSHKeyManager extends LitElement {
 
   @property({ type: Object }) sshAgent!: BrowserSSHAgent;
   @property({ type: Boolean }) visible = false;
+  protected readonly i18n = new LocaleController(this);
   @state() private keys: SSHKey[] = [];
   @state() private loading = false;
   @state() private error = '';
@@ -64,7 +66,7 @@ export class SSHKeyManager extends LitElement {
 
   private async handleGenerateKey() {
     if (!this.newKeyName.trim()) {
-      this.error = 'Please enter a key name';
+      this.error = t('ssh.error.nameRequired');
       return;
     }
 
@@ -80,7 +82,7 @@ export class SSHKeyManager extends LitElement {
       // Automatically download the private key
       this.downloadPrivateKey(result.privateKeyPEM, this.newKeyName);
 
-      this.success = `SSH key "${this.newKeyName}" generated successfully. Private key downloaded.`;
+      this.success = t('ssh.generated', { name: this.newKeyName });
       this.newKeyName = '';
       this.newKeyPassword = '';
       this.showAddForm = false;
@@ -89,7 +91,7 @@ export class SSHKeyManager extends LitElement {
       this.refreshKeys();
       console.log('Generated key ID:', result.keyId);
     } catch (error) {
-      this.error = `Failed to generate key: ${error}`;
+      this.error = t('ssh.error.generate', { error: String(error) });
     } finally {
       this.loading = false;
     }
@@ -109,7 +111,7 @@ export class SSHKeyManager extends LitElement {
 
   private async handleImportKey() {
     if (!this.importKeyName.trim() || !this.importKeyContent.trim()) {
-      this.error = 'Please enter both key name and private key content';
+      this.error = t('ssh.error.importRequired');
       return;
     }
 
@@ -118,14 +120,14 @@ export class SSHKeyManager extends LitElement {
 
     try {
       const keyId = await this.sshAgent.addKey(this.importKeyName, this.importKeyContent);
-      this.success = `SSH key "${this.importKeyName}" imported successfully`;
+      this.success = t('ssh.imported', { name: this.importKeyName });
       this.importKeyName = '';
       this.importKeyContent = '';
       this.showAddForm = false;
       this.refreshKeys();
       console.log('Imported key ID:', keyId);
     } catch (error) {
-      this.error = `Failed to import key: ${error}`;
+      this.error = t('ssh.error.import', { error: String(error) });
     } finally {
       this.loading = false;
     }
@@ -136,11 +138,25 @@ export class SSHKeyManager extends LitElement {
   }
 
   private handleRemoveKey(keyId: string, keyName: string) {
-    if (confirm(`Are you sure you want to remove the SSH key "${keyName}"?`)) {
+    if (confirm(t('ssh.removeConfirm', { name: keyName }))) {
       this.sshAgent.removeKey(keyId);
-      this.success = `SSH key "${keyName}" removed successfully`;
+      this.success = t('ssh.removed', { name: keyName });
       this.refreshKeys();
     }
+  }
+
+  /** Import hint with the two PEM headers rendered as code. */
+  private renderImportHint() {
+    const parts = t('ssh.importHint', { openssh: '\uE000', pkcs8: '\uE001' }).split(
+      /(\uE000|\uE001)/
+    );
+    return parts.map((part) =>
+      part === '\uE000'
+        ? html`<code>BEGIN OPENSSH PRIVATE KEY</code>`
+        : part === '\uE001'
+          ? html`<code>BEGIN PRIVATE KEY</code>`
+          : part
+    );
   }
 
   private handleDownloadPublicKey(keyId: string, keyName: string) {
@@ -183,15 +199,15 @@ export class SSHKeyManager extends LitElement {
           class="bg-bg-secondary border border-border rounded-lg p-6 w-full max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl z-[1001]"
           role="dialog"
           aria-modal="true"
-          aria-label="SSH Key Manager"
+          aria-label=${t('ssh.title')}
           @click=${(e: Event) => e.stopPropagation()}
         >
           <div class="relative mb-8">
-            <h2 class="text-2xl font-mono text-primary text-center">🔑 SSH Key Manager</h2>
+            <h2 class="text-2xl font-mono text-primary text-center">🔑 ${t('ssh.title')}</h2>
             <button 
               @click=${this.handleClose} 
               class="absolute top-0 right-0 w-8 h-8 flex items-center justify-center text-text-muted hover:text-primary hover:bg-surface rounded transition-colors"
-              title="Close"
+              title=${t('common.close')}
             >
               ✕
             </button>
@@ -236,7 +252,7 @@ export class SSHKeyManager extends LitElement {
 
           <div class="mb-8">
             <div class="flex items-center justify-between mb-6 pb-3 border-b border-border">
-              <h3 class="font-mono text-xl text-primary">SSH Keys</h3>
+              <h3 class="font-mono text-xl text-primary">${t('ssh.keys')}</h3>
               <button
                 @click=${() => {
                   this.showAddForm = !this.showAddForm;
@@ -244,7 +260,7 @@ export class SSHKeyManager extends LitElement {
                 class="btn-primary px-4 py-2 font-medium"
                 ?disabled=${this.loading}
               >
-                ${this.showAddForm ? '✕ Cancel' : '+ Add Key'}
+                ${this.showAddForm ? `✕ ${t('common.cancel')}` : `+ ${t('ssh.addKey')}`}
               </button>
             </div>
 
@@ -255,18 +271,18 @@ export class SSHKeyManager extends LitElement {
                     <!-- Generate New Key Section -->
                     <div class="bg-surface border border-border rounded-lg p-6">
                       <h4 class="text-primary font-mono text-lg mb-6 flex items-center gap-2 font-semibold">
-                        🔑 Generate New SSH Key
+                        🔑 ${t('ssh.generateTitle')}
                       </h4>
 
                       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
                           <label class="form-label"
-                            >Key Name <span class="text-accent-red">*</span></label
+                            >${t('ssh.keyName')} <span class="text-accent-red">*</span></label
                           >
                           <input
                             type="text"
                             class="input-field"
-                            placeholder="Enter name for new key"
+                            placeholder=${t('ssh.keyNamePlaceholder')}
                             .value=${this.newKeyName}
                             @input=${(e: Event) => {
                               this.newKeyName = (e.target as HTMLInputElement).value;
@@ -275,21 +291,21 @@ export class SSHKeyManager extends LitElement {
                           />
                         </div>
                         <div>
-                          <label class="form-label">Algorithm</label>
+                          <label class="form-label">${t('ssh.algorithm')}</label>
                           <div
                             class="input-field bg-bg-secondary text-text-muted cursor-not-allowed"
                           >
-                            Ed25519 (recommended)
+                            Ed25519 (${t('ssh.recommended')})
                           </div>
                         </div>
                       </div>
 
                       <div class="mb-4">
-                        <label class="form-label">Password (Optional)</label>
+                        <label class="form-label">${t('ssh.passwordOptional')}</label>
                         <input
                           type="password"
                           class="input-field"
-                          placeholder="Enter password to encrypt private key (optional)"
+                          placeholder=${t('ssh.passwordPlaceholder')}
                           .value=${this.newKeyPassword}
                           @input=${(e: Event) => {
                             this.newKeyPassword = (e.target as HTMLInputElement).value;
@@ -297,8 +313,7 @@ export class SSHKeyManager extends LitElement {
                           ?disabled=${this.loading}
                         />
                         <p class="text-text-muted text-xs mt-1">
-                          💡 Leave empty for unencrypted key. Password is required when using the
-                          key for signing.
+                          💡 ${t('ssh.passwordHint')}
                         </p>
                       </div>
                       <button
@@ -306,24 +321,24 @@ export class SSHKeyManager extends LitElement {
                         class="btn-primary"
                         ?disabled=${this.loading || !this.newKeyName.trim()}
                       >
-                        ${this.loading ? 'Generating...' : 'Generate New Key'}
+                        ${this.loading ? t('ssh.generating') : t('ssh.generate')}
                       </button>
                     </div>
 
                     <!-- Import Existing Key Section -->
                     <div class="bg-surface border border-border rounded-lg p-6">
                       <h4 class="text-primary font-mono text-lg mb-6 flex items-center gap-2 font-semibold">
-                        📁 Import Existing SSH Key
+                        📁 ${t('ssh.importTitle')}
                       </h4>
 
                       <div class="mb-4">
                         <label class="form-label"
-                          >Key Name <span class="text-accent-red">*</span></label
+                          >${t('ssh.keyName')} <span class="text-accent-red">*</span></label
                         >
                         <input
                           type="text"
                           class="input-field"
-                          placeholder="Enter name for imported key"
+                          placeholder=${t('ssh.importNamePlaceholder')}
                           .value=${this.importKeyName}
                           @input=${(e: Event) => {
                             this.importKeyName = (e.target as HTMLInputElement).value;
@@ -334,7 +349,7 @@ export class SSHKeyManager extends LitElement {
 
                       <div class="mb-4">
                         <label class="form-label"
-                          >Private Key <span class="text-accent-red">*</span></label
+                          >${t('ssh.privateKey')} <span class="text-accent-red">*</span></label
                         >
                         <textarea
                           class="input-field"
@@ -347,9 +362,7 @@ export class SSHKeyManager extends LitElement {
                           ?disabled=${this.loading}
                         ></textarea>
                         <p class="text-text-muted text-xs mt-1">
-                          💡 Accepts OpenSSH format (<code>BEGIN OPENSSH PRIVATE KEY</code>) or
-                          PKCS#8 (<code>BEGIN PRIVATE KEY</code>). Only unencrypted Ed25519 keys
-                          are supported.
+                          💡 ${this.renderImportHint()}
                         </p>
                       </div>
 
@@ -362,7 +375,7 @@ export class SSHKeyManager extends LitElement {
                           !this.importKeyContent.trim()
                         }
                       >
-                        ${this.loading ? 'Importing...' : 'Import Key'}
+                        ${this.loading ? t('ssh.importing') : t('ssh.import')}
                       </button>
                     </div>
                   </div>
@@ -378,14 +391,14 @@ export class SSHKeyManager extends LitElement {
                 <div class="bg-surface border border-border rounded-lg p-6 mb-8">
                   <div class="flex items-center justify-between mb-6">
                     <h4 class="text-primary font-mono text-lg font-semibold flex items-center gap-2">
-                      📋 Setup Instructions
+                      📋 ${t('ssh.setupTitle')}
                     </h4>
                     <button
                       @click=${() => {
                         this.showInstructions = false;
                       }}
                       class="w-8 h-8 flex items-center justify-center text-text-muted hover:text-primary hover:bg-bg rounded transition-colors"
-                      title="Close instructions"
+                      title=${t('ssh.closeInstructions')}
                     >
                       ✕
                     </button>
@@ -393,7 +406,7 @@ export class SSHKeyManager extends LitElement {
                   <div class="space-y-6">
                     <div class="bg-bg border border-border rounded-lg p-4">
                       <p class="text-text-muted text-sm mb-3 font-medium">
-                        1. Add the public key to your authorized_keys file:
+                        ${t('ssh.step1')}
                       </p>
                       <div class="relative">
                         <pre
@@ -406,17 +419,17 @@ echo "${this.sshAgent.getPublicKey(this.instructionsKeyId)}" >> ~/.ssh/authorize
                             const publicKey = this.sshAgent.getPublicKey(this.instructionsKeyId);
                             const command = `echo "${publicKey}" >> ~/.ssh/authorized_keys`;
                             await navigator.clipboard.writeText(command);
-                            this.success = 'Command copied to clipboard!';
+                            this.success = t('ssh.commandCopied');
                           }}
                           class="absolute top-2 right-2 btn-ghost text-xs"
-                          title="Copy command"
+                          title=${t('ssh.copyCommand')}
                         >
                           📋
                         </button>
                       </div>
                     </div>
                     <div class="bg-bg border border-border rounded-lg p-4">
-                      <p class="text-text-muted text-sm mb-3 font-medium">2. Or copy the public key:</p>
+                      <p class="text-text-muted text-sm mb-3 font-medium">${t('ssh.step2')}</p>
                       <div class="relative">
                         <pre
                           class="bg-secondary p-3 rounded-lg text-xs overflow-x-auto text-primary pr-20 font-mono"
@@ -428,19 +441,19 @@ ${this.sshAgent.getPublicKey(this.instructionsKeyId)}</pre
                             const publicKey = this.sshAgent.getPublicKey(this.instructionsKeyId);
                             if (publicKey) {
                               await navigator.clipboard.writeText(publicKey);
-                              this.success = 'Public key copied to clipboard!';
+                              this.success = t('ssh.publicKeyCopied');
                             }
                           }}
                           class="absolute top-2 right-2 btn-ghost text-xs"
-                          title="Copy to clipboard"
+                          title=${t('ssh.copyToClipboard')}
                         >
-                          📋 Copy
+                          📋 ${t('ssh.copy')}
                         </button>
                       </div>
                     </div>
                     <div class="bg-status-info/10 border border-status-info/30 rounded-lg p-3">
                       <p class="text-status-info text-sm font-mono flex items-center gap-2">
-                        💡 <strong>Tip:</strong> Make sure ~/.ssh/authorized_keys has correct permissions (600)
+                        💡 <strong>${t('ssh.tip')}</strong> ${t('ssh.tipText')}
                       </p>
                     </div>
                   </div>
@@ -456,8 +469,8 @@ ${this.sshAgent.getPublicKey(this.instructionsKeyId)}</pre
                 ? html`
                   <div class="text-center py-12 text-text-muted border border-border rounded-lg bg-surface">
                     <div class="text-4xl mb-4">🔑</div>
-                    <p class="font-mono text-lg mb-2 text-primary">No SSH keys found</p>
-                    <p class="text-sm">Generate or import a key to get started</p>
+                    <p class="font-mono text-lg mb-2 text-primary">${t('ssh.empty')}</p>
+                    <p class="text-sm">${t('ssh.emptyHint')}</p>
                   </div>
                 `
                 : this.keys.map(
@@ -470,28 +483,28 @@ ${this.sshAgent.getPublicKey(this.instructionsKeyId)}</pre
                             <span class="badge badge-ed25519">${key.algorithm}</span>
                             ${
                               key.encrypted
-                                ? html`<span class="badge badge-encrypted">🔒 Encrypted</span>`
+                                ? html`<span class="badge badge-encrypted">🔒 ${t('ssh.encrypted')}</span>`
                                 : ''
                             }
                           </div>
                           <div class="text-sm text-text-muted font-mono space-y-1">
                             <div>ID: ${key.id}</div>
-                            <div>Fingerprint: ${key.fingerprint}</div>
-                            <div>Created: ${new Date(key.createdAt).toLocaleString()}</div>
+                            <div>${t('ssh.fingerprint', { value: key.fingerprint })}</div>
+                            <div>${t('ssh.created', { date: new Date(key.createdAt).toLocaleString() })}</div>
                           </div>
                         </div>
                         <div class="flex gap-2">
                           <button
                             @click=${() => this.handleDownloadPublicKey(key.id, key.name)}
                             class="btn-ghost text-xs"
-                            title="Download Public Key"
+                            title=${t('ssh.downloadPublic')}
                           >
-                            📥 Public
+                            📥 ${t('ssh.public')}
                           </button>
                           <button
                             @click=${() => this.handleRemoveKey(key.id, key.name)}
                             class="btn-ghost text-xs text-status-error hover:bg-status-error hover:text-bg"
-                            title="Remove Key"
+                            title=${t('ssh.removeKey')}
                           >
                             🗑️
                           </button>

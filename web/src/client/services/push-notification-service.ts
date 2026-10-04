@@ -5,6 +5,7 @@ import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   RECOMMENDED_NOTIFICATION_PREFERENCES,
 } from '../../types/config.js';
+import { t } from '../i18n/index.js';
 import { createLogger } from '../utils/logger';
 import { authClient } from './auth-client';
 import { serverConfigService } from './server-config-service';
@@ -470,9 +471,9 @@ export class PushNotificationService {
           // Show notification if we have permission
           if (this.serviceWorkerRegistration && this.getPermission() === 'granted') {
             await this.serviceWorkerRegistration.showNotification(
-              event.title || 'VibeTunnel Test',
+              event.title || t('push.test.title'),
               {
-                body: event.body || 'Test notification received!',
+                body: event.body || t('push.test.received'),
                 icon: '/apple-touch-icon.png',
                 badge: '/favicon-32.png',
                 tag: 'vibetunnel-test',
@@ -782,7 +783,7 @@ export class PushNotificationService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: message || 'Test notification from VibeTunnel',
+          message: message || t('settings.testNotification.body'),
         }),
       });
 
@@ -835,8 +836,8 @@ export class PushNotificationService {
 
     try {
       // Show notification directly
-      await this.serviceWorkerRegistration.showNotification('VibeTunnel Notifications Active', {
-        body: "You'll receive notifications for session events",
+      await this.serviceWorkerRegistration.showNotification(t('push.welcome.title'), {
+        body: t('push.welcome.body'),
         icon: '/apple-touch-icon.png',
         badge: '/favicon-32.png',
         tag: 'vibetunnel-welcome',
