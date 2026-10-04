@@ -174,3 +174,58 @@ describe('CastOutputHub subscribe while the session is writing', () => {
     }
   });
 });
+
+describe('CastOutputHub replay of a cast too big for memory', () => {
+  let tmpDir: string | null = null;
+
+  afterEach(() => {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    tmpDir = null;
+  });
+
+  it('replays only the end of the history, from a whole event, at the size in effect there', async () => {
+    // 430 MB after the last clear used to be kept in memory and queued on the
+    // socket. A 600 MB hole of NUL bytes (sparse: no disk used) stands for that history.
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cast-hub-'));
+    const stdoutPath = path.join(tmpDir, 'stdout');
+    const hole = 600 * 1024 * 1024;
+    const replayMaxBytes = 64 * 1024;
+    const frames: string[] = [];
+    for (let n = 1; n <= 2000; n++) frames.push(`\x1b[H<frame ${n} ─ é>${'x'.repeat(60)}\x1b[K`);
+    const tail = [
+      JSON.stringify([1, 'r', '91x33']),
+      ...frames.map((data, i) => JSON.stringify([2 + i, 'o', data])),
+    ];
+    const fd = fs.openSync(stdoutPath, 'w');
+    fs.writeSync(fd, `${HEADER}\n`);
+    fs.ftruncateSync(fd, hole);
+    const data = Buffer.from(`\n${tail.join('\n')}\n`);
+    fs.writeSync(fd, data, 0, data.length, hole);
+    fs.closeSync(fd);
+    expect(data.length).toBeGreaterThan(2 * replayMaxBytes);
+
+    const sessionManager = {
+      getSessionPaths: () => ({ stdoutPath }),
+      loadSessionInfo: () => ({ lastClearOffset: 0 }),
+      saveSessionInfo: vi.fn(),
+    } as unknown as SessionManager;
+    const events: CastOutputHubEvent[] = [];
+    const unsubscribe = new CastOutputHub(sessionManager, { replayMaxBytes }).subscribe(
+      's1',
+      (event) => events.push(event)
+    );
+    await vi.waitFor(() => expect(events.some((e) => e.kind === 'header')).toBe(true));
+    unsubscribe();
+
+    const header = events.find((e) => e.kind === 'header');
+    expect(header).toMatchObject({ header: { width: 91, height: 33 } });
+    const outputs = events
+      .filter((e): e is Extract<CastOutputHubEvent, { kind: 'output' }> => e.kind === 'output')
+      .map((e) => e.data);
+    // Whole events only, ending with the last one, and no more than the window.
+    expect(outputs.length).toBeGreaterThan(0);
+    expect(frames.slice(-outputs.length)).toEqual(outputs);
+    expect(Buffer.byteLength(outputs.join(''))).toBeLessThanOrEqual(replayMaxBytes);
+    expect(events.some((e) => e.kind === 'error')).toBe(false);
+  });
+});

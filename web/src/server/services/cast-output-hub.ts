@@ -2,6 +2,13 @@ import chalk from 'chalk';
 import * as fs from 'fs';
 import type { SessionManager } from '../pty/session-manager.js';
 import type { AsciinemaHeader } from '../pty/types.js';
+import {
+  CAST_REPLAY_MAX_BYTES,
+  castReplayStart,
+  findLastResizeBefore,
+  findLineStart,
+  forEachCastLine,
+} from '../utils/cast-tail.js';
 import { createLogger } from '../utils/logger.js';
 import {
   calculatePruningPositionInFile,
@@ -36,29 +43,6 @@ function isResizeEvent(event: AsciinemaEvent): event is AsciinemaResizeEvent {
   );
 }
 
-/** Return the offset of the start of the line containing `offset` (0 if none found). */
-function findLineStart(filePath: string, offset: number): number {
-  if (offset <= 0) return 0;
-  let fd: number | null = null;
-  try {
-    fd = fs.openSync(filePath, 'r');
-    const chunk = Buffer.alloc(HEADER_READ_BUFFER_SIZE);
-    let end = offset;
-    while (end > 0) {
-      const start = Math.max(0, end - chunk.length);
-      const bytesRead = fs.readSync(fd, chunk, 0, end - start, start);
-      const newline = chunk.subarray(0, bytesRead).lastIndexOf(0x0a);
-      if (newline !== -1) return start + newline + 1;
-      end = start;
-    }
-    return 0;
-  } catch {
-    return offset;
-  } finally {
-    if (fd !== null) fs.closeSync(fd);
-  }
-}
-
 function isExitEvent(event: AsciinemaEvent): event is AsciinemaExitEvent {
   return Array.isArray(event) && event[0] === 'exit';
 }
@@ -90,8 +74,14 @@ interface WatcherInfo {
 
 export class CastOutputHub {
   private activeWatchers: Map<string, WatcherInfo> = new Map();
+  /** Most bytes of history replayed to a subscriber (CAST_REPLAY_MAX_BYTES). */
+  private replayMaxBytes: number;
 
-  constructor(private sessionManager: SessionManager) {
+  constructor(
+    private sessionManager: SessionManager,
+    options: { replayMaxBytes?: number } = {}
+  ) {
+    this.replayMaxBytes = options.replayMaxBytes ?? CAST_REPLAY_MAX_BYTES;
     process.on('beforeExit', () => this.cleanup());
   }
 
@@ -316,188 +306,185 @@ export class CastOutputHub {
       done = true;
       onDone();
     };
-    try {
-      const sessionInfo = this.sessionManager.loadSessionInfo(sessionId);
-      let startOffset = sessionInfo?.lastClearOffset ?? 0;
-      if (fs.existsSync(streamPath)) {
-        const stats = fs.statSync(streamPath);
-        startOffset = Math.min(startOffset, stats.size);
-      }
-      startOffset = Math.min(startOffset, endOffset);
-      // lastClearOffset points inside the event that contains the clear sequence. Start at
-      // that event's line so it parses; otherwise the frame drawn right after the clear in
-      // the same write (Claude Code does `ESC[2J` + full redraw at once) is lost.
-      startOffset = findLineStart(streamPath, startOffset);
-
-      // Read header line (best-effort)
-      let header: AsciinemaHeader | null = null;
-      let fd: number | null = null;
-      try {
-        fd = fs.openSync(streamPath, 'r');
-        const buf = Buffer.alloc(HEADER_READ_BUFFER_SIZE);
-        let data = '';
-        let filePosition = 0;
-        let bytesRead = fs.readSync(fd, buf, 0, buf.length, filePosition);
-
-        while (!data.includes('\n') && bytesRead > 0) {
-          data += buf.toString('utf8', 0, bytesRead);
-          filePosition += bytesRead;
-          if (!data.includes('\n')) {
-            bytesRead = fs.readSync(fd, buf, 0, buf.length, filePosition);
-          }
-        }
-
-        const idx = data.indexOf('\n');
-        if (idx !== -1) header = JSON.parse(data.slice(0, idx));
-      } catch {
-        // ignore
-      } finally {
-        if (fd !== null) {
-          try {
-            fs.closeSync(fd);
-          } catch {
-            // ignore
-          }
-        }
-      }
-
-      if (endOffset <= startOffset) {
-        // Nothing to replay yet (no file, or nothing after the last clear).
-        if (header) listener({ kind: 'header', header });
-        finish();
-        return;
-      }
-      const analysisStream = fs.createReadStream(streamPath, {
-        encoding: 'utf8',
-        start: startOffset,
-        end: endOffset - 1,
-      });
-      let lineBuffer = '';
-      const events: AsciinemaEvent[] = [];
-      let lastClearIndex = -1;
-      let lastResizeBeforeClear: AsciinemaResizeEvent | null = null;
-      let currentResize: AsciinemaResizeEvent | null = null;
-
-      let fileOffset = startOffset;
-      let lastClearOffset = startOffset;
-
-      const processLine = (line: string) => {
-        fileOffset += Buffer.byteLength(line, 'utf8') + 1;
-        if (!line.trim()) return;
-
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed.version && parsed.width && parsed.height) {
-            header = parsed as AsciinemaHeader;
-            return;
-          }
-
-          if (!Array.isArray(parsed)) return;
-
-          if (parsed[0] === 'exit') {
-            events.push(parsed as AsciinemaExitEvent);
-            return;
-          }
-
-          if (parsed.length < 3 || typeof parsed[0] !== 'number') return;
-          const event = parsed as AsciinemaEvent;
-
-          if (isResizeEvent(event)) currentResize = event;
-
-          if (isOutputEvent(event) && containsPruningSequence(event[2])) {
-            const clearResult = this.processClearSequence(
-              event as AsciinemaOutputEvent,
-              events.length,
-              fileOffset,
-              currentResize,
-              line
-            );
-            if (clearResult) {
-              lastClearIndex = clearResult.lastClearIndex;
-              lastClearOffset = clearResult.lastClearOffset;
-              lastResizeBeforeClear = clearResult.lastResizeBeforeClear;
-            }
-          }
-
-          events.push(event);
-        } catch {
-          // ignore invalid lines
-        }
-      };
-
-      analysisStream.on('data', (chunk: string | Buffer) => {
-        lineBuffer += chunk.toString();
-        let idx = lineBuffer.indexOf('\n');
-        while (idx !== -1) {
-          const line = lineBuffer.slice(0, idx);
-          lineBuffer = lineBuffer.slice(idx + 1);
-          processLine(line);
-          idx = lineBuffer.indexOf('\n');
-        }
-      });
-
-      analysisStream.on('end', () => {
-        if (lineBuffer.trim()) {
-          // last line without trailing newline
-          processLine(lineBuffer);
-        }
-
-        let startIndex = 0;
-        if (lastClearIndex >= 0) {
-          // Whatever the clearing event wrote after its last clear sequence is the current
-          // screen (Claude Code clears and redraws in one write), so replay that remainder.
-          startIndex = lastClearIndex + 1;
-          const clearEvent = events[lastClearIndex] as AsciinemaOutputEvent;
-          const prunePoint = findLastPrunePoint(clearEvent[2]);
-          const remainder = prunePoint ? clearEvent[2].slice(prunePoint.position) : '';
-          if (remainder) {
-            startIndex = lastClearIndex;
-            events[lastClearIndex] = [clearEvent[0], clearEvent[1], remainder];
-          }
-          if (sessionInfo) {
-            sessionInfo.lastClearOffset = lastClearOffset;
-            this.sessionManager.saveSessionInfo(sessionId, sessionInfo);
-          }
-        }
-
-        if (header) {
-          const headerToSend = { ...header };
-          if (lastClearIndex >= 0 && lastResizeBeforeClear) {
-            const [w, h] = lastResizeBeforeClear[2].split('x');
-            headerToSend.width = Number.parseInt(w, 10);
-            headerToSend.height = Number.parseInt(h, 10);
-          }
-          listener({ kind: 'header', header: headerToSend });
-        }
-
-        let exitFound = false;
-        for (let i = startIndex; i < events.length; i++) {
-          const event = events[i];
-          if (isExitEvent(event)) {
-            exitFound = true;
-            listener({ kind: 'exit', exitCode: event[1] });
-          } else if (isOutputEvent(event)) {
-            listener({ kind: 'output', data: event[2], historical: true });
-          } else if (isResizeEvent(event)) {
-            listener({ kind: 'resize', dimensions: event[2], historical: true });
-          }
-        }
-
-        if (exitFound) {
-          // Caller may choose to unsubscribe.
-        }
-        finish();
-      });
-
-      analysisStream.on('error', (error) => {
-        logger.error(`failed to read existing cast content for ${sessionId}:`, error);
-        listener({ kind: 'error', message: 'Failed to read session output' });
-        finish();
-      });
-    } catch (error) {
+    const fail = (error: unknown) => {
       logger.error(`failed to send existing cast content for ${sessionId}:`, error);
       listener({ kind: 'error', message: 'Failed to read session output' });
       finish();
+    };
+    this.replayExistingContent(sessionId, streamPath, endOffset, listener).then(finish).catch(fail);
+  }
+
+  /**
+   * Replay the history in [last clear, endOffset): the header, then the events from
+   * the last clear on. At most replayMaxBytes of it: a long Claude
+   * Code session's 1 GB cast had 430 MB after its last clear, all kept in memory here and
+   * queued on the socket (history is exempt from the client buffer limit). A longer history
+   * starts on the first whole event line in its last replayMaxBytes, at the terminal size in
+   * effect there; a full-screen app's repaints in them draw the current screen.
+   */
+  private async replayExistingContent(
+    sessionId: string,
+    streamPath: string,
+    endOffset: number,
+    listener: CastOutputHubListener
+  ): Promise<void> {
+    const sessionInfo = this.sessionManager.loadSessionInfo(sessionId);
+    let clearOffset = sessionInfo?.lastClearOffset ?? 0;
+    if (fs.existsSync(streamPath)) {
+      const stats = fs.statSync(streamPath);
+      clearOffset = Math.min(clearOffset, stats.size);
+    }
+    clearOffset = Math.min(clearOffset, endOffset);
+    // lastClearOffset points inside the event that contains the clear sequence. Start at
+    // that event's line so it parses; otherwise the frame drawn right after the clear in
+    // the same write (Claude Code does `ESC[2J` + full redraw at once) is lost.
+    clearOffset = findLineStart(streamPath, clearOffset);
+
+    // Read header line (best-effort)
+    let header: AsciinemaHeader | null = null;
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(streamPath, 'r');
+      const buf = Buffer.alloc(HEADER_READ_BUFFER_SIZE);
+      let data = '';
+      let filePosition = 0;
+      let bytesRead = fs.readSync(fd, buf, 0, buf.length, filePosition);
+
+      while (!data.includes('\n') && bytesRead > 0) {
+        data += buf.toString('utf8', 0, bytesRead);
+        filePosition += bytesRead;
+        if (!data.includes('\n')) {
+          bytesRead = fs.readSync(fd, buf, 0, buf.length, filePosition);
+        }
+      }
+
+      const idx = data.indexOf('\n');
+      if (idx !== -1) header = JSON.parse(data.slice(0, idx));
+    } catch {
+      // ignore
+    } finally {
+      if (fd !== null) {
+        try {
+          fs.closeSync(fd);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (endOffset <= clearOffset) {
+      // Nothing to replay yet (no file, or nothing after the last clear).
+      if (header) listener({ kind: 'header', header });
+      return;
+    }
+
+    const { start: startOffset, truncated } = await castReplayStart(
+      streamPath,
+      clearOffset,
+      endOffset,
+      this.replayMaxBytes
+    );
+    // The size the terminal had where a cut replay starts: the header's is long gone.
+    const sizeAtStart = truncated ? await findLastResizeBefore(streamPath, startOffset) : null;
+    if (truncated) {
+      logger.log(
+        `replaying the last ${Math.round((endOffset - startOffset) / 1024)} KB of ${Math.round((endOffset - clearOffset) / 1024)} KB of history of ${sessionId}`
+      );
+    }
+
+    const events: AsciinemaEvent[] = [];
+    let lastClearIndex = -1;
+    const resizeAtStart: AsciinemaResizeEvent | null = sizeAtStart ? [0, 'r', sizeAtStart] : null;
+    let currentResize = resizeAtStart;
+    let lastResizeBeforeClear: AsciinemaResizeEvent | null = null;
+    let lastClearOffset = startOffset;
+
+    const processLine = (line: string, fileOffset: number) => {
+      if (!line.trim()) return;
+
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.version && parsed.width && parsed.height) {
+          header = parsed as AsciinemaHeader;
+          return;
+        }
+
+        if (!Array.isArray(parsed)) return;
+
+        if (parsed[0] === 'exit') {
+          events.push(parsed as AsciinemaExitEvent);
+          return;
+        }
+
+        if (parsed.length < 3 || typeof parsed[0] !== 'number') return;
+        const event = parsed as AsciinemaEvent;
+
+        if (isResizeEvent(event)) currentResize = event;
+
+        if (isOutputEvent(event) && containsPruningSequence(event[2])) {
+          const clearResult = this.processClearSequence(
+            event as AsciinemaOutputEvent,
+            events.length,
+            fileOffset,
+            currentResize,
+            line
+          );
+          if (clearResult) {
+            lastClearIndex = clearResult.lastClearIndex;
+            lastClearOffset = clearResult.lastClearOffset;
+            lastResizeBeforeClear = clearResult.lastResizeBeforeClear;
+          }
+        }
+
+        events.push(event);
+      } catch {
+        // ignore invalid lines
+      }
+    };
+
+    await forEachCastLine(streamPath, startOffset, endOffset, processLine);
+
+    let startIndex = 0;
+    if (lastClearIndex >= 0) {
+      // Whatever the clearing event wrote after its last clear sequence is the current
+      // screen (Claude Code clears and redraws in one write), so replay that remainder.
+      startIndex = lastClearIndex + 1;
+      const clearEvent = events[lastClearIndex] as AsciinemaOutputEvent;
+      const prunePoint = findLastPrunePoint(clearEvent[2]);
+      const remainder = prunePoint ? clearEvent[2].slice(prunePoint.position) : '';
+      if (remainder) {
+        startIndex = lastClearIndex;
+        events[lastClearIndex] = [clearEvent[0], clearEvent[1], remainder];
+      }
+      // Reload before saving: the stream read may be long and other fields may have been
+      // saved meanwhile.
+      const latestInfo = this.sessionManager.loadSessionInfo(sessionId);
+      if (latestInfo) {
+        latestInfo.lastClearOffset = lastClearOffset;
+        this.sessionManager.saveSessionInfo(sessionId, latestInfo);
+      }
+    }
+
+    if (header) {
+      const headerToSend = { ...(header as AsciinemaHeader) };
+      const sizeEvent = lastClearIndex >= 0 ? lastResizeBeforeClear : resizeAtStart;
+      if (sizeEvent) {
+        const [w, h] = sizeEvent[2].split('x');
+        headerToSend.width = Number.parseInt(w, 10);
+        headerToSend.height = Number.parseInt(h, 10);
+      }
+      listener({ kind: 'header', header: headerToSend });
+    }
+
+    for (let i = startIndex; i < events.length; i++) {
+      const event = events[i];
+      if (isExitEvent(event)) {
+        listener({ kind: 'exit', exitCode: event[1] });
+      } else if (isOutputEvent(event)) {
+        listener({ kind: 'output', data: event[2], historical: true });
+      } else if (isResizeEvent(event)) {
+        listener({ kind: 'resize', dimensions: event[2], historical: true });
+      }
     }
   }
 

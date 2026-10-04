@@ -560,7 +560,8 @@ describe('WsV3Hub history replay through a real CastOutputHub', () => {
     const realHub = new WsV3Hub({
       ptyManager: { getSession: () => null } as unknown as PtyManager,
       terminalManager: {} as unknown as TerminalManager,
-      castOutputHub: new CastOutputHub(sessionManager),
+      // Replays are capped (CAST_REPLAY_MAX_BYTES); this one may send all of its history.
+      castOutputHub: new CastOutputHub(sessionManager, { replayMaxBytes: 2 * count * line.length }),
       gitStatusHub: {} as unknown as GitStatusHub,
       sessionMonitor: null,
       remoteRegistry: null,
