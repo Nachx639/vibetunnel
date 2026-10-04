@@ -908,4 +908,10 @@ export const fr: Messages = {
     'L’apparence d’une session sur un téléphone dans ce navigateur. Compacte fixe la barre d’actions et les touches rapides sous le terminal, avec deux rangées de touches rapides, Ctrl et ⌥ persistantes et un balayage sur les touches pour déplacer le curseur.',
   'settings.phoneLayout.classic': 'Classique',
   'settings.phoneLayout.compact': 'Compacte',
+
+  // Terminal: back to the bottom
+  'terminal.scrollToBottom': 'Défiler jusqu’en bas',
+  'terminal.scrollToNewOutput': 'Défiler jusqu’à la nouvelle sortie',
+  'terminal.newOutput': 'Nouvelle sortie',
+  'terminal.bottom': 'Bas',
 };

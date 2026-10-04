@@ -865,4 +865,10 @@ export const zhCN: Messages = {
     '在此浏览器中会话在手机上的显示方式。紧凑模式将操作栏和快捷键固定在终端下方，提供两行快捷键、可锁定的 Ctrl 和 ⌥，并可在快捷键上滑动来移动光标。',
   'settings.phoneLayout.classic': '经典',
   'settings.phoneLayout.compact': '紧凑',
+
+  // Terminal: back to the bottom
+  'terminal.scrollToBottom': '滚动到底部',
+  'terminal.scrollToNewOutput': '滚动到新输出',
+  'terminal.newOutput': '新输出',
+  'terminal.bottom': '底部',
 };

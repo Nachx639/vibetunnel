@@ -873,4 +873,10 @@ export const ar: Messages = {
     'كيف تظهر الجلسة على الهاتف في هذا المتصفح. يثبّت الوضع المضغوط شريط الإجراءات والمفاتيح السريعة أسفل الطرفية، مع صفين من المفاتيح السريعة وCtrl و⌥ ثابتين، والسحب على المفاتيح لتحريك المؤشر.',
   'settings.phoneLayout.classic': 'كلاسيكي',
   'settings.phoneLayout.compact': 'مضغوط',
+
+  // Terminal: back to the bottom
+  'terminal.scrollToBottom': 'التمرير إلى الأسفل',
+  'terminal.scrollToNewOutput': 'التمرير إلى المخرجات الجديدة',
+  'terminal.newOutput': 'مخرجات جديدة',
+  'terminal.bottom': 'الأسفل',
 };

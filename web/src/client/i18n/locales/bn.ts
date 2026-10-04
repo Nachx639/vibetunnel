@@ -876,4 +876,10 @@ export const bn: Messages = {
     'এই ব্রাউজারে ফোনে একটি সেশন কেমন দেখায়। কমপ্যাক্টে অ্যাকশন বার ও কুইক কী টার্মিনালের নিচে আটকে থাকে, কুইক কীর দুটি সারি, স্টিকি Ctrl ও ⌥, এবং কার্সর সরাতে কীগুলোর উপর সোয়াইপ।',
   'settings.phoneLayout.classic': 'ক্লাসিক',
   'settings.phoneLayout.compact': 'কমপ্যাক্ট',
+
+  // Terminal: back to the bottom
+  'terminal.scrollToBottom': 'একদম নিচে যান',
+  'terminal.scrollToNewOutput': 'নতুন আউটপুটে যান',
+  'terminal.newOutput': 'নতুন আউটপুট',
+  'terminal.bottom': 'নিচে',
 };

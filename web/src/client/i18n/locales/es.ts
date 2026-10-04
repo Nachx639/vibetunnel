@@ -899,4 +899,10 @@ export const es: Messages = {
     'Cómo se ve una sesión en un móvil en este navegador. Compacto fija la barra de acciones y las teclas rápidas bajo el terminal, con dos filas de teclas rápidas, Ctrl y ⌥ fijas y un deslizamiento sobre las teclas para mover el cursor.',
   'settings.phoneLayout.classic': 'Clásico',
   'settings.phoneLayout.compact': 'Compacto',
+
+  // Terminal: back to the bottom
+  'terminal.scrollToBottom': 'Ir al final',
+  'terminal.scrollToNewOutput': 'Ir a la salida nueva',
+  'terminal.newOutput': 'Salida nueva',
+  'terminal.bottom': 'Final',
 };

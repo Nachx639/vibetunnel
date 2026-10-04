@@ -8,7 +8,7 @@
  * @fires terminal-resize - When terminal is resized (detail: { cols: number, rows: number, isMobile: boolean, isHeightOnlyChange: boolean, source: string })
  */
 
-import { FitAddon, Ghostty, Terminal as GhosttyTerminal } from 'ghostty-web';
+import { FitAddon, Terminal as GhosttyTerminal } from 'ghostty-web';
 import { html, LitElement, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
@@ -18,14 +18,15 @@ import { TERMINAL_FONT_FAMILY, TERMINAL_IDS } from '../utils/terminal-constants.
 import { TerminalPreferencesManager } from '../utils/terminal-preferences.js';
 import { TERMINAL_THEMES, type TerminalThemeId } from '../utils/terminal-themes.js';
 import { getCurrentTheme } from '../utils/theme-utils.js';
+import { createGhostty } from './terminal-ghostty.js';
 
 const logger = createLogger('terminal');
 
-let ghosttyPromise: Promise<Ghostty> | null = null;
-async function ensureGhostty(): Promise<Ghostty> {
-  if (!ghosttyPromise) ghosttyPromise = Ghostty.load('/ghostty-vt.wasm');
-  return ghosttyPromise;
-}
+/** Our scrollbar stays this long after the view stops moving. */
+const SCROLLBAR_HIDE_MS = 1000;
+/** Gap above and below its thumb's travel, and the thumb's least height (CSS px). */
+const SCROLLBAR_INSET = 3;
+const SCROLLBAR_MIN_THUMB = 24;
 
 type TerminalResizeDetail = {
   cols: number;
@@ -34,6 +35,17 @@ type TerminalResizeDetail = {
   isHeightOnlyChange: boolean;
   source: string;
 };
+
+/**
+ * What ghostty draws of the cursor: its cell, whether the app shows it, and the blink phase
+ * (its renderer's own cursorVisible, toggled every 530 ms; not in its typings).
+ */
+function cursorKey(term: GhosttyTerminal): string {
+  const cursor = term.wasmTerm?.getCursor();
+  const blinkOn = (term.renderer as unknown as { cursorVisible?: boolean } | undefined)
+    ?.cursorVisible;
+  return cursor ? `${cursor.x},${cursor.y},${cursor.visible},${blinkOn}` : 'none';
+}
 
 @customElement('vibe-terminal')
 export class Terminal extends LitElement {
@@ -60,6 +72,11 @@ export class Terminal extends LitElement {
   userOverrideWidth = false;
 
   @state() private followCursorEnabled = true;
+  /**
+   * Output came while the user read back: the view stayed put and the scroll-to-bottom button
+   * says "New output" until the view is back at the bottom (by hand or with the button).
+   */
+  @state() private newOutput = false;
 
   private container: HTMLElement | null = null;
   private terminal: GhosttyTerminal | null = null;
@@ -67,7 +84,7 @@ export class Terminal extends LitElement {
   private resizeObserver: ResizeObserver | null = null;
   private themeObserver: MutationObserver | null = null;
   private pasteInput: HTMLTextAreaElement | null = null;
-  private pendingOutput = '';
+  private pendingOutput: string[] = [];
   private pendingFollowCursor = true;
   private preservedScrollPosition: number | null = null;
   private touchStartX = 0;
@@ -75,6 +92,16 @@ export class Terminal extends LitElement {
   private lastTouchY = 0;
   private touchScrollRemainder = 0;
   private touchScrolling = false;
+  /** What ghostty's canvas shows, as the render hook last painted it. */
+  private canvasRows: { viewportY: number; selection: boolean; cursor?: string } | null = null;
+  /** A link hover or a selection changed what is drawn without dirtying a row. */
+  private canvasStale = false;
+  /** Our scrollbar beside the text (see updateScrollbar) and its thumb. */
+  private scrollbar: HTMLElement | null = null;
+  private scrollbarThumb: HTMLElement | null = null;
+  private scrollbarHideTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A mouse dragging our scrollbar: which pointer, and where on the thumb it holds it. */
+  private scrollbarGrab: { pointerId: number; offset: number } | null = null;
 
   private isMobile = false;
   private lastCols = 0;
@@ -88,6 +115,7 @@ export class Terminal extends LitElement {
     const prefs = TerminalPreferencesManager.getInstance();
     this.theme = prefs.getTheme();
     super.connectedCallback();
+    window.addEventListener('vibetunnel-accent-changed', this.handleAccentChange);
 
     this.originalFontSize = this.fontSize;
     // Make host focusable so browser shortcuts (Cmd/Ctrl+V) have a target.
@@ -116,6 +144,7 @@ export class Terminal extends LitElement {
   }
 
   disconnectedCallback() {
+    window.removeEventListener('vibetunnel-accent-changed', this.handleAccentChange);
     this.cleanup();
     this.themeObserver?.disconnect();
     this.themeObserver = null;
@@ -125,6 +154,11 @@ export class Terminal extends LitElement {
   firstUpdated() {
     this.pasteInput = this.querySelector('.terminal-paste-input') as HTMLTextAreaElement | null;
     this.initializeTerminal();
+  }
+
+  willUpdate(changed: PropertyValues) {
+    // Back at the bottom, whatever brought it there: nothing below is new any more.
+    if (changed.has('followCursorEnabled') && this.followCursorEnabled) this.newOutput = false;
   }
 
   updated(changed: PropertyValues) {
@@ -176,7 +210,7 @@ export class Terminal extends LitElement {
 
   public write(data: string, followCursor = true) {
     if (!this.terminal) {
-      this.pendingOutput += data;
+      this.pendingOutput.push(data);
       this.pendingFollowCursor = this.pendingFollowCursor && followCursor;
       return;
     }
@@ -188,11 +222,18 @@ export class Terminal extends LitElement {
 
     if (this.preservedScrollPosition !== null) {
       const preservedScrollPosition = this.preservedScrollPosition;
+      const anchor = this.historyAnchor(preservedScrollPosition);
+      const lengthBefore = this.terminal.buffer.active.length;
       try {
         this.terminal.write(data);
         // ghostty-web scrolls to bottom synchronously during write(), so restore before paint.
-        this.scrollToPosition(preservedScrollPosition);
+        this.scrollToPosition(
+          this.anchoredPosition(preservedScrollPosition, anchor, lengthBefore, data)
+        );
         this.followCursorEnabled = false;
+        this.newOutput = true;
+        // The history grew: the thumb is a little shorter and higher.
+        this.updateScrollbar(false);
       } finally {
         this.preservedScrollPosition = null;
       }
@@ -201,6 +242,63 @@ export class Terminal extends LitElement {
 
     // ghostty-web already follows output; another smooth scroll per write queues badly on iOS.
     this.terminal.write(data);
+  }
+
+  /**
+   * Up to 3 non-blank history rows among the top 12 of the view, as [rows below `top`, text]:
+   * how write() finds the text the user was reading once the history drops its oldest rows.
+   * Only history rows: those never change, and reading them is cheap. None (a blank top of the
+   * view) keeps the plain index, as before.
+   */
+  private historyAnchor(top: number): Array<[number, string]> {
+    const anchor: Array<[number, string]> = [];
+    const terminal = this.terminal;
+    if (!terminal) return anchor;
+    const end = Math.min(this.getMaxScrollPosition(), top + Math.min(terminal.rows, 12));
+    for (let row = top; row < end && anchor.length < 3; row++) {
+      const text = terminal.buffer.active.getLine(row)?.translateToString(true);
+      if (text) anchor.push([row - top, text]);
+    }
+    return anchor;
+  }
+
+  /**
+   * Where the rows the view showed from `top` are after writing `data`. Usually the same
+   * index, but ghostty-web keeps a small history (scrollbackLimit 10000 makes about 2000 rows at
+   * 45 columns, 750 at 120) and makes room by dropping its oldest page at once (about 1000
+   * rows at 45 columns): every row moves up by that many, and keeping the index jumped the
+   * reader that far towards the bottom. The write can only have dropped between
+   * -growth and (rows it could add) - growth rows, so only that window is searched.
+   */
+  private anchoredPosition(
+    top: number,
+    anchor: Array<[number, string]>,
+    lengthBefore: number,
+    data: string
+  ): number {
+    const terminal = this.terminal;
+    if (!terminal || anchor.length === 0) return top;
+    const buffer = terminal.buffer.active;
+    const grown = buffer.length - lengthBefore;
+    // At most one row per line feed and one per wrapped line.
+    let feeds = 0;
+    for (let i = data.indexOf('\n'); i !== -1; i = data.indexOf('\n', i + 1)) feeds++;
+    const added = feeds + Math.ceil(data.length / Math.max(1, terminal.cols));
+    const fewest = Math.max(0, -grown);
+    const most = Math.min(top, Math.max(fewest, added - grown), fewest + 5000);
+    for (let dropped = fewest; dropped <= most; dropped++) {
+      const at = top - dropped;
+      if (
+        anchor.every(
+          ([offset, text]) => buffer.getLine(at + offset)?.translateToString(true) === text
+        )
+      ) {
+        return at;
+      }
+    }
+    // The rows being read were dropped as well (even when a burst grew the history): the
+    // oldest left are the nearest. If nothing could be dropped, the index stands.
+    return most > 0 || fewest > 0 ? 0 : top;
   }
 
   public clear() {
@@ -220,6 +318,7 @@ export class Terminal extends LitElement {
 
   public scrollToBottom() {
     this.terminal?.scrollToBottom();
+    this.followCursorEnabled = true;
   }
 
   /**
@@ -344,6 +443,11 @@ export class Terminal extends LitElement {
     }
   };
 
+  /** At the live bottom: no rows back. */
+  private isAtBottom(): boolean {
+    return (this.terminal?.getViewportY() ?? 0) <= 0.5;
+  }
+
   private resetTouchScroll = () => {
     this.touchScrolling = false;
     this.touchScrollRemainder = 0;
@@ -372,6 +476,13 @@ export class Terminal extends LitElement {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.detachTouchScrollHandlers();
+    this.canvasRows = null;
+    this.canvasStale = false;
+    if (this.scrollbarHideTimer) clearTimeout(this.scrollbarHideTimer);
+    this.scrollbarHideTimer = null;
+    this.scrollbar = null;
+    this.scrollbarThumb = null;
+    this.scrollbarGrab = null;
 
     this.terminal?.dispose();
     this.terminal = null;
@@ -404,12 +515,27 @@ export class Terminal extends LitElement {
         ? TERMINAL_THEMES.find((t) => t.id === themeId)
         : TERMINAL_THEMES.find((t) => t.id === this.theme);
 
-    return selected?.colors ?? {};
+    // ghostty-web paints on a canvas, which can't resolve var(--color-*): resolve them here.
+    const colors = selected?.colors ?? {};
+    const root = getComputedStyle(document.documentElement);
+    return Object.fromEntries(
+      Object.entries(colors).map(([key, value]) => {
+        const name = typeof value === 'string' ? /^var\((--[\w-]+)\)$/.exec(value)?.[1] : undefined;
+        return [key, name ? root.getPropertyValue(name).trim() || value : value];
+      })
+    ) as typeof colors;
   }
+
+  /** The cursor follows the color theme. */
+  private handleAccentChange = () => this.applyTheme();
 
   private applyTheme() {
     if (!this.terminal) return;
-    this.terminal.options.theme = this.getResolvedTheme();
+    const theme = this.getResolvedTheme();
+    this.terminal.options.theme = theme;
+    // The canvas is a whole number of cells wide; paint the leftover strip in the terminal
+    // background instead of the page background.
+    if (this.container && theme.background) this.container.style.background = theme.background;
   }
 
   private detectMobile() {
@@ -480,7 +606,10 @@ export class Terminal extends LitElement {
     this.container = container;
 
     try {
-      const ghostty = await ensureGhostty();
+      // A WASM instance of its own: on one shared instance, a new terminal could show the
+      // previous session's text (see createGhostty). Only the terminal keeps it, so it goes
+      // when the terminal is disposed, or right away if this initialization is abandoned.
+      const ghostty = await createGhostty();
       if (
         initializationId !== this.initializationId ||
         !this.isConnected ||
@@ -488,12 +617,13 @@ export class Terminal extends LitElement {
       )
         return;
 
+      const theme = this.getResolvedTheme();
       const term = new GhosttyTerminal({
         cols: this.cols,
         rows: this.rows,
         fontSize: this.fontSize,
         fontFamily: TERMINAL_FONT_FAMILY,
-        theme: this.getResolvedTheme(),
+        theme,
         cursorBlink: true,
         smoothScrollDuration: 120,
         disableStdin: true,
@@ -536,29 +666,34 @@ export class Terminal extends LitElement {
 
       term.onScroll(() => {
         if (this.preservedScrollPosition !== null) return;
-        const viewportFromBottom = term.getViewportY();
-        this.followCursorEnabled = viewportFromBottom <= 0.5;
+        this.followCursorEnabled = this.isAtBottom();
+        this.updateScrollbar(true);
       });
 
       // Fresh mount
       container.innerHTML = '';
       term.open(container);
+      this.hookRenders(term);
+      this.dropGhosttyScrollbar(term, container);
+      this.createScrollbar(container);
       term.registerLinkProvider(new KeyboardShortcutLinkProvider(term, this.handleShortcutClick));
 
       this.terminal = term;
       this.fitAddon = fitAddon;
 
-      // Size first, then initialize every cell; ghostty-web can reuse uncleared WASM memory.
+      // Size first, then initialize every cell. That alone left another session's text in the
+      // history; the terminal's own WASM instance (createGhostty) is what keeps it out.
       this.fitTerminal('initial');
       term.clear();
 
       // ghostty-web does not translate touch pans into scrollback movement.
       this.attachTouchScrollHandlers();
+      this.applyTheme();
 
-      if (this.pendingOutput) {
-        const pending = this.pendingOutput;
+      if (this.pendingOutput.length > 0) {
+        const pending = this.pendingOutput.join('');
         const followCursor = this.pendingFollowCursor;
-        this.pendingOutput = '';
+        this.pendingOutput = [];
         this.pendingFollowCursor = true;
         this.terminal.write(pending, () => {
           if (followCursor && this.followCursorEnabled) {
@@ -582,10 +717,191 @@ export class Terminal extends LitElement {
     }
   }
 
-  private handleScrollToBottom = () => {
-    this.followCursorEnabled = true;
-    this.scrollToBottom();
+  /**
+   * Wraps ghostty-web's renderer.render, which its requestAnimationFrame loop calls on every
+   * frame. ghostty-web 0.4 redraws every row on each call while the view is scrolled back
+   * (render() marks all rows dirty when viewportY > 0), even when nothing changed: reading the
+   * history kept a phone redrawing rows × cols glyphs 60 times a second, fetching each row from
+   * the WASM again, and a touch scroll had to share the main thread with that. A frame
+   * identical to the last one painted is skipped: same scrolled-back line, nothing written
+   * since (the WASM's dirty state), no selection, no link hover change. ghostty's scrollbar
+   * fade loops render on their own every frame for 200 ms: as its scrollbar is never painted
+   * (see dropGhosttyScrollbar), those frames are skipped too. At the bottom ghostty only
+   * redraws what changed (and the blinking cursor): left alone.
+   */
+  private hookRenders(term: GhosttyTerminal) {
+    const renderer = term.renderer;
+    if (!renderer) return;
+    const render = renderer.render.bind(renderer);
+    this.canvasRows = null;
+    // Hovering a link (desktop) or selecting changes what is drawn without dirtying a row.
+    const setHoveredHyperlinkId = renderer.setHoveredHyperlinkId.bind(renderer);
+    renderer.setHoveredHyperlinkId = (id) => {
+      this.canvasStale = true;
+      setHoveredHyperlinkId(id);
+    };
+    const setHoveredLinkRange = renderer.setHoveredLinkRange.bind(renderer);
+    renderer.setHoveredLinkRange = (range) => {
+      this.canvasStale = true;
+      setHoveredLinkRange(range);
+    };
+    term.onSelectionChange(() => {
+      this.canvasStale = true;
+    });
+
+    renderer.render = (buffer, forceAll, viewportY, scrollback) => {
+      const line = viewportY ?? term.getViewportY();
+      // A selection ghostty clears says nothing: one more paint after it takes the highlight off.
+      const selection = term.hasSelection();
+      // At the bottom ghostty draws the cursor, and with cursorBlink it repainted the cursor's
+      // row on every frame (reading the whole screen from the WASM for it): in a full-screen
+      // app such as Claude Code, where a touch scroll only sends wheel steps, a phone rendered
+      // the canvas on almost every frame. What it draws only changes with the cursor's place
+      // or visibility, or a blink (every 530 ms).
+      const cursor = line > 0 ? undefined : cursorKey(term);
+      const painted = this.canvasRows;
+      if (
+        !forceAll &&
+        !this.canvasStale &&
+        !selection &&
+        painted !== null &&
+        !painted.selection &&
+        painted.viewportY === line &&
+        painted.cursor === cursor &&
+        term.wasmTerm?.isDirty() === false
+      ) {
+        return;
+      }
+      this.canvasStale = false;
+      this.canvasRows = { viewportY: line, selection, cursor };
+      // Scrollbar opacity 0: ghostty paints none on the canvas (see dropGhosttyScrollbar).
+      render(buffer, forceAll, line, scrollback, 0);
+    };
+  }
+
+  /**
+   * ghostty-web paints its scrollbar on the canvas, over the last columns, after clearing a
+   * 14 px strip of them with the background (renderScrollbar): while it showed, the last
+   * letters of every row were gone. The render hook never lets it paint (opacity 0); its mouse
+   * zone goes too (the last 12 px of the canvas, where a click scrolled instead of selecting).
+   * Ours stands beside the text instead (updateScrollbar).
+   */
+  private dropGhosttyScrollbar(term: GhosttyTerminal, container: HTMLElement) {
+    const onMouseDown = (term as unknown as { handleMouseDown?: EventListener }).handleMouseDown;
+    if (typeof onMouseDown === 'function') {
+      container.removeEventListener('mousedown', onMouseDown, { capture: true });
+    }
+  }
+
+  private createScrollbar(container: HTMLElement) {
+    const bar = document.createElement('div');
+    bar.className = 'terminal-scrollbar';
+    bar.setAttribute('aria-hidden', 'true');
+    const thumb = document.createElement('div');
+    thumb.className = 'terminal-scrollbar-thumb';
+    bar.appendChild(thumb);
+    bar.addEventListener('pointerdown', this.handleScrollbarPointerDown);
+    bar.addEventListener('pointermove', this.handleScrollbarPointerMove);
+    bar.addEventListener('pointerup', this.handleScrollbarPointerUp);
+    bar.addEventListener('pointercancel', this.handleScrollbarPointerUp);
+    container.appendChild(bar);
+    this.scrollbar = bar;
+    this.scrollbarThumb = thumb;
+  }
+
+  /** Where our scrollbar and its thumb go for the view as it is now; null: no history. */
+  private scrollbarLayout() {
+    const term = this.terminal;
+    const metrics = term?.renderer?.getMetrics();
+    const history = this.getMaxScrollPosition();
+    if (!term || !metrics || history <= 0) return null;
+    const height = term.rows * metrics.height;
+    const track = Math.max(0, height - SCROLLBAR_INSET * 2);
+    const thumb = Math.min(
+      track,
+      Math.max(SCROLLBAR_MIN_THUMB, (track * term.rows) / (history + term.rows))
+    );
+    // How far the top of the view is from the oldest row.
+    const fromTop = (history - Math.round(term.getViewportY())) * metrics.height;
+    const fraction = Math.max(0, Math.min(1, fromTop / (history * metrics.height)));
+    const ratio = window.devicePixelRatio || 1;
+    return {
+      // Right of the last column: FitAddon leaves 15 px there when it counts the columns, so
+      // the bar showing or not never changes them.
+      left: term.cols * metrics.width,
+      height,
+      track,
+      thumb,
+      top: Math.round((SCROLLBAR_INSET + (track - thumb) * fraction) * ratio) / ratio,
+      history,
+    };
+  }
+
+  /** Lays our scrollbar out for the view; `flash` shows it until the view rests a second. */
+  private updateScrollbar(flash: boolean) {
+    const bar = this.scrollbar;
+    const thumb = this.scrollbarThumb;
+    if (!bar || !thumb) return;
+    const layout = this.scrollbarLayout();
+    if (!layout) {
+      bar.classList.remove('visible');
+      return;
+    }
+    bar.style.left = `${layout.left}px`;
+    bar.style.height = `${layout.height}px`;
+    thumb.style.height = `${layout.thumb}px`;
+    thumb.style.transform = `translate3d(0, ${layout.top}px, 0)`;
+    if (!flash) return;
+    bar.classList.add('visible');
+    if (this.scrollbarHideTimer) clearTimeout(this.scrollbarHideTimer);
+    this.scrollbarHideTimer = setTimeout(() => {
+      this.scrollbarHideTimer = null;
+      bar.classList.remove('visible');
+    }, SCROLLBAR_HIDE_MS);
+  }
+
+  /** A mouse drags our scrollbar; it takes no touches (fingers scroll the terminal through it). */
+  private handleScrollbarPointerDown = (event: PointerEvent) => {
+    const bar = this.scrollbar;
+    const layout = this.scrollbarLayout();
+    if (!bar || !layout || event.pointerType === 'touch' || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const y = event.clientY - bar.getBoundingClientRect().top;
+    const onThumb = y >= layout.top && y <= layout.top + layout.thumb;
+    // Off the thumb, it jumps under the pointer first, as ghostty's did on its track.
+    this.scrollbarGrab = {
+      pointerId: event.pointerId,
+      offset: onThumb ? y - layout.top : layout.thumb / 2,
+    };
+    bar.setPointerCapture?.(event.pointerId);
+    bar.classList.add('dragging');
+    if (!onThumb) this.dragScrollbarTo(y);
   };
+
+  private handleScrollbarPointerMove = (event: PointerEvent) => {
+    const bar = this.scrollbar;
+    if (!bar || this.scrollbarGrab?.pointerId !== event.pointerId) return;
+    this.dragScrollbarTo(event.clientY - bar.getBoundingClientRect().top);
+  };
+
+  private handleScrollbarPointerUp = (event: PointerEvent) => {
+    if (this.scrollbarGrab?.pointerId !== event.pointerId) return;
+    this.scrollbarGrab = null;
+    this.scrollbar?.classList.remove('dragging');
+    this.updateScrollbar(true);
+  };
+
+  /** Scrolls so that the point the mouse holds on the thumb sits `y` px down the bar. */
+  private dragScrollbarTo(y: number) {
+    const layout = this.scrollbarLayout();
+    const grab = this.scrollbarGrab;
+    if (!layout || !grab || layout.track <= layout.thumb) return;
+    const fraction = (y - grab.offset - SCROLLBAR_INSET) / (layout.track - layout.thumb);
+    this.scrollToPosition(Math.round(Math.max(0, Math.min(1, fraction)) * layout.history));
+  }
+
+  private handleScrollToBottom = () => this.scrollToBottom();
 
   private handleShortcutClick = (controlCharacter: string) => {
     if (this.disableClick) return;
@@ -758,19 +1074,68 @@ export class Terminal extends LitElement {
           opacity: 0;
           pointer-events: none;
         }
-        .scroll-to-bottom {
+        /* Own class: the global .scroll-to-bottom styles (legacy 48px box, text-2xl,
+           left-anchored) overflowed this button off the left edge on phones. */
+        .terminal-scroll-bottom {
           position: absolute;
           right: 12px;
           bottom: 12px;
           z-index: 20;
-        }
-        .scroll-to-bottom button {
-          font-family: ${TERMINAL_FONT_FAMILY};
-          background: rgba(0, 0, 0, 0.55);
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 6px 12px;
+          font: 500 13px/1 ${TERMINAL_FONT_FAMILY};
           color: #fff;
-          border: 1px solid rgba(255, 255, 255, 0.18);
-          border-radius: 10px;
-          padding: 6px 10px;
+          background: rgba(0, 0, 0, 0.6);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 999px;
+          -webkit-user-select: none;
+          user-select: none;
+          touch-action: manipulation;
+        }
+        .terminal-scroll-bottom.has-new-output {
+          background: var(--color-primary, #10b981);
+          border-color: transparent;
+        }
+        /* Beside the text, never over it (see updateScrollbar); fingers scroll through it. */
+        .terminal-scrollbar {
+          position: absolute;
+          top: 0;
+          width: 12px;
+          z-index: 1;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.3s ease-out;
+        }
+        .terminal-scrollbar.visible {
+          opacity: 1;
+          transition: none;
+        }
+        .terminal-scrollbar-thumb {
+          position: absolute;
+          top: 0;
+          left: 4px;
+          width: 4px;
+          border-radius: 2px;
+          background: rgba(128, 128, 128, 0.6);
+        }
+        /* A mouse can grab it: the strip beside the last column holds no text. */
+        @media (hover: hover) and (pointer: fine) {
+          .terminal-scrollbar {
+            pointer-events: auto;
+          }
+          .terminal-scrollbar:hover,
+          .terminal-scrollbar.dragging {
+            opacity: 1;
+            transition: none;
+          }
+          .terminal-scrollbar:hover .terminal-scrollbar-thumb,
+          .terminal-scrollbar.dragging .terminal-scrollbar-thumb {
+            left: 3px;
+            width: 6px;
+            border-radius: 3px;
+          }
         }
       </style>
 
@@ -796,9 +1161,15 @@ export class Terminal extends LitElement {
         ${
           !this.hideScrollButton && !this.followCursorEnabled
             ? html`
-              <div class="scroll-to-bottom">
-                <button type="button" @click=${this.handleScrollToBottom}>${t('terminal.scroll')}</button>
-              </div>
+              <button
+                type="button"
+                class="terminal-scroll-bottom ${this.newOutput ? 'has-new-output' : ''}"
+                data-testid="terminal-scroll-bottom"
+                aria-label=${t(this.newOutput ? 'terminal.scrollToNewOutput' : 'terminal.scrollToBottom')}
+                @click=${this.handleScrollToBottom}
+              >
+                ↓ ${t(this.newOutput ? 'terminal.newOutput' : 'terminal.bottom')}
+              </button>
             `
             : null
         }

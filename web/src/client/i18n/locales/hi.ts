@@ -874,4 +874,10 @@ export const hi: Messages = {
     'इस ब्राउज़र में फ़ोन पर सत्र कैसा दिखता है। कॉम्पैक्ट में ऐक्शन बार और क्विक कीज़ टर्मिनल के नीचे टिके रहते हैं, क्विक कीज़ की दो पंक्तियाँ, स्टिकी Ctrl और ⌥, और कर्सर हिलाने के लिए कीज़ पर स्वाइप।',
   'settings.phoneLayout.classic': 'क्लासिक',
   'settings.phoneLayout.compact': 'कॉम्पैक्ट',
+
+  // Terminal: back to the bottom
+  'terminal.scrollToBottom': 'नीचे तक स्क्रॉल करें',
+  'terminal.scrollToNewOutput': 'नए आउटपुट तक स्क्रॉल करें',
+  'terminal.newOutput': 'नया आउटपुट',
+  'terminal.bottom': 'नीचे',
 };

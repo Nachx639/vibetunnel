@@ -7,12 +7,16 @@ import {
   waitForCondition,
   waitForElement,
 } from '@/test/utils/component-helpers';
-import { MockFitAddon, MockResizeObserver, MockTerminal } from '@/test/utils/terminal-mocks';
+import {
+  MockFitAddon,
+  type MockRenderer,
+  MockResizeObserver,
+  MockTerminal,
+} from '@/test/utils/terminal-mocks';
 import { TERMINAL_IDS } from '../utils/terminal-constants';
 
-// Mock ghostty-web before importing the component
+// Mock ghostty-web before importing the component (the test setup mocks its WASM instances)
 vi.mock('ghostty-web', () => ({
-  Ghostty: { load: vi.fn(async () => ({})) },
   Terminal: MockTerminal,
   FitAddon: MockFitAddon,
 }));
@@ -45,7 +49,7 @@ describe('Terminal', () => {
     await element.updateComplete;
 
     // Wait for terminal container to be available
-    await waitForElement(element, '#terminal-container');
+    await waitForElement(element);
 
     // Allow terminal initialization to complete
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -135,6 +139,27 @@ describe('Terminal', () => {
       expect(readyHandler).toHaveBeenCalledOnce();
     });
 
+    it('gives every terminal a WASM instance of its own and keeps none once disposed', async () => {
+      // On one shared instance a new terminal showed the previous session's text.
+      const firstGhostty = mockTerminal?.ghostty;
+      const other = await fixture<Terminal>(html`
+        <vibe-terminal session-id="other-session"></vibe-terminal>
+      `);
+      await waitForCondition(() => other.getAttribute('data-ready') === 'true', {
+        message: 'second terminal not ready',
+      });
+      const otherGhostty = (other as unknown as { terminal: MockTerminal }).terminal.ghostty;
+
+      expect(firstGhostty).toBeTruthy();
+      expect(otherGhostty).toBeTruthy();
+      expect(otherGhostty).not.toBe(firstGhostty);
+
+      element.remove();
+      expect(mockTerminal?.dispose).toHaveBeenCalledOnce();
+      expect(Object.values(element)).not.toContain(firstGhostty);
+      other.remove();
+    });
+
     it('registers clickable shortcuts that dispatch terminal input', () => {
       if (!mockTerminal) return;
 
@@ -152,13 +177,14 @@ describe('Terminal', () => {
         ): void;
       };
 
+      // MockTerminal's default line has no cells (getCell returns null); this one has text.
       mockTerminal.buffer.active.getLine.mockReturnValue({
         translateToString: vi.fn(() => 'Ctrl+R'),
         length: 6,
         getCell: vi.fn((column: number) => ({
           getChars: () => 'Ctrl+R'[column] ?? '',
         })),
-      });
+      } as unknown as ReturnType<MockTerminal['buffer']['active']['getLine']>);
 
       const inputHandler = vi.fn();
       element.addEventListener('terminal-input', inputHandler);
@@ -175,7 +201,7 @@ describe('Terminal', () => {
       `);
 
       await customElement.updateComplete;
-      await waitForElement(customElement, '#terminal-container');
+      await waitForElement(customElement);
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       // In test environment, attribute to property conversion may not work correctly
@@ -183,6 +209,31 @@ describe('Terminal', () => {
       expect(customElement.getAttribute('cols')).toBe('120');
       expect(customElement.getAttribute('rows')).toBe('40');
       expect(customElement.getAttribute('font-size')).toBe('16');
+    });
+  });
+
+  describe('theme colors', () => {
+    it('resolves var() colors for the canvas and paints the strip beside it to match', async () => {
+      if (!mockTerminal) return;
+      const root = document.documentElement;
+      root.style.setProperty('--color-primary', '#123456');
+      try {
+        element.theme = 'dark';
+        await element.updateComplete;
+        const theme = mockTerminal.options.theme as Record<string, string>;
+        // A canvas cannot resolve var(--color-*): it gets the color itself.
+        expect(theme.cursor).toBe('#123456');
+        expect(Object.values(theme).filter((value) => String(value).includes('var('))).toEqual([]);
+        const container = element.querySelector('#terminal-container') as HTMLElement;
+        expect(container.style.background).not.toBe('');
+
+        // Another color theme: the cursor follows it.
+        root.style.setProperty('--color-primary', '#abcdef');
+        window.dispatchEvent(new CustomEvent('vibetunnel-accent-changed'));
+        expect((mockTerminal.options.theme as Record<string, string>).cursor).toBe('#abcdef');
+      } finally {
+        root.style.removeProperty('--color-primary');
+      }
     });
   });
 
@@ -211,7 +262,7 @@ describe('Terminal', () => {
       document.body.appendChild(pendingElement);
 
       await pendingElement.updateComplete;
-      await waitForElement(pendingElement, '#terminal-container');
+      await waitForElement(pendingElement);
       await waitForCondition(() => pendingElement.getAttribute('data-ready') === 'true', {
         message: 'terminal not ready',
       });
@@ -698,15 +749,16 @@ describe('Terminal', () => {
     });
 
     it('should preserve the viewed scrollback position when output arrives', () => {
-      if (!mockTerminal) return;
+      const terminal = mockTerminal;
+      if (!terminal) return;
 
-      mockTerminal.buffer.active.length = 100;
+      terminal.buffer.active.length = 100;
       element.scrollToPosition(20);
       expect(element.getScrollPosition()).toBe(20);
 
-      mockTerminal.write.mockImplementationOnce(() => {
-        mockTerminal.buffer.active.length = 101;
-        mockTerminal.simulateScroll(0);
+      terminal.write.mockImplementationOnce(() => {
+        terminal.buffer.active.length = 101;
+        terminal.simulateScroll(0);
       });
 
       element.write('new output');
@@ -716,12 +768,103 @@ describe('Terminal', () => {
       expect(element.isFollowingCursor()).toBe(false);
     });
 
-    it('should keep initial replay dumps at the bottom', () => {
-      if (!mockTerminal) return;
+    it('says "New output" on the bottom button when output comes while reading back', async () => {
+      const terminal = mockTerminal;
+      if (!terminal) return;
+      terminal.buffer.active.length = 100;
+      const button = () =>
+        element.querySelector('[data-testid="terminal-scroll-bottom"]') as HTMLButtonElement | null;
+      element.scrollToPosition(20);
+      await element.updateComplete;
+      expect(button()?.textContent?.trim()).toBe('↓ Bottom');
+      expect(button()?.getAttribute('aria-label')).toBe('Scroll to bottom');
+      expect(button()?.classList.contains('has-new-output')).toBe(false);
 
-      mockTerminal.write.mockImplementationOnce(() => {
-        mockTerminal.buffer.active.length = 100;
-        mockTerminal.simulateScroll(0);
+      terminal.write.mockImplementation(() => {
+        terminal.buffer.active.length += 1;
+        terminal.simulateScroll(0);
+      });
+      element.write('more\r\n');
+      await element.updateComplete;
+      // The view stays where the user reads; the button tells there is more below.
+      expect(element.getScrollPosition()).toBe(20);
+      expect(button()?.textContent?.trim()).toBe('↓ New output');
+      expect(button()?.getAttribute('aria-label')).toBe('Scroll to the new output');
+      expect(button()?.classList.contains('has-new-output')).toBe(true);
+
+      // The button goes to the bottom and output is followed again.
+      button()?.click();
+      await element.updateComplete;
+      expect(button()).toBeNull();
+      expect(element.isFollowingCursor()).toBe(true);
+      expect(element.getScrollPosition()).toBe(element.getMaxScrollPosition());
+      element.write('even more\r\n');
+      await element.updateComplete;
+      expect(element.getScrollPosition()).toBe(element.getMaxScrollPosition());
+      expect(button()).toBeNull();
+
+      // Reading back again: nothing new until output comes.
+      element.scrollToPosition(10);
+      await element.updateComplete;
+      expect(button()?.textContent?.trim()).toBe('↓ Bottom');
+    });
+
+    it('keeps reading the same text when the history drops its oldest rows', () => {
+      const terminal = mockTerminal;
+      if (!terminal) return;
+      // Buffer row i reads "row <first + i>": dropping old rows shifts every index.
+      let first = 0;
+      terminal.buffer.active.getLine.mockImplementation((index: number) => ({
+        translateToString: vi.fn(() => `row ${first + index}`),
+        length: 80,
+        getCell: vi.fn(() => null),
+      }));
+      terminal.buffer.active.length = 1000;
+      element.scrollToPosition(500); // reading "row 500" and below
+      // ghostty makes room: 400 of the oldest rows go as 3 new ones come.
+      const dropOldest = (count: number) =>
+        terminal.write.mockImplementationOnce(() => {
+          first += count;
+          terminal.buffer.active.length += 3 - count;
+          terminal.simulateScroll(0);
+        });
+      dropOldest(400);
+      element.write('a\r\nb\r\nc\r\n');
+      expect(element.getScrollPosition()).toBe(100);
+      expect(element.isFollowingCursor()).toBe(false);
+
+      // Without a drop the rows keep their index.
+      terminal.write.mockImplementationOnce(() => {
+        terminal.buffer.active.length += 3;
+        terminal.simulateScroll(0);
+      });
+      element.write('d\r\ne\r\nf\r\n');
+      expect(element.getScrollPosition()).toBe(100);
+
+      // When the rows being read are dropped too, the oldest left are the nearest.
+      dropOldest(400);
+      element.write('g\r\nh\r\ni\r\n');
+      expect(element.getScrollPosition()).toBe(0);
+
+      // Also when a burst dropped them while the history still grew.
+      terminal.buffer.active.length = 1000;
+      element.scrollToPosition(100);
+      terminal.write.mockImplementationOnce(() => {
+        first += 400;
+        terminal.buffer.active.length += 500 - 400;
+        terminal.simulateScroll(0);
+      });
+      element.write('x\r\n'.repeat(500));
+      expect(element.getScrollPosition()).toBe(0);
+    });
+
+    it('should keep initial replay dumps at the bottom', () => {
+      const terminal = mockTerminal;
+      if (!terminal) return;
+
+      terminal.write.mockImplementationOnce(() => {
+        terminal.buffer.active.length = 100;
+        terminal.simulateScroll(0);
       });
 
       element.write('initial replay', false);
@@ -731,13 +874,14 @@ describe('Terminal', () => {
     });
 
     it('should preserve scrollback across a burst of output writes', () => {
-      if (!mockTerminal) return;
+      const terminal = mockTerminal;
+      if (!terminal) return;
 
-      mockTerminal.buffer.active.length = 100;
+      terminal.buffer.active.length = 100;
       element.scrollToPosition(20);
-      mockTerminal.write.mockImplementation(() => {
-        mockTerminal.buffer.active.length += 1;
-        mockTerminal.simulateScroll(0);
+      terminal.write.mockImplementation(() => {
+        terminal.buffer.active.length += 1;
+        terminal.simulateScroll(0);
       });
 
       element.write('first');
@@ -786,6 +930,255 @@ describe('Terminal', () => {
     it('should preserve pinch zoom while owning one-finger terminal scrolling', () => {
       const container = element.querySelector('.terminal-container') as HTMLElement;
       expect(getComputedStyle(container).touchAction).toBe('pinch-zoom');
+    });
+  });
+
+  describe('repaints while scrolled back', () => {
+    let terminalElement: Terminal;
+    let term: MockTerminal;
+    let renderer: MockRenderer;
+
+    beforeEach(async () => {
+      MockTerminal.withRenderer = true;
+      try {
+        terminalElement = await fixture<Terminal>(html`
+          <vibe-terminal session-id="repaint-1"></vibe-terminal>
+        `);
+        await waitForCondition(() => terminalElement.getAttribute('data-ready') === 'true', {
+          message: 'terminal not ready',
+        });
+      } finally {
+        MockTerminal.withRenderer = false;
+      }
+      term = (terminalElement as unknown as { terminal: MockTerminal }).terminal;
+      renderer = term.renderer as MockRenderer;
+      term.buffer.active.length = 100;
+    });
+
+    afterEach(() => {
+      terminalElement.remove();
+    });
+
+    // What ghostty-web's requestAnimationFrame loop does on every frame.
+    const frame = (opacity = 1) =>
+      renderer.render(term.wasmTerm, false, term.getViewportY(), term, opacity);
+
+    it('skips frames identical to the last one painted', () => {
+      frame();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(1);
+
+      terminalElement.scrollToPosition(20);
+      renderer.paint.mockClear();
+      frame();
+      frame();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(1);
+
+      // Output, a scroll, a link hover: painted once each.
+      term.wasmTerm.isDirty.mockReturnValueOnce(true);
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(2);
+      term.scrollLines(-1);
+      frame();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(3);
+      renderer.setHoveredLinkRange(null);
+      frame();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(4);
+      // ghostty's scrollbar fade loops render every frame for 200 ms: its scrollbar is never
+      // painted, so they repaint nothing.
+      frame(0.3);
+      frame(0.6);
+      frame(1);
+      expect(renderer.paint).toHaveBeenCalledTimes(4);
+
+      // A selection repaints every frame, and once more after ghostty silently clears it.
+      term.hasSelection.mockReturnValue(true);
+      frame();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(6);
+      term.hasSelection.mockReturnValue(false);
+      frame();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(7);
+      term.simulateSelectionChange();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(8);
+
+      // Resizes and font changes force a full paint.
+      renderer.render(term.wasmTerm, true, term.getViewportY(), term);
+      expect(renderer.paint).toHaveBeenCalledTimes(9);
+    });
+
+    it("drops ghostty's scrollbar mouse zone, which lay over the last column", async () => {
+      const remove = vi.spyOn(HTMLElement.prototype, 'removeEventListener');
+      MockTerminal.withRenderer = true;
+      let other: Terminal;
+      try {
+        other = await fixture<Terminal>(
+          html`<vibe-terminal session-id="repaint-2"></vibe-terminal>`
+        );
+        await waitForCondition(() => other.getAttribute('data-ready') === 'true', {
+          message: 'terminal not ready',
+        });
+      } finally {
+        MockTerminal.withRenderer = false;
+      }
+      const otherTerm = (other as unknown as { terminal: MockTerminal }).terminal;
+      expect(remove).toHaveBeenCalledWith('mousedown', otherTerm.handleMouseDown, {
+        capture: true,
+      });
+      remove.mockRestore();
+      other.remove();
+    });
+
+    it('at the bottom repaints only when the cursor moves, shows, hides or blinks', () => {
+      const blink = renderer as unknown as { cursorVisible?: boolean };
+      blink.cursorVisible = true;
+      frame();
+      frame();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(1);
+      blink.cursorVisible = false; // ghostty's 530 ms blink
+      frame();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(2);
+      term.wasmTerm.getCursor.mockReturnValue({ x: 4, y: 0, visible: true });
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(3);
+      term.wasmTerm.getCursor.mockReturnValue({ x: 4, y: 0, visible: false });
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(4);
+      term.wasmTerm.isDirty.mockReturnValueOnce(true); // output
+      frame();
+      frame();
+      expect(renderer.paint).toHaveBeenCalledTimes(5);
+    });
+
+    it('never lets ghostty paint its scrollbar on the canvas, over the last columns', () => {
+      // At the bottom and scrolled back alike, whatever opacity ghostty's fade has reached.
+      frame(1);
+      expect(renderer.paint).toHaveBeenLastCalledWith(term.wasmTerm, false, 0, term, 0);
+      terminalElement.scrollToPosition(20);
+      frame(0.7);
+      expect(renderer.paint).toHaveBeenLastCalledWith(term.wasmTerm, false, 56, term, 0);
+      expect(renderer.paint.mock.calls.every((call) => call[4] === 0)).toBe(true);
+    });
+  });
+
+  describe('its scrollbar', () => {
+    let terminalElement: Terminal;
+    let term: MockTerminal;
+    let container: HTMLElement;
+
+    beforeEach(async () => {
+      MockTerminal.withRenderer = true;
+      try {
+        terminalElement = await fixture<Terminal>(html`
+          <vibe-terminal session-id="scrollbar-1"></vibe-terminal>
+        `);
+        await waitForCondition(() => terminalElement.getAttribute('data-ready') === 'true', {
+          message: 'terminal not ready',
+        });
+      } finally {
+        MockTerminal.withRenderer = false;
+      }
+      term = (terminalElement as unknown as { terminal: MockTerminal }).terminal;
+      // 76 rows of history above a 24-row screen; rows are 18 px (the mock renderer's metrics).
+      term.buffer.active.length = 100;
+      container = terminalElement.querySelector('#terminal-container') as HTMLElement;
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      terminalElement.remove();
+    });
+
+    const bar = () => container.querySelector('.terminal-scrollbar') as HTMLElement;
+    const thumbTop = () =>
+      Number(
+        /translate3d\(0, (-?[\d.]+)px/.exec(
+          (bar().querySelector('.terminal-scrollbar-thumb') as HTMLElement).style.transform
+        )?.[1]
+      );
+
+    it('shows beside the last column while scrolling, then fades; the columns never change', () => {
+      const fit = (terminalElement as unknown as { fitAddon: MockFitAddon }).fitAddon;
+      const resizes = vi.fn();
+      terminalElement.addEventListener('terminal-resize', resizes);
+      fit.proposeDimensions.mockClear();
+      term.resize.mockClear();
+      expect(bar().classList.contains('visible')).toBe(false);
+
+      terminalElement.scrollToPosition(70);
+      expect(bar().classList.contains('visible')).toBe(true);
+      // Right of the last column: 80 columns of 9 px end at 720 px; the thumb is drawn
+      // 4 px further in (CSS), in the strip FitAddon left when it counted the columns.
+      expect(Number.parseFloat(bar().style.left)).toBeGreaterThanOrEqual(term.cols * 9);
+      expect(bar().style.left).toBe('720px');
+      expect(bar().style.height).toBe(`${24 * 18}px`);
+      vi.advanceTimersByTime(900);
+      expect(bar().classList.contains('visible')).toBe(true);
+      vi.advanceTimersByTime(200);
+      expect(bar().classList.contains('visible')).toBe(false);
+
+      expect(term.resize).not.toHaveBeenCalled();
+      expect(fit.proposeDimensions).not.toHaveBeenCalled();
+      expect(resizes).not.toHaveBeenCalled();
+      expect(term.cols).toBe(80);
+    });
+
+    it('puts its thumb where the view is in the history', () => {
+      terminalElement.scrollToPosition(0);
+      // The oldest row at the top: the thumb at the top of its track (3 px in).
+      expect(thumbTop()).toBe(3);
+      terminalElement.scrollToPosition(76);
+      // At the bottom: track 426 px minus the thumb (426 × 24 / 100 rows), 3 px in.
+      expect(thumbTop()).toBeCloseTo(3 + 426 - (426 * 24) / 100, 0);
+    });
+
+    it('can be dragged with a mouse; a finger goes through to the terminal', () => {
+      terminalElement.scrollToPosition(0);
+      vi.spyOn(bar(), 'getBoundingClientRect').mockReturnValue({
+        top: 0,
+        left: 0,
+        right: 12,
+        bottom: 432,
+        width: 12,
+        height: 432,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+      const pointer = (type: string, clientY: number, pointerType = 'mouse') =>
+        new PointerEvent(type, {
+          clientY,
+          pointerId: pointerType === 'mouse' ? 1 : 2,
+          pointerType,
+          button: 0,
+          bubbles: true,
+          cancelable: true,
+        });
+      // Track 432 - 6 px; thumb 426 × 24/100 rows; grabbed 10 px into it, moved half way.
+      const travel = 426 - (426 * 24) / 100;
+      bar().dispatchEvent(pointer('pointerdown', 13));
+      bar().dispatchEvent(pointer('pointermove', 13 + travel / 2));
+      expect(terminalElement.getScrollPosition()).toBe(38);
+      bar().dispatchEvent(pointer('pointermove', 13 + travel));
+      expect(terminalElement.getScrollPosition()).toBe(76);
+      bar().dispatchEvent(pointer('pointerup', 13 + travel));
+      bar().dispatchEvent(pointer('pointermove', 13));
+      expect(terminalElement.getScrollPosition()).toBe(76);
+
+      const down = pointer('pointerdown', 13, 'touch');
+      bar().dispatchEvent(down);
+      bar().dispatchEvent(pointer('pointermove', 100, 'touch'));
+      expect(down.defaultPrevented).toBe(false);
+      expect(terminalElement.getScrollPosition()).toBe(76);
     });
   });
 

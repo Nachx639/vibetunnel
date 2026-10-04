@@ -1,9 +1,35 @@
 import { vi } from 'vitest';
 
 /**
+ * Stand-in for ghostty-web's CanvasRenderer, drawing into the canvas the mock terminal adds.
+ * `paint` records what reaches it: the component wraps `render`.
+ */
+export function createMockRenderer(canvas: HTMLCanvasElement) {
+  const paint = vi.fn();
+  return {
+    paint,
+    render: paint as (...args: unknown[]) => void,
+    getMetrics: vi.fn(() => ({ width: 9, height: 18, baseline: 14 })),
+    getCanvas: vi.fn(() => canvas),
+    setHoveredHyperlinkId: vi.fn(),
+    setHoveredLinkRange: vi.fn(),
+    charWidth: 9,
+    charHeight: 18,
+  };
+}
+
+export type MockRenderer = ReturnType<typeof createMockRenderer>;
+
+/**
  * Mock Terminal class for ghostty-web
  */
 export class MockTerminal {
+  /**
+   * Tests that need ghostty's canvas and renderer set this before creating the element; most
+   * tests rely on the fontSize * 1.2 row height the component uses without a renderer.
+   */
+  static withRenderer = false;
+
   element: HTMLDivElement;
   cols: number = 80;
   rows: number = 24;
@@ -15,8 +41,8 @@ export class MockTerminal {
       cursorX: 0,
       length: 0,
       viewportY: 0,
-      getLine: vi.fn(() => ({
-        translateToString: vi.fn(() => 'Line'),
+      getLine: vi.fn((_index: number) => ({
+        translateToString: vi.fn((_trimRight?: boolean) => 'Line'),
         length: 80,
         getCell: vi.fn(() => null),
       })),
@@ -76,8 +102,13 @@ export class MockTerminal {
   private _onDataCallback?: (data: string) => void;
   private _onResizeCallback?: (size: { cols: number; rows: number }) => void;
   private _onScrollCallback?: (viewportY: number) => void;
+  private _onSelectionChangeCallback?: () => void;
 
-  constructor() {
+  /** The Ghostty (its WASM instance) passed in; dispose() lets go of it, as ghostty-web does. */
+  ghostty: unknown;
+
+  constructor(options: { ghostty?: unknown } = {}) {
+    this.ghostty = options.ghostty;
     this.element =
       typeof document !== 'undefined'
         ? document.createElement('div')
@@ -90,8 +121,43 @@ export class MockTerminal {
 
   registerLinkProvider = vi.fn();
 
+  onSelectionChange = vi.fn((callback: () => void) => {
+    this._onSelectionChangeCallback = callback;
+    return { dispose: vi.fn() };
+  });
+
+  /** The WASM terminal: its dirty state (output since the last paint) and its rows. */
+  wasmTerm = {
+    isDirty: vi.fn(() => false),
+    getCursor: vi.fn(() => ({ x: 0, y: 0, visible: true })),
+    /** A row of the live screen; none unless a test provides them. */
+    getLine: vi.fn((_row: number): ReturnType<MockTerminal['getScrollbackLine']> => null),
+    getGraphemeString: vi.fn((_row: number, _col: number) => ' '),
+    getScrollbackGraphemeString: vi.fn((_offset: number, _col: number) => ' '),
+  };
+
+  /** ghostty-web's mousedown listener for its in-canvas scrollbar (private there). */
+  handleMouseDown = vi.fn();
+
+  /** DEC private modes the app has enabled (e.g. 1000 mouse tracking, 1006 SGR). */
+  enabledModes = new Set<number>();
+  wheelHandler?: (event: WheelEvent) => boolean;
+
+  attachCustomWheelEventHandler = vi.fn((handler: (event: WheelEvent) => boolean) => {
+    this.wheelHandler = handler;
+  });
+
+  hasMouseTracking = vi.fn(() => [1000, 1002, 1003].some((mode) => this.enabledModes.has(mode)));
+
+  getMode = vi.fn((mode: number) => this.enabledModes.has(mode));
+
   open = vi.fn((element: HTMLElement) => {
     element.appendChild(this.element);
+    if (MockTerminal.withRenderer) {
+      const canvas = document.createElement('canvas');
+      element.appendChild(canvas);
+      this.renderer = createMockRenderer(canvas);
+    }
   });
 
   write = vi.fn((_data: string | Uint8Array, callback?: () => void) => {
@@ -124,7 +190,9 @@ export class MockTerminal {
     }
   });
 
-  dispose = vi.fn();
+  dispose = vi.fn(() => {
+    this.ghostty = undefined;
+  });
 
   scrollToBottom = vi.fn(() => {
     this.buffer.active.viewportY = 0;
@@ -150,6 +218,28 @@ export class MockTerminal {
   });
 
   getViewportY = vi.fn(() => this.buffer.active.viewportY);
+
+  /** Rows of history above the live screen (the normal buffer's length minus the screen). */
+  getScrollbackLength = vi.fn(() => Math.max(0, this.buffer.active.length - this.rows));
+
+  /** Cells of a history row (0 = oldest); the mock has none unless a test provides them. */
+  getScrollbackLine = vi.fn(
+    (
+      _offset: number
+    ): Array<{
+      codepoint: number;
+      fg_r: number;
+      fg_g: number;
+      fg_b: number;
+      bg_r: number;
+      bg_g: number;
+      bg_b: number;
+      flags: number;
+      width: number;
+      hyperlink_id: number;
+      grapheme_len: number;
+    }> | null => null
+  );
 
   select = vi.fn();
 
@@ -191,6 +281,10 @@ export class MockTerminal {
   simulateScroll(viewportY: number) {
     this.buffer.active.viewportY = viewportY;
     this._onScrollCallback?.(viewportY);
+  }
+
+  simulateSelectionChange() {
+    this._onSelectionChangeCallback?.();
   }
 }
 

@@ -894,6 +894,12 @@ export const en = {
     'How a session looks on a phone in this browser. Compact docks the action bar and quick keys under the terminal, with two rows of quick keys, sticky Ctrl and ⌥, and a swipe along the keys to move the cursor.',
   'settings.phoneLayout.classic': 'Classic',
   'settings.phoneLayout.compact': 'Compact',
+
+  // Terminal: back to the bottom
+  'terminal.scrollToBottom': 'Scroll to bottom',
+  'terminal.scrollToNewOutput': 'Scroll to the new output',
+  'terminal.newOutput': 'New output',
+  'terminal.bottom': 'Bottom',
 };
 
 export type MessageKey = keyof typeof en;

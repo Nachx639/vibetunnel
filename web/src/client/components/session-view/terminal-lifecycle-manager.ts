@@ -39,6 +39,7 @@ export class TerminalLifecycleManager {
   private resizeTimeout: number | null = null;
   private lastResizeWidth = 0;
   private lastResizeHeight = 0;
+  private localSizeDiverged = false;
   private domElement: Element | null = null;
   private eventHandlers: TerminalEventHandlers | null = null;
   private stateCallbacks: TerminalStateCallbacks | null = null;
@@ -189,54 +190,69 @@ export class TerminalLifecycleManager {
       this.stateCallbacks.updateTerminalDimensions(cols, rows);
     }
 
-    // On mobile, skip sending height-only changes to the server (keyboard events)
-    if (isMobile && isHeightOnlyChange) {
-      logger.debug(
-        `skipping mobile height-only resize to server: ${cols}x${rows} (source: ${source})`
-      );
-      return;
+    // Height-only changes on mobile come from the soft keyboard opening/closing. They must
+    // reach the PTY: if the client shows fewer rows than the PTY has, full-screen TUIs such
+    // as Claude Code draw below the visible area and the overflow piles up on the last row.
+    // Wait a bit longer so the keyboard animation settles into a single resize.
+    const debounceMs = isMobile && isHeightOnlyChange ? 400 : 250;
+    logger.debug(`scheduling resize ${cols}x${rows} in ${debounceMs}ms (source: ${source})`);
+
+    // The local terminal may shrink and grow back within the debounce window (keyboard shown
+    // and hidden quickly). The PTY never changed size, so the app never redraws, yet the local
+    // shrink already pushed rows into scrollback and left the screen mangled.
+    if (cols !== this.lastResizeWidth || rows !== this.lastResizeHeight) {
+      this.localSizeDiverged = true;
     }
 
-    // Debounce resize requests to prevent jumpiness
     if (this.resizeTimeout) {
       clearTimeout(this.resizeTimeout);
     }
 
     this.resizeTimeout = window.setTimeout(async () => {
-      // Only send resize request if dimensions actually changed
+      if (!this.session || this.session.status === 'exited') return;
+
       if (cols === this.lastResizeWidth && rows === this.lastResizeHeight) {
-        logger.debug(`skipping redundant resize request: ${cols}x${rows}`);
-        return;
+        if (!this.localSizeDiverged) {
+          logger.debug(`skipping redundant resize request: ${cols}x${rows}`);
+          return;
+        }
+        // Same final size: a same-size TIOCSWINSZ raises no SIGWINCH, so nudge the height
+        // to make the app repaint for the size the client shows.
+        logger.debug(`local size diverged and came back to ${cols}x${rows}; forcing a redraw`);
+        if (rows > 1 && !(await this.sendResize(cols, rows - 1))) return;
       }
 
-      // Send resize request to backend if session is active
-      if (this.session && this.session.status !== 'exited') {
-        try {
-          logger.debug(
-            `sending resize request: ${cols}x${rows} (was ${this.lastResizeWidth}x${this.lastResizeHeight})`
-          );
+      if (await this.sendResize(cols, rows)) {
+        this.localSizeDiverged = false;
+      }
+    }, debounceMs) as unknown as number;
+  }
 
-          const sent = terminalSocketClient.resize(this.session.id, cols, rows);
-          if (!sent) {
-            const response = await fetch(`/api/sessions/${this.session.id}/resize`, {
-              method: HttpMethod.POST,
-              headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeader() },
-              body: JSON.stringify({ cols: cols, rows: rows }),
-            });
-
-            if (!response.ok) {
-              logger.warn(`failed to resize session: ${response.status}`);
-              return;
-            }
-          }
-
-          this.lastResizeWidth = cols;
-          this.lastResizeHeight = rows;
-        } catch (error) {
-          logger.warn('failed to send resize request', error);
+  private async sendResize(cols: number, rows: number): Promise<boolean> {
+    if (!this.session) return false;
+    try {
+      logger.debug(
+        `sending resize request: ${cols}x${rows} (was ${this.lastResizeWidth}x${this.lastResizeHeight})`
+      );
+      const sent = terminalSocketClient.resize(this.session.id, cols, rows);
+      if (!sent) {
+        const response = await fetch(`/api/sessions/${this.session.id}/resize`, {
+          method: HttpMethod.POST,
+          headers: { 'Content-Type': 'application/json', ...authClient.getAuthHeader() },
+          body: JSON.stringify({ cols, rows }),
+        });
+        if (!response.ok) {
+          logger.warn(`failed to resize session: ${response.status}`);
+          return false;
         }
       }
-    }, 250) as unknown as number; // 250ms debounce delay
+      this.lastResizeWidth = cols;
+      this.lastResizeHeight = rows;
+      return true;
+    } catch (error) {
+      logger.warn('failed to send resize request', error);
+      return false;
+    }
   }
 
   handleTerminalPaste(e: Event) {

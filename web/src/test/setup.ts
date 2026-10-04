@@ -5,7 +5,6 @@ import { MockFitAddon, MockTerminal } from './utils/terminal-mocks';
 
 // Mock ghostty-web (WASM/canvas) for unit tests
 vi.mock('ghostty-web', () => ({
-  Ghostty: { load: vi.fn(async () => ({})) },
   Terminal: MockTerminal,
   FitAddon: MockFitAddon,
 }));
@@ -274,3 +273,9 @@ afterEach(() => {
     global.gc();
   }
 });
+
+// Each terminal instantiates the served ghostty-vt.wasm (terminal-ghostty.ts, tested on its
+// own): the mocked Terminal gets a new stand-in for every instance instead.
+vi.mock('../client/components/terminal-ghostty.js', () => ({
+  createGhostty: vi.fn(async () => ({})),
+}));
