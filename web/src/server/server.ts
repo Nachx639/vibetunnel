@@ -11,6 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocketServer } from 'ws';
+import { SHELL_VERSION_URL } from '../shared/shell-version.js';
 import { ServerEventType } from '../shared/types.js';
 import { apiSocketServer } from './api-socket-server.js';
 import type { AuthenticatedRequest } from './middleware/auth.js';
@@ -49,6 +50,7 @@ import { tailscaleServeService } from './services/tailscale-serve-service.js';
 import { TerminalManager } from './services/terminal-manager.js';
 import { WsV3Hub } from './services/ws-v3-hub.js';
 import { closeLogger, createLogger, initLogger, setDebugMode } from './utils/logger.js';
+import { IndexHtml, ShellVersion } from './utils/shell-version.js';
 import { DEFAULT_VAPID_CONTACT, VapidManager } from './utils/vapid-manager.js';
 import { getVersionInfo, printVersionBanner } from './version.js';
 import { controlUnixHandler } from './websocket/control-unix-handler.js';
@@ -904,6 +906,48 @@ export async function createApp(): Promise<AppInstance> {
   const publicPath = getPublicPath();
   const isDevelopment = !process.env.BUILD_DATE || process.env.NODE_ENV === 'development';
 
+  // The client's shell as one version (utils/shell-version.ts): index.html names it in its
+  // asset URLs (`?v=<id>`) and /bundle/version.json describes it.
+  const shellVersion = new ShellVersion(publicPath, (manifest) => {
+    const { js, css } = manifest.build;
+    logger.warn(
+      js && css && js !== css
+        ? `client shell: bundle build ${js} with stylesheet build ${css}; the previous version stays in use until the stylesheet is rebuilt (is the CSS watcher running?)`
+        : 'client shell: a chunk the bundle imports is missing; the previous version stays in use'
+    );
+  });
+  const indexHtml = new IndexHtml(path.join(publicPath, 'index.html'), shellVersion);
+  app.get(SHELL_VERSION_URL, async (_req, res, next) => {
+    try {
+      const manifest = await shellVersion.settled();
+      res.setHeader('Cache-Control', 'no-cache');
+      if (!manifest) {
+        res.status(404).json({ error: 'no client build' });
+        return;
+      }
+      res.json(manifest);
+    } catch (error) {
+      next(error);
+    }
+  });
+  // The app's page (also for its client-side routes below). Never cached by the browser: it
+  // names the shell version to load.
+  const sendIndexHtml = async (res: express.Response) => {
+    let html: string;
+    try {
+      html = await indexHtml.render();
+    } catch (error) {
+      logger.warn('index.html could not be rendered:', error);
+      res.status(404).send('404 - Page not found');
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-cache');
+    res.type('html').send(html);
+  };
+  app.get(['/', '/index.html'], (_req, res) => {
+    void sendIndexHtml(res);
+  });
+
   app.use(
     express.static(publicPath, {
       extensions: ['html'], // This allows /logs to resolve to /logs.html
@@ -1402,24 +1446,21 @@ export async function createApp(): Promise<AppInstance> {
     }
   });
 
-  // Serve index.html for client-side routes (but not API routes)
-  app.get('/', (_req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
-  });
-
+  // index.html for client-side routes (but not API routes); `/` is served above, before the
+  // static files.
   // Handle /session/:id routes by serving the same index.html
   app.get('/session/:id', (_req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
+    void sendIndexHtml(res);
   });
 
   // Handle /worktrees route by serving the same index.html
   app.get('/worktrees', (_req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
+    void sendIndexHtml(res);
   });
 
   // Handle /file-browser route by serving the same index.html
   app.get('/file-browser', (_req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
+    void sendIndexHtml(res);
   });
 
   // 404 handler for all other routes
