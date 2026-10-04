@@ -7,7 +7,9 @@
  * leading `~/` left outside the quotes so it still expands.
  */
 export function shellQuotePath(path: string): string {
-  if (/^[\w./~+@%:,=-]+$/.test(path)) return path;
+  // Unquoted only when it also starts like a path: "/", "~/", "." or a word character. A
+  // leading "-" reads as an option, "=" expands in zsh, "~user" to another home.
+  if (/^(?:[\w./]|~\/)[\w./~+@%:,=-]*$/.test(path) || path === '~') return path;
   const home = path.startsWith('~/') ? '~/' : '';
   const rest = home ? path.slice(2) : path;
   return `${home}'${rest.replace(/'/g, `'\\''`)}'`;
