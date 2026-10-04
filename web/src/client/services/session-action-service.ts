@@ -147,7 +147,7 @@ class SessionActionService {
     session: Session,
     options: SessionActionOptions
   ): Promise<SessionActionResult> {
-    if (!session || session.status !== 'running') {
+    if (session?.status !== 'running') {
       logger.warn('Cannot terminate session: invalid state', { session });
       options.callbacks?.onError?.('Cannot terminate session: invalid state');
       return { success: false, error: 'Invalid session state' };
@@ -209,7 +209,7 @@ class SessionActionService {
     session: Session,
     options: SessionActionOptions
   ): Promise<SessionActionResult> {
-    if (!session || session.status !== 'exited') {
+    if (session?.status !== 'exited') {
       logger.warn('Cannot clear session: invalid state', { session });
       options.callbacks?.onError?.('Cannot clear session: invalid state');
       return { success: false, error: 'Invalid session state' };
