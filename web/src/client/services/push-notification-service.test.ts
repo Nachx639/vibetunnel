@@ -771,4 +771,24 @@ describe('PushNotificationService', () => {
       unsubscribe();
     });
   });
+
+  describe('clearClaudeNotifications', () => {
+    it('closes only that session’s Claude notifications', async () => {
+      const make = (tag: string, sessionId = 'a') => ({ tag, data: { sessionId }, close: vi.fn() });
+      const claude = make('vibetunnel-claude-a');
+      const ended = make('vibetunnel-session-exit-1');
+      const other = make('vibetunnel-claude-b', 'b');
+      // biome-ignore lint/suspicious/noExplicitAny: Required for test mocking
+      const testService = pushNotificationService as unknown as any;
+      testService.serviceWorkerRegistration = {
+        getNotifications: vi.fn().mockResolvedValue([claude, ended, other]),
+      };
+
+      await pushNotificationService.clearClaudeNotifications('a');
+
+      expect(claude.close).toHaveBeenCalled();
+      expect(ended.close).not.toHaveBeenCalled();
+      expect(other.close).not.toHaveBeenCalled();
+    });
+  });
 });

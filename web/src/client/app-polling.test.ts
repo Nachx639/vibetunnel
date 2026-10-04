@@ -270,6 +270,44 @@ describe('session list polling', () => {
     expect(internals.attentionToast).toBeNull();
   });
 
+  it('takes down "Claude needs you" when that session ends, here or elsewhere', async () => {
+    const { pushNotificationService } = await import('./services/push-notification-service.js');
+    const clear = vi
+      .spyOn(pushNotificationService, 'clearClaudeNotifications')
+      .mockResolvedValue(undefined);
+    const waiting = (id: string) => ({
+      id,
+      name: id,
+      status: 'running',
+      workingDir: '/tmp',
+      claudeStatus: { status: 'waiting', waitingFor: 'Bash', since: 1 },
+    });
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify([waiting('a'), waiting('b'), waiting('c')]))
+    );
+    await app.loadSessions();
+    const internals = app as unknown as {
+      attentionToast: { sessionId: string } | null;
+      handleSessionKilled(e: CustomEvent): void;
+    };
+    internals.attentionToast = { sessionId: 'a' };
+    expect(clear).not.toHaveBeenCalled();
+
+    // Killed on another device ('a') and cleared there ('b'); 'c' keeps waiting.
+    fetchMock.mockImplementation(
+      async () =>
+        new Response(JSON.stringify([{ ...waiting('a'), status: 'exited' }, waiting('c')]))
+    );
+    await app.loadSessions();
+    expect(clear.mock.calls).toEqual([['a'], ['b']]);
+    expect(internals.attentionToast).toBeNull();
+
+    // Killed from this device: it shows as exited before any poll sees it end.
+    clear.mockClear();
+    internals.handleSessionKilled(new CustomEvent('session-killed', { detail: 'c' }));
+    expect(clear.mock.calls).toEqual([['c']]);
+  });
+
   it('forgets a killed session once it is gone from the server list', async () => {
     const running = { id: 'k', name: 'zsh', status: 'running', workingDir: '/tmp' };
     const other = { id: 'o', name: 'other', status: 'running', workingDir: '/tmp' };

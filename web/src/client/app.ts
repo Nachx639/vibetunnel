@@ -806,6 +806,24 @@ export class VibeTunnelApp extends LitElement {
     }
   }
 
+  /**
+   * A Claude session that ended (killed here or elsewhere, exited, cleared) can't need you
+   * any more: close its Claude notifications and the toast about it.
+   */
+  private clearNotificationsOfEndedSessions(sessions: Session[]) {
+    const running = new Set(
+      sessions.filter((session) => session.status === 'running').map((session) => session.id)
+    );
+    for (const session of this.sessions) {
+      if (session.status === 'running' && session.claudeStatus && !running.has(session.id)) {
+        void pushNotificationService.clearClaudeNotifications(session.id);
+      }
+    }
+    if (this.attentionToast && !running.has(this.attentionToast.sessionId)) {
+      this.attentionToast = null;
+    }
+  }
+
   private showAttentionToast(sessionId: string, text: string, waiting: boolean) {
     this.attentionToast = { sessionId, text, waiting };
     announce(text);
@@ -956,6 +974,7 @@ export class VibeTunnelApp extends LitElement {
           });
 
           this.announceClaudeTransitions(updatedSessions);
+          this.clearNotificationsOfEndedSessions(updatedSessions);
 
           // Pins of sessions that no longer exist are forgotten.
           prunePinned(updatedSessions.map((session) => session.id));
@@ -1194,6 +1213,9 @@ export class VibeTunnelApp extends LitElement {
       this.sessions = this.sessions.filter((session) => session.id !== id);
     } else if (id) {
       this.recentlyKilled.set(id, Date.now());
+      // Shown as exited from now on, so the next poll won't see it end: clear its Claude
+      // notifications here.
+      this.clearNotificationsOfEndedSessions(this.sessions.filter((session) => session.id !== id));
       this.sessions = this.sessions.map((session) =>
         session.id === id && session.status === 'running'
           ? { ...session, status: 'exited' as const }

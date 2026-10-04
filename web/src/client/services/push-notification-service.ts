@@ -539,6 +539,27 @@ export class PushNotificationService {
   }
 
   /**
+   * Close a session's "Claude needs you / finished / replied" notifications, keeping its
+   * other notices (such as "session ended"). Used when the session stops running: a waiting
+   * notification requires interaction, so it would otherwise stay on the lock screen and
+   * open a dead or missing session when tapped.
+   */
+  async clearClaudeNotifications(sessionId: string): Promise<void> {
+    if (!this.serviceWorkerRegistration?.getNotifications) return;
+    try {
+      const notifications = await this.serviceWorkerRegistration.getNotifications();
+      for (const notification of notifications) {
+        const data = notification.data as { sessionId?: unknown } | null;
+        if (notification.tag?.startsWith('vibetunnel-claude-') && data?.sessionId === sessionId) {
+          notification.close();
+        }
+      }
+    } catch (error) {
+      logger.error('failed to clear Claude notifications:', error);
+    }
+  }
+
+  /**
    * Save notification preferences
    */
   async savePreferences(preferences: NotificationPreferences): Promise<void> {
