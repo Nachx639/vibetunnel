@@ -4,6 +4,13 @@ import { CellFlags, Ghostty, type GhosttyTerminal } from 'ghostty-web';
 import { createRequire } from 'module';
 import * as path from 'path';
 import type { SessionInfo } from '../../shared/types.js';
+import {
+  CAST_REPLAY_MAX_BYTES,
+  castReplayStart,
+  findLastResizeBefore,
+  forEachCastLine,
+  readCastHeaderLine,
+} from '../utils/cast-tail.js';
 import { ErrorDeduplicator, formatErrorSummary } from '../utils/error-deduplicator.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -103,8 +110,13 @@ interface SessionTerminal {
   pausedAt?: number;
   linesProcessedSinceCheck?: number;
   isProcessingPending?: boolean;
+  /** Settles once the cast's replay into the new terminal is done. */
+  ready?: Promise<void>;
+  /** Where the next read of the cast starts: always the start of a line. */
   lastFileOffset?: number;
-  lineBuffer?: string;
+  /** A read of new output is running; `readAgain` asks it for one more pass. */
+  reading?: boolean;
+  readAgain?: boolean;
 }
 
 type BufferChangeListener = (sessionId: string, snapshot: BufferSnapshot) => void;
@@ -174,6 +186,11 @@ interface BufferSnapshot {
 const STREAM_FILE_WAIT_ATTEMPTS = 100;
 const STREAM_FILE_WAIT_INTERVAL_MS = 100;
 
+/** The plain-text fallback snapshot reads at most this much of the end of a cast. */
+const FALLBACK_REPLAY_MAX_BYTES = 1024 * 1024;
+/** Output written to a terminal at once while replaying a cast. */
+const REPLAY_WRITE_CHUNK_CHARS = 1024 * 1024;
+
 export class TerminalManager {
   private terminals: Map<string, SessionTerminal> = new Map();
   private controlDir: string;
@@ -189,9 +206,12 @@ export class TerminalManager {
     },
   });
   private flowControlTimer?: NodeJS.Timeout;
+  /** Most bytes of a cast replayed into a terminal at once (CAST_REPLAY_MAX_BYTES). */
+  private castReplayMaxBytes: number;
 
-  constructor(controlDir: string) {
+  constructor(controlDir: string, options: { castReplayMaxBytes?: number } = {}) {
     this.controlDir = controlDir;
+    this.castReplayMaxBytes = options.castReplayMaxBytes ?? CAST_REPLAY_MAX_BYTES;
 
     // Start flow control check timer
     this.startFlowControlTimer();
@@ -219,7 +239,11 @@ export class TerminalManager {
       );
 
       // Start watching the stream file
-      await this.watchStreamFile(sessionId);
+      sessionTerminal.ready = this.watchStreamFile(sessionId);
+      await sessionTerminal.ready;
+    } else if (sessionTerminal.ready) {
+      // The replay is asynchronous: a second reader waits for the screen it rebuilds.
+      await sessionTerminal.ready.catch(() => {});
     }
 
     sessionTerminal.lastUpdate = Date.now();
@@ -268,21 +292,22 @@ export class TerminalManager {
       return emptySnapshot();
     }
 
-    let content = '';
+    // The header and the last MB only: a whole 1 GB cast does not fit in a string.
+    const castLines: string[] = [];
     try {
-      content = await fs.promises.readFile(streamPath, 'utf8');
+      const size = (await fs.promises.stat(streamPath)).size;
+      const header = await readCastHeaderLine(streamPath);
+      if (header) castLines.push(header.line);
+      const from = header?.end ?? 0;
+      const { start } = await castReplayStart(streamPath, from, size, FALLBACK_REPLAY_MAX_BYTES);
+      await forEachCastLine(streamPath, start, size, (line) => castLines.push(line));
     } catch (error) {
       logger.error(`Failed to read fallback stream for ${truncateForLog(sessionId)}:`, error);
       return emptySnapshot();
     }
 
-    if (!content) {
+    if (castLines.length === 0) {
       return emptySnapshot();
-    }
-
-    const MAX_CHARS = 1024 * 1024;
-    if (content.length > MAX_CHARS) {
-      content = content.slice(-MAX_CHARS);
     }
 
     let output = '';
@@ -290,7 +315,7 @@ export class TerminalManager {
     let headerRows: number | undefined;
     let resizeCols: number | undefined;
     let resizeRows: number | undefined;
-    for (const line of content.split('\n')) {
+    for (const line of castLines) {
       if (!line.trim()) continue;
       try {
         const parsed = JSON.parse(line);
@@ -372,8 +397,6 @@ export class TerminalManager {
     if (!sessionTerminal) return;
 
     const streamPath = path.join(this.controlDir, sessionId, 'stdout');
-    let lastOffset = sessionTerminal.lastFileOffset || 0;
-    let lineBuffer = sessionTerminal.lineBuffer || '';
 
     // Check if the file exists
     if (!fs.existsSync(streamPath)) {
@@ -396,62 +419,179 @@ export class TerminalManager {
     }
 
     try {
-      // Read existing content first
-      const content = fs.readFileSync(streamPath, 'utf8');
-      lastOffset = Buffer.byteLength(content, 'utf8');
-
-      // Process existing content
-      const lines = content.split('\n');
-      for (const line of lines) {
-        if (line.trim()) {
-          this.handleStreamLine(sessionId, sessionTerminal, line);
-        }
+      // First time only: a watcher resumed after flow control goes on from where it stopped.
+      // It used to read the whole file again from the start, replaying every line twice.
+      if (sessionTerminal.lastFileOffset === undefined) {
+        sessionTerminal.lastFileOffset = await this.replayCastTail(
+          sessionId,
+          sessionTerminal,
+          streamPath
+        );
       }
+      if (this.terminals.get(sessionId) !== sessionTerminal || sessionTerminal.watcher) return;
 
-      // Watch for changes
       sessionTerminal.watcher = fs.watch(streamPath, (eventType) => {
-        if (eventType === 'change') {
-          try {
-            const stats = fs.statSync(streamPath);
-            if (stats.size > lastOffset) {
-              // Read only the new data
-              const fd = fs.openSync(streamPath, 'r');
-              const buffer = Buffer.alloc(stats.size - lastOffset);
-              fs.readSync(fd, buffer, 0, buffer.length, lastOffset);
-              fs.closeSync(fd);
-
-              // Update offset
-              lastOffset = stats.size;
-              sessionTerminal.lastFileOffset = lastOffset;
-
-              // Process new data
-              const newData = buffer.toString('utf8');
-              lineBuffer += newData;
-
-              // Process complete lines
-              const lines = lineBuffer.split('\n');
-              lineBuffer = lines.pop() || ''; // Keep incomplete line for next time
-              sessionTerminal.lineBuffer = lineBuffer;
-
-              for (const line of lines) {
-                if (line.trim()) {
-                  this.handleStreamLine(sessionId, sessionTerminal, line);
-                }
-              }
-            }
-          } catch (error) {
-            logger.error(
-              `Error reading stream file for session ${truncateForLog(sessionId)}:`,
-              error
-            );
-          }
-        }
+        if (eventType === 'change') void this.readNewOutput(sessionId, sessionTerminal, streamPath);
       });
+      // Whatever was written while the replay ran (or the watcher was paused).
+      void this.readNewOutput(sessionId, sessionTerminal, streamPath);
 
       logger.log(chalk.green(`Watching stream file for session ${truncateForLog(sessionId)}`));
     } catch (error) {
       logger.error(`Failed to watch stream file for session ${truncateForLog(sessionId)}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Rebuild a new terminal's screen from the end of its cast: the header line, then at most
+   * castReplayMaxBytes of events, from the last clear when it is in them, else from the first
+   * whole line in them (with the terminal size in effect there). A full-screen app's last
+   * repaints draw all of its screen; older history is not needed and a 1 GB cast does not
+   * fit in a string. Written straight to the terminal, in order, so the screen is
+   * right when this resolves. Returns the offset after the last complete line read.
+   */
+  private async replayCastTail(
+    sessionId: string,
+    sessionTerminal: SessionTerminal,
+    streamPath: string
+  ): Promise<number> {
+    const terminal = sessionTerminal.terminal;
+    const size = (await fs.promises.stat(streamPath)).size;
+    const header = await readCastHeaderLine(streamPath);
+    const from = header?.end ?? 0;
+    const lastClearOffset =
+      size - from > this.castReplayMaxBytes ? await this.readLastClearOffset(sessionId) : undefined;
+    const { start, truncated } = await castReplayStart(
+      streamPath,
+      from,
+      size,
+      this.castReplayMaxBytes,
+      lastClearOffset
+    );
+
+    // A terminal closed meanwhile has freed its WASM memory: nothing more may reach it.
+    const closed = () => this.terminals.get(sessionId) !== sessionTerminal;
+    let output: string[] = [];
+    let outputChars = 0;
+    const flush = () => {
+      if (outputChars === 0) return;
+      const data = output.join('');
+      output = [];
+      outputChars = 0;
+      if (closed()) return;
+      try {
+        terminal.write(data);
+      } catch (error) {
+        logger.warn(`Terminal write error replaying ${truncateForLog(sessionId)}: ${error}`);
+      }
+    };
+    const resize = (dimensions: string) => {
+      const match = dimensions.match(/^(\d+)x(\d+)$/);
+      if (!match) return;
+      flush();
+      if (closed()) return;
+      terminal.resize(Number.parseInt(match[1], 10), Number.parseInt(match[2], 10));
+    };
+    let malformed = 0;
+    const replayLine = (line: string) => {
+      if (!line.trim()) return;
+      let data: unknown;
+      try {
+        data = JSON.parse(line);
+      } catch {
+        malformed++;
+        return;
+      }
+      if (Array.isArray(data)) {
+        if (data.length < 3 || typeof data[2] !== 'string') return;
+        if (data[1] === 'o') {
+          output.push(data[2]);
+          outputChars += data[2].length;
+          if (outputChars >= REPLAY_WRITE_CHUNK_CHARS) flush();
+        } else if (data[1] === 'r') {
+          resize(data[2]);
+        }
+        return;
+      }
+      const { width, height } = (data ?? {}) as { width?: unknown; height?: unknown };
+      if (typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0) {
+        flush();
+        if (!closed()) terminal.resize(width, height);
+      }
+    };
+
+    if (header) replayLine(header.line);
+    if (truncated) {
+      const dimensions = await findLastResizeBefore(streamPath, start, from);
+      if (dimensions) resize(dimensions);
+    }
+    const end = await forEachCastLine(streamPath, start, size, replayLine);
+    flush();
+
+    if (malformed > 0) {
+      logger.debug(`Skipped ${malformed} malformed cast lines of ${truncateForLog(sessionId)}`);
+    }
+    if (truncated) {
+      logger.log(
+        `Replayed the last ${Math.round((end - start) / 1024)} KB of the ${Math.round(size / 1024 / 1024)} MB cast of ${truncateForLog(sessionId)}`
+      );
+    }
+    this.scheduleBufferChangeNotification(sessionId);
+    return end;
+  }
+
+  /** The session's last clear offset from session.json, if it has one. */
+  private async readLastClearOffset(sessionId: string): Promise<number | undefined> {
+    try {
+      const raw = await fs.promises.readFile(
+        path.join(this.controlDir, sessionId, 'session.json'),
+        'utf8'
+      );
+      const offset = (JSON.parse(raw) as Partial<SessionInfo>).lastClearOffset;
+      return typeof offset === 'number' && Number.isFinite(offset) ? offset : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Hand the complete lines written since the last read to the terminal. Reads end on a line
+   * boundary, so a half-written line is read again whole next time. One read at a time; a
+   * change during it asks for another pass. After a long pause (more than castReplayMaxBytes
+   * written meanwhile) it skips to the end the way a new terminal's replay does.
+   */
+  private async readNewOutput(
+    sessionId: string,
+    sessionTerminal: SessionTerminal,
+    streamPath: string
+  ): Promise<void> {
+    if (sessionTerminal.reading) {
+      sessionTerminal.readAgain = true;
+      return;
+    }
+    sessionTerminal.reading = true;
+    try {
+      do {
+        sessionTerminal.readAgain = false;
+        if (this.terminals.get(sessionId) !== sessionTerminal || !sessionTerminal.watcher) return;
+        const size = (await fs.promises.stat(streamPath)).size;
+        let from = sessionTerminal.lastFileOffset ?? 0;
+        if (size <= from) continue;
+        if (size - from > this.castReplayMaxBytes) {
+          from = (await castReplayStart(streamPath, from, size, this.castReplayMaxBytes)).start;
+          logger.warn(
+            `Skipped ${Math.round((from - (sessionTerminal.lastFileOffset ?? 0)) / 1024)} KB of output of ${truncateForLog(sessionId)} written while its terminal was paused`
+          );
+        }
+        sessionTerminal.lastFileOffset = await forEachCastLine(streamPath, from, size, (line) => {
+          if (line.trim()) this.handleStreamLine(sessionId, sessionTerminal, line);
+        });
+      } while (sessionTerminal.readAgain);
+    } catch (error) {
+      logger.error(`Error reading stream file for session ${truncateForLog(sessionId)}:`, error);
+    } finally {
+      sessionTerminal.reading = false;
     }
   }
 
