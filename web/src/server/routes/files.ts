@@ -139,9 +139,10 @@ export function createFileRoutes(): Router {
       // Only regular files that really live in the uploads directory: a symlink placed there
       // must not expose files elsewhere.
       let stats: fs.Stats;
+      let real: string;
       try {
         const link = await lstat(filePath);
-        const real = await realpath(filePath);
+        real = await realpath(filePath);
         const realUploadsDir = await realpath(UPLOADS_DIR);
         if (!link.isFile() || path.dirname(real) !== realUploadsDir) {
           return res.status(404).json({ error: 'File not found' });
@@ -162,9 +163,15 @@ export function createFileRoutes(): Router {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       // An uploaded .html/.svg opened from here must not run as this origin.
       res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      // Images show inline; anything else downloads instead of rendering.
+      res.setHeader(
+        'Content-Disposition',
+        `${contentType.startsWith('image/') ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(filename)}`
+      );
 
-      // Stream the file
-      const fileStream = fs.createReadStream(filePath);
+      // Stream the path that was checked, not the name again: swapping the file for a symlink
+      // in between must not serve something else.
+      const fileStream = fs.createReadStream(real);
       fileStream.pipe(res);
     } catch (error) {
       logger.error('File serve error:', error);
