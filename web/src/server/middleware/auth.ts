@@ -125,6 +125,37 @@ function getTailscaleUser(req: Request): TailscaleUser | null {
   };
 }
 
+/** Repeats of one unauthorized request within this window are counted, not logged each time. */
+export const UNAUTHORIZED_LOG_WINDOW_MS = 60 * 60 * 1000;
+const unauthorizedSeen = new Map<string, { at: number; repeats: number }>();
+
+/**
+ * The log line for a request refused for lack of credentials, or null when the same one
+ * (method, path, address) was logged within the last hour: it is counted and the next line
+ * says how many came meanwhile. A client that retries without credentials (released
+ * VibeTunnel.app builds ask for /git/repo-info that way every ~10 min) otherwise writes two
+ * ERROR lines each time. Only the logging is grouped: every such request is still refused.
+ */
+export function unauthorizedLogLine(
+  method: string,
+  path: string,
+  ip: string | undefined,
+  now = Date.now(),
+  /** Who asked, so the next unexplained 401 can be traced: credential kind, user agent. */
+  details?: string
+): string | null {
+  const key = `${method} ${path} ${ip ?? '?'}`;
+  const seen = unauthorizedSeen.get(key);
+  if (seen && now - seen.at < UNAUTHORIZED_LOG_WINDOW_MS) {
+    seen.repeats++;
+    return null;
+  }
+  if (unauthorizedSeen.size >= 500) unauthorizedSeen.clear();
+  unauthorizedSeen.set(key, { at: now, repeats: 0 });
+  const meanwhile = seen?.repeats ? ` (${seen.repeats} more like it since the last line)` : '';
+  return `Unauthorized request to ${method} ${path} from ${ip}${details ? ` [${details}]` : ''}${meanwhile}`;
+}
+
 export function createAuthMiddleware(config: AuthConfig) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     // Skip auth for auth endpoints, client logging, push notifications, and Tailscale status
@@ -287,7 +318,20 @@ export function createAuthMiddleware(config: AuthConfig) {
     }
 
     // No valid auth provided
-    logger.error(`Unauthorized request to ${req.method} ${req.path} from ${req.ip}`);
+    const authorization = req.headers.authorization;
+    const credential = !authorization
+      ? 'no credentials'
+      : authorization.startsWith('Bearer ')
+        ? 'bearer token not accepted'
+        : 'unsupported credentials';
+    const line = unauthorizedLogLine(
+      req.method,
+      req.path,
+      req.ip,
+      Date.now(),
+      `${credential}; user-agent: ${req.headers?.['user-agent'] ?? '-'}`
+    );
+    if (line) logger.error(line);
     res.setHeader('WWW-Authenticate', 'Bearer realm="VibeTunnel"');
     res.status(401).json({ error: 'Authentication required' });
   };

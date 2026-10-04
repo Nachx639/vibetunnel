@@ -5,7 +5,13 @@ import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthService } from '../services/auth-service.js';
-import { type AuthenticatedRequest, createAuthMiddleware, isLocalMachineAddress } from './auth.js';
+import {
+  type AuthenticatedRequest,
+  createAuthMiddleware,
+  isLocalMachineAddress,
+  UNAUTHORIZED_LOG_WINDOW_MS,
+  unauthorizedLogLine,
+} from './auth.js';
 
 // Mock the logger
 vi.mock('../utils/logger.js', () => ({
@@ -524,5 +530,30 @@ describe('Auth Middleware', () => {
       expect(mockNext).toHaveBeenCalled();
       expect(mockRes.status).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('logging refused requests', () => {
+  it('logs a repeated one once an hour, then says how many came meanwhile', () => {
+    const at = 1_000_000;
+    const ask = (offset: number) =>
+      unauthorizedLogLine('GET', '/git/repo-info', '127.0.0.1', at + offset);
+    expect(ask(0)).toBe('Unauthorized request to GET /git/repo-info from 127.0.0.1');
+    expect(ask(10 * 60 * 1000)).toBeNull();
+    expect(ask(20 * 60 * 1000)).toBeNull();
+    expect(
+      unauthorizedLogLine(
+        'POST',
+        '/git/event',
+        '127.0.0.1',
+        at + 1,
+        'no credentials; user-agent: node'
+      )
+    ).toBe(
+      'Unauthorized request to POST /git/event from 127.0.0.1 [no credentials; user-agent: node]'
+    );
+    expect(ask(UNAUTHORIZED_LOG_WINDOW_MS + 1)).toBe(
+      'Unauthorized request to GET /git/repo-info from 127.0.0.1 (2 more like it since the last line)'
+    );
   });
 });
