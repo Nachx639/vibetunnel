@@ -1,7 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const esbuild = require('esbuild');
-const { devOptions } = require('./esbuild-config.js');
+const { devOptions, clientAppBuild, cleanClientChunks } = require('./esbuild-config.js');
 
 console.log('Starting development mode...');
 
@@ -129,10 +129,10 @@ if (watchServer) {
 async function startBuilding() {
   try {
     // Create esbuild contexts
+    cleanClientChunks();
     const clientContext = await esbuild.context({
       ...devOptions,
-      entryPoints: ['src/client/app-entry.ts'],
-      outfile: 'public/bundle/client-bundle.js',
+      ...clientAppBuild,
     });
 
     const testContext = await esbuild.context({

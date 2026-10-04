@@ -8,6 +8,7 @@ import { keyed } from 'lit/directives/keyed.js';
 // Import shared types
 import type { Session } from '../shared/types.js';
 import { HttpMethod } from '../shared/types.js';
+import { whenLocaleReady } from './i18n/index.js';
 import { isBrowserShortcut } from './utils/browser-shortcuts.js';
 // Import utilities
 import { BREAKPOINTS, SIDEBAR, TIMING, TRANSITIONS, Z_INDEX } from './utils/constants.js';
@@ -51,6 +52,17 @@ export class VibeTunnelApp extends LitElement {
   // Disable shadow DOM to use Tailwind
   createRenderRoot() {
     return this;
+  }
+
+  /** Non-English locales load as a separate chunk: don't paint English first. */
+  private localeGate: Promise<void> | null = whenLocaleReady();
+
+  protected override async scheduleUpdate(): Promise<void> {
+    if (this.localeGate) {
+      await this.localeGate;
+      this.localeGate = null;
+    }
+    super.scheduleUpdate();
   }
 
   @state() private errorMessage = '';

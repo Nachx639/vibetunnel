@@ -7,6 +7,7 @@ import {
   WsV3SubscribeFlags,
 } from '../../shared/ws-v3.js';
 import { createLogger } from '../utils/logger.js';
+import { TerminalRenderer } from '../utils/terminal-renderer.js';
 import { authClient } from './auth-client.js';
 
 const logger = createLogger('terminal-socket-client');
@@ -373,8 +374,10 @@ export class TerminalSocketClient {
 
     if (frame.type === WsV3MessageType.SNAPSHOT_VT) {
       if (!session) return;
-      // Avoid circular dependency; decode lazily.
-      import('../utils/terminal-renderer.js')
+      // Decoded on a microtask as before. A static import (terminal-renderer has no imports,
+      // so there is no cycle): the dynamic one made esbuild code splitting move the renderer
+      // into a separate chunk the main bundle had to fetch before starting.
+      Promise.resolve({ TerminalRenderer })
         .then(({ TerminalRenderer }) => {
           try {
             const payload = frame.payload;

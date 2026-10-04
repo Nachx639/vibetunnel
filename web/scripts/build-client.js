@@ -1,6 +1,6 @@
 const { execSync } = require('child_process');
 const esbuild = require('esbuild');
-const { prodOptions } = require('./esbuild-config.js');
+const { prodOptions, clientAppBuild, cleanClientChunks } = require('./esbuild-config.js');
 
 async function buildClient() {
   console.log('Building client bundles for tests...');
@@ -12,10 +12,10 @@ async function buildClient() {
     stdio: 'inherit',
   });
 
+  cleanClientChunks();
   await esbuild.build({
     ...prodOptions,
-    entryPoints: ['src/client/app-entry.ts'],
-    outfile: 'public/bundle/client-bundle.js',
+    ...clientAppBuild,
   });
 
   await esbuild.build({

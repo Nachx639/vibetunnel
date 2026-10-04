@@ -2,7 +2,7 @@ const { execFileSync, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const esbuild = require('esbuild');
-const { prodOptions } = require('./esbuild-config.js');
+const { prodOptions, clientAppBuild, cleanClientChunks } = require('./esbuild-config.js');
 const { buildCli } = require('./build-cli.js');
 const { getCustomNodeBuildArgs } = require('./custom-node-args.js');
 
@@ -40,10 +40,10 @@ async function build() {
 
   try {
     // Build main app bundle
+    cleanClientChunks();
     await esbuild.build({
       ...prodOptions,
-      entryPoints: ['src/client/app-entry.ts'],
-      outfile: 'public/bundle/client-bundle.js',
+      ...clientAppBuild,
     });
 
     // Build test bundle

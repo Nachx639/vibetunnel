@@ -1,6 +1,7 @@
 /**
  * ESBuild configuration for VibeTunnel web client
  */
+const fs = require('fs');
 const { monacoPlugin } = require('./monaco-plugin.js');
 const { version } = require('../package.json');
 
@@ -58,8 +59,29 @@ const prodOptions = {
   minify: true,
 };
 
+/**
+ * The app bundle is built with code splitting so code loaded through `import()` (the
+ * non-English locales) stays out of the bundle every client downloads first. The entry keeps
+ * its old path, public/bundle/client-bundle.js; lazy chunks land in public/bundle/chunks/,
+ * which every package (npm, Mac app, Docker) already ships as part of public/.
+ */
+const CLIENT_CHUNKS_DIR = 'public/bundle/chunks';
+const clientAppBuild = {
+  entryPoints: { 'client-bundle': 'src/client/app-entry.ts' },
+  outdir: 'public/bundle',
+  splitting: true,
+  chunkNames: 'chunks/[name]-[hash]',
+};
+
+/** Chunk names carry a content hash: drop the previous build's before writing new ones. */
+function cleanClientChunks() {
+  fs.rmSync(CLIENT_CHUNKS_DIR, { recursive: true, force: true });
+}
+
 module.exports = {
   commonOptions,
   devOptions,
   prodOptions,
+  clientAppBuild,
+  cleanClientChunks,
 };

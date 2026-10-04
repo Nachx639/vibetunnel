@@ -18,7 +18,7 @@ execSync('pnpm exec postcss ./src/client/styles.css -o ./public/bundle/styles.cs
 
 // Bundle client JavaScript
 console.log('Bundling client JavaScript...');
-execSync('esbuild src/client/app-entry.ts --bundle --outfile=public/bundle/client-bundle.js --format=esm --minify --define:process.env.NODE_ENV=\'"production"\'', { stdio: 'inherit' });
+execSync('esbuild client-bundle=src/client/app-entry.ts --bundle --outdir=public/bundle --splitting --chunk-names=chunks/[name]-[hash] --format=esm --minify --define:process.env.NODE_ENV=\'"production"\'', { stdio: 'inherit' });
 execSync('esbuild src/client/test-entry.ts --bundle --outfile=public/bundle/test.js --format=esm --minify --define:process.env.NODE_ENV=\'"production"\'', { stdio: 'inherit' });
 execSync('esbuild src/client/sw.ts --bundle --outfile=public/sw.js --format=iife --minify --define:process.env.NODE_ENV=\'"production"\'', { stdio: 'inherit' });
 
