@@ -21,6 +21,11 @@ export interface NotificationPreferences {
    * right now (looked at within the last minutes). Missing = off.
    */
   skipWhenViewing?: boolean;
+  /**
+   * Set by the Mac app (its "Show in Notification Center" switch). The server doesn't use it,
+   * it only keeps it, so a save from the web doesn't drop it.
+   */
+  showInNotificationCenter?: boolean;
   // UI preferences
   soundEnabled: boolean;
   vibrationEnabled: boolean;

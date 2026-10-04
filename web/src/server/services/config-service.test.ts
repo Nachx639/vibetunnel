@@ -504,6 +504,34 @@ describe('ConfigService', () => {
       });
     });
 
+    it("keeps the Mac app's Notification Center switch when the web saves", () => {
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === mockConfigDir || p === mockConfigPath
+      );
+      const config: VibeTunnelConfig = {
+        version: 1,
+        quickStartCommands: [{ command: 'custom' }],
+        preferences: {
+          updateChannel: 'stable',
+          showInDock: false,
+          preventSleepWhenRunning: true,
+          notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, showInNotificationCenter: false },
+        },
+      };
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(config));
+      const service = new ConfigService();
+      vi.mocked(fs.writeFileSync).mockClear();
+
+      service.updateNotificationPreferences({ bell: false });
+
+      const writes = vi
+        .mocked(fs.writeFileSync)
+        .mock.calls.filter((call) => call[0] === mockConfigPath);
+      const saved = JSON.parse(writes[writes.length - 1]?.[1] as string);
+      expect(saved.preferences.notifications.showInNotificationCenter).toBe(false);
+      expect(saved.preferences.notifications.bell).toBe(false);
+    });
+
     it('should save notification preferences to file', () => {
       const preferences = {
         enabled: false,
