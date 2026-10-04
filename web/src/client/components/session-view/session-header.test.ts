@@ -126,4 +126,22 @@ describe('SessionHeader', () => {
     expect(details?.classList.contains('hidden')).toBe(true);
     expect(details?.classList.contains('sm:flex')).toBe(true);
   });
+  it('colours the status dot by the agent state, and keeps it green without agent status', async () => {
+    const dotFor = async (claudeStatus?: { status: string }) => {
+      const session = { ...createMockSession({ id: 'dot', name: 'dot' }), claudeStatus };
+      const element = await fixture<SessionHeader>(html`
+        <session-header .session=${session} .isMobile=${true}></session-header>
+      `);
+      elements.push(element);
+      const dot = [...element.querySelectorAll('.rounded-full')].find(
+        (el) => el.classList.contains('w-2.5') && !el.classList.contains('animate-ping')
+      );
+      return dot?.className ?? '';
+    };
+
+    expect(await dotFor()).toContain('bg-status-success');
+    expect(await dotFor({ status: 'waiting' })).toContain('bg-status-warning');
+    expect(await dotFor({ status: 'busy' })).toContain('bg-status-info');
+    expect(await dotFor({ status: 'idle' })).toContain('bg-status-success');
+  });
 });

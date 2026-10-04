@@ -169,7 +169,12 @@ export class SessionHeader extends LitElement {
     if ('active' in this.session && this.session.active === false) {
       return 'bg-bg-muted';
     }
-    return this.session.status === 'running' ? 'bg-status-success' : 'bg-status-warning';
+    if (this.session.status !== 'running') return 'bg-status-warning';
+    // With agent status on, the dot says what the list row says: waiting for you, working.
+    const state = rowState(this.session);
+    if (state === 'waiting') return 'bg-status-warning';
+    if (state === 'working') return 'bg-status-info';
+    return 'bg-status-success';
   }
 
   render() {
@@ -253,7 +258,7 @@ export class SessionHeader extends LitElement {
             <div class="w-2.5 h-2.5 rounded-full ${this.getStatusDotColor()}"></div>
             ${
               this.getStatusText() === 'running'
-                ? html`<div class="absolute inset-0 w-2.5 h-2.5 rounded-full bg-status-success animate-ping opacity-50"></div>`
+                ? html`<div class="absolute inset-0 w-2.5 h-2.5 rounded-full ${this.getStatusDotColor()} animate-ping opacity-50"></div>`
                 : ''
             }
           </div>
