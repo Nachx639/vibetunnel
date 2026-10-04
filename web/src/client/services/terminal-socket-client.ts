@@ -233,8 +233,8 @@ export class TerminalSocketClient {
 
   /**
    * Force an immediate reconnection attempt, bypassing the exponential backoff.
-   * Used when the page is restored from the iOS/Safari bfcache (pageshow.persisted),
-   * where the old socket is typically dead but timers were frozen while backgrounded.
+   * Used when the page becomes visible again with a reconnect pending (visibilitychange):
+   * timers were frozen while backgrounded and the backoff may still have up to 30 s to go.
    * If the current socket is genuinely OPEN it is left alone (ping/pong will catch a
    * dead one); otherwise we reset backoff and reconnect now.
    */
