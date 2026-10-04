@@ -36,6 +36,29 @@ function isResizeEvent(event: AsciinemaEvent): event is AsciinemaResizeEvent {
   );
 }
 
+/** Return the offset of the start of the line containing `offset` (0 if none found). */
+function findLineStart(filePath: string, offset: number): number {
+  if (offset <= 0) return 0;
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const chunk = Buffer.alloc(HEADER_READ_BUFFER_SIZE);
+    let end = offset;
+    while (end > 0) {
+      const start = Math.max(0, end - chunk.length);
+      const bytesRead = fs.readSync(fd, chunk, 0, end - start, start);
+      const newline = chunk.subarray(0, bytesRead).lastIndexOf(0x0a);
+      if (newline !== -1) return start + newline + 1;
+      end = start;
+    }
+    return 0;
+  } catch {
+    return offset;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
 function isExitEvent(event: AsciinemaEvent): event is AsciinemaExitEvent {
   return Array.isArray(event) && event[0] === 'exit';
 }
@@ -88,30 +111,46 @@ export class CastOutputHub {
       };
       this.activeWatchers.set(sessionId, watcherInfo);
 
-      // Send existing content (pruned) to the first subscriber.
-      this.sendExistingContent(sessionId, streamPath, listener);
-
-      // Initialize offsets if file exists.
+      // Live follow starts after the last complete line; a half-written one is read live.
       if (fs.existsSync(streamPath)) {
         const stats = fs.statSync(streamPath);
-        watcherInfo.lastOffset = stats.size;
+        watcherInfo.lastOffset = findLineStart(streamPath, stats.size);
         watcherInfo.lastSize = stats.size;
         watcherInfo.lastMtime = stats.mtimeMs;
       }
 
       // Start watching (or retry until file exists).
       this.startWatchingWithRetry(sessionId, watcherInfo);
-    } else {
-      // Send pruned existing content to late joiners too.
-      this.sendExistingContent(sessionId, watcherInfo.streamPath, listener);
     }
 
-    watcherInfo.clients.add(listener);
+    // The replay used to read the file to EOF asynchronously while live events were
+    // already delivered to the same listener, so a session writing while a phone
+    // (re)subscribed showed new output before the history and lines from both paths
+    // twice. Replay stops where live follow starts and live events wait for it.
+    const replayEnd = watcherInfo.lastOffset - Buffer.byteLength(watcherInfo.lineBuffer, 'utf8');
+    let pending: CastOutputHubEvent[] | null = [];
+    let active = true;
+    const replayListener: CastOutputHubListener = (event) => {
+      if (active) listener(event);
+    };
+    const client: CastOutputHubListener = (event) => {
+      if (pending) pending.push(event);
+      else listener(event);
+    };
+    watcherInfo.clients.add(client);
+
+    this.sendExistingContent(sessionId, watcherInfo.streamPath, replayEnd, replayListener, () => {
+      const queued = pending ?? [];
+      pending = null;
+      for (const event of queued) replayListener(event);
+    });
 
     return () => {
+      active = false;
+      pending = null;
       const current = this.activeWatchers.get(sessionId);
       if (!current) return;
-      current.clients.delete(listener);
+      current.clients.delete(client);
 
       if (current.clients.size === 0) {
         this.stopWatching(sessionId);
@@ -261,8 +300,16 @@ export class CastOutputHub {
   private sendExistingContent(
     sessionId: string,
     streamPath: string,
-    listener: CastOutputHubListener
+    endOffset: number,
+    listener: CastOutputHubListener,
+    onDone: () => void
   ) {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      onDone();
+    };
     try {
       const sessionInfo = this.sessionManager.loadSessionInfo(sessionId);
       let startOffset = sessionInfo?.lastClearOffset ?? 0;
@@ -270,6 +317,11 @@ export class CastOutputHub {
         const stats = fs.statSync(streamPath);
         startOffset = Math.min(startOffset, stats.size);
       }
+      startOffset = Math.min(startOffset, endOffset);
+      // lastClearOffset points inside the event that contains the clear sequence. Start at
+      // that event's line so it parses; otherwise the frame drawn right after the clear in
+      // the same write (Claude Code does `ESC[2J` + full redraw at once) is lost.
+      startOffset = findLineStart(streamPath, startOffset);
 
       // Read header line (best-effort)
       let header: AsciinemaHeader | null = null;
@@ -303,9 +355,16 @@ export class CastOutputHub {
         }
       }
 
+      if (endOffset <= startOffset) {
+        // Nothing to replay yet (no file, or nothing after the last clear).
+        if (header) listener({ kind: 'header', header });
+        finish();
+        return;
+      }
       const analysisStream = fs.createReadStream(streamPath, {
         encoding: 'utf8',
         start: startOffset,
+        end: endOffset - 1,
       });
       let lineBuffer = '';
       const events: AsciinemaEvent[] = [];
@@ -379,7 +438,16 @@ export class CastOutputHub {
 
         let startIndex = 0;
         if (lastClearIndex >= 0) {
+          // Whatever the clearing event wrote after its last clear sequence is the current
+          // screen (Claude Code clears and redraws in one write), so replay that remainder.
           startIndex = lastClearIndex + 1;
+          const clearEvent = events[lastClearIndex] as AsciinemaOutputEvent;
+          const prunePoint = findLastPrunePoint(clearEvent[2]);
+          const remainder = prunePoint ? clearEvent[2].slice(prunePoint.position) : '';
+          if (remainder) {
+            startIndex = lastClearIndex;
+            events[lastClearIndex] = [clearEvent[0], clearEvent[1], remainder];
+          }
           if (sessionInfo) {
             sessionInfo.lastClearOffset = lastClearOffset;
             this.sessionManager.saveSessionInfo(sessionId, sessionInfo);
@@ -412,15 +480,18 @@ export class CastOutputHub {
         if (exitFound) {
           // Caller may choose to unsubscribe.
         }
+        finish();
       });
 
       analysisStream.on('error', (error) => {
         logger.error(`failed to read existing cast content for ${sessionId}:`, error);
         listener({ kind: 'error', message: 'Failed to read session output' });
+        finish();
       });
     } catch (error) {
       logger.error(`failed to send existing cast content for ${sessionId}:`, error);
       listener({ kind: 'error', message: 'Failed to read session output' });
+      finish();
     }
   }
 

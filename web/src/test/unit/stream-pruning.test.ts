@@ -110,10 +110,13 @@ describe('CastOutputHub - Asciinema Stream Pruning', () => {
       kind: 'output';
       data: string;
     }>;
-    expect(outputEvents.length).toBe(3); // Lines 9, 10, 11
-    expect(outputEvents[0].data).toContain('Line 9: Final content');
-    expect(outputEvents[1].data).toContain('Line 10: This should be visible');
-    expect(outputEvents[2].data).toContain('Line 11: Last line');
+    // The cursor-home written after the clear in the same event, then lines 9, 10, 11
+    expect(outputEvents.map((e) => e.data)).toEqual([
+      '\u001b[H',
+      expect.stringContaining('Line 9: Final content'),
+      expect.stringContaining('Line 10: This should be visible'),
+      expect.stringContaining('Line 11: Last line'),
+    ]);
 
     // Should have exit event
     const exitEvent = events.find((e) => e.kind === 'exit');
@@ -127,14 +130,16 @@ describe('CastOutputHub - Asciinema Stream Pruning', () => {
       mockAsciinemaWithClearMidLine.events as TestAsciinemaEvent[]
     );
 
-    // Should only have content after the clear
+    // Only content after the clear, including the rest of the line that cleared
     const events = await collectExistingEvents('clear-mid-line');
     const outputEvents = events.filter((e) => e.kind === 'output') as Array<{
       kind: 'output';
       data: string;
     }>;
-    expect(outputEvents.length).toBe(1); // Only "After clear"
-    expect(outputEvents[0].data).toContain('After clear');
+    expect(outputEvents.map((e) => e.data)).toEqual([
+      ' in the middle',
+      expect.stringContaining('After clear'),
+    ]);
   });
 
   it('should not prune streams without clear sequences', async () => {

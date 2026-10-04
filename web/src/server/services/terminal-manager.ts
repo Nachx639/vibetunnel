@@ -170,6 +170,10 @@ interface BufferSnapshot {
  * @see web/src/server/services/buffer-aggregator.ts - Aggregates buffer updates
  * @see web/src/server/pty/asciinema-writer.ts - Writes asciinema streams
  */
+/** How long a terminal waits for a new session's cast file to appear (100 × 100 ms). */
+const STREAM_FILE_WAIT_ATTEMPTS = 100;
+const STREAM_FILE_WAIT_INTERVAL_MS = 100;
+
 export class TerminalManager {
   private terminals: Map<string, SessionTerminal> = new Map();
   private controlDir: string;
@@ -363,7 +367,7 @@ export class TerminalManager {
   /**
    * Watch stream file for changes
    */
-  private async watchStreamFile(sessionId: string): Promise<void> {
+  private async watchStreamFile(sessionId: string, attempt = 0): Promise<void> {
     const sessionTerminal = this.terminals.get(sessionId);
     if (!sessionTerminal) return;
 
@@ -373,6 +377,18 @@ export class TerminalManager {
 
     // Check if the file exists
     if (!fs.existsSync(streamPath)) {
+      // A session asked for right after it was created may not have written its cast file
+      // yet. Giving up here left that terminal empty for good (no screen text, no buffer
+      // snapshots). Wait for it.
+      if (attempt < STREAM_FILE_WAIT_ATTEMPTS) {
+        const timer = setTimeout(() => {
+          if (this.terminals.get(sessionId) === sessionTerminal) {
+            void this.watchStreamFile(sessionId, attempt + 1);
+          }
+        }, STREAM_FILE_WAIT_INTERVAL_MS);
+        timer.unref?.();
+        return;
+      }
       logger.error(
         `Stream file does not exist for session ${truncateForLog(sessionId)}: ${truncateForLog(streamPath, 100)}`
       );
