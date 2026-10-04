@@ -1,8 +1,21 @@
 import { exec } from 'child_process';
+import * as path from 'path';
 import { promisify } from 'util';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('process-tree-analyzer');
+
+/**
+ * A command line as it may appear in the log: the program and how many arguments follow.
+ * Arguments can hold prompts and secrets (`claude "…"`, `curl -H "Authorization: …"`), and
+ * debug lines may reach the log file.
+ */
+export function commandForLog(command: string): string {
+  const words = command.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '';
+  const program = path.basename(words[0]);
+  return words.length > 1 ? `${program} (+${words.length - 1} args)` : program;
+}
 
 const execAsync = promisify(exec);
 
@@ -123,7 +136,7 @@ export class ProcessTreeAnalyzer {
             if (!Number.isNaN(pid) && !Number.isNaN(ppid) && !Number.isNaN(pgid) && command) {
               logger.debug(
                 'ProcessTreeAnalyzer',
-                `Parsed macOS process: PID=${pid}, COMMAND="${command.trim()}"`
+                `Parsed macOS process: PID=${pid}, COMMAND="${commandForLog(command)}"`
               );
               processes.push({
                 pid,
@@ -169,7 +182,7 @@ export class ProcessTreeAnalyzer {
           }
         }
       } catch (_parseError) {
-        logger.debug('ProcessTreeAnalyzer', `Failed to parse ps line: ${line}`);
+        logger.debug('ProcessTreeAnalyzer', `Failed to parse ps line (${line.length} chars)`);
       }
     }
 
@@ -222,7 +235,7 @@ export class ProcessTreeAnalyzer {
     const tree = await this.getProcessTree(sessionPid);
     logger.debug(
       'ProcessTreeAnalyzer',
-      `Process tree for session ${sessionPid}: ${JSON.stringify(tree.map((p) => ({ pid: p.pid, ppid: p.ppid, command: p.command })))}`
+      `Process tree for session ${sessionPid}: ${JSON.stringify(tree.map((p) => ({ pid: p.pid, ppid: p.ppid, command: commandForLog(p.command) })))}`
     );
 
     if (tree.length === 0) {
@@ -235,7 +248,7 @@ export class ProcessTreeAnalyzer {
     if (foreground) {
       logger.debug(
         'ProcessTreeAnalyzer',
-        `Identified foreground process: ${foreground.command} (PID: ${foreground.pid})`
+        `Identified foreground process: ${commandForLog(foreground.command)} (PID: ${foreground.pid})`
       );
       return foreground;
     }
@@ -245,7 +258,7 @@ export class ProcessTreeAnalyzer {
     if (recentChild) {
       logger.debug(
         'ProcessTreeAnalyzer',
-        `Identified recent child process: ${recentChild.command} (PID: ${recentChild.pid})`
+        `Identified recent child process: ${commandForLog(recentChild.command)} (PID: ${recentChild.pid})`
       );
       return recentChild;
     }
@@ -260,7 +273,7 @@ export class ProcessTreeAnalyzer {
     if (nonShellProcess) {
       logger.debug(
         'ProcessTreeAnalyzer',
-        `Found non-shell process: ${nonShellProcess.command} (PID: ${nonShellProcess.pid})`
+        `Found non-shell process: ${commandForLog(nonShellProcess.command)} (PID: ${nonShellProcess.pid})`
       );
       return nonShellProcess;
     }
@@ -270,7 +283,7 @@ export class ProcessTreeAnalyzer {
     if (shellProcess) {
       logger.debug(
         'ProcessTreeAnalyzer',
-        `Defaulting to shell process: ${shellProcess.command} (PID: ${shellProcess.pid})`
+        `Defaulting to shell process: ${commandForLog(shellProcess.command)} (PID: ${shellProcess.pid})`
       );
       return shellProcess;
     }
@@ -293,7 +306,7 @@ export class ProcessTreeAnalyzer {
 
     logger.debug(
       'ProcessTreeAnalyzer',
-      `Direct child candidates: ${JSON.stringify(candidates.map((p) => ({ pid: p.pid, command: p.command })))}`
+      `Direct child candidates: ${JSON.stringify(candidates.map((p) => ({ pid: p.pid, command: commandForLog(p.command) })))}`
     );
 
     // Strategy 2: If no direct children, look for any descendant processes
@@ -307,7 +320,7 @@ export class ProcessTreeAnalyzer {
 
       logger.debug(
         'ProcessTreeAnalyzer',
-        `Descendant candidates: ${JSON.stringify(candidates.map((p) => ({ pid: p.pid, command: p.command })))}`
+        `Descendant candidates: ${JSON.stringify(candidates.map((p) => ({ pid: p.pid, command: commandForLog(p.command) })))}`
       );
     }
 
@@ -331,7 +344,7 @@ export class ProcessTreeAnalyzer {
       if (ageMs < 100) {
         logger.debug(
           'ProcessTreeAnalyzer',
-          `Filtering out very recent process: ${p.command} (age: ${ageMs}ms)`
+          `Filtering out very recent process: ${commandForLog(p.command)} (age: ${ageMs}ms)`
         );
         return false;
       }
@@ -357,7 +370,7 @@ export class ProcessTreeAnalyzer {
 
     logger.debug(
       'ProcessTreeAnalyzer',
-      `Selected foreground candidate: ${sorted[0].command} (PID: ${sorted[0].pid})`
+      `Selected foreground candidate: ${commandForLog(sorted[0].command)} (PID: ${sorted[0].pid})`
     );
 
     return sorted[0];
@@ -379,7 +392,7 @@ export class ProcessTreeAnalyzer {
 
     logger.debug(
       'ProcessTreeAnalyzer',
-      `Recent child candidates: ${JSON.stringify(children.map((p) => ({ pid: p.pid, command: p.command })))}`
+      `Recent child candidates: ${JSON.stringify(children.map((p) => ({ pid: p.pid, command: commandForLog(p.command) })))}`
     );
 
     if (children.length === 0) {
@@ -446,7 +459,7 @@ export class ProcessTreeAnalyzer {
 
     // Check for shell prompt utilities
     if (promptUtilities.some((utility) => lowerCommand.includes(utility))) {
-      logger.debug('ProcessTreeAnalyzer', `Identified prompt utility: ${command}`);
+      logger.debug('ProcessTreeAnalyzer', `Identified prompt utility: ${commandForLog(command)}`);
       return true;
     }
 
@@ -490,7 +503,7 @@ export class ProcessTreeAnalyzer {
     const directChildren = childrenMap.get(rootPid) || [];
     logger.debug(
       'ProcessTreeAnalyzer',
-      `Direct children of ${rootPid}: ${JSON.stringify(directChildren.map((p) => ({ pid: p.pid, command: p.command })))}`
+      `Direct children of ${rootPid}: ${JSON.stringify(directChildren.map((p) => ({ pid: p.pid, command: commandForLog(p.command) })))}`
     );
 
     // Recursively collect the process tree starting from rootPid
@@ -515,7 +528,7 @@ export class ProcessTreeAnalyzer {
 
     logger.debug(
       'ProcessTreeAnalyzer',
-      `Final process tree: ${JSON.stringify(allProcesses.map((p) => ({ pid: p.pid, ppid: p.ppid, command: p.command })))}`
+      `Final process tree: ${JSON.stringify(allProcesses.map((p) => ({ pid: p.pid, ppid: p.ppid, command: commandForLog(p.command) })))}`
     );
 
     return allProcesses;

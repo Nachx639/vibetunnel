@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProcessTreeAnalyzer } from './process-tree-analyzer.js';
+import { commandForLog, ProcessTreeAnalyzer } from './process-tree-analyzer.js';
 
 describe('ProcessTreeAnalyzer', () => {
   it('keeps the full Linux start timestamp out of the command', () => {
@@ -23,5 +23,13 @@ describe('ProcessTreeAnalyzer', () => {
         command: '/usr/bin/bash -l',
       }),
     ]);
+  });
+
+  it('logs a command as its program and argument count, never the arguments', () => {
+    expect(commandForLog('/usr/local/bin/curl -H "Authorization: Bearer abc" https://x')).toBe(
+      'curl (+5 args)'
+    );
+    expect(commandForLog('  /bin/zsh  ')).toBe('zsh');
+    expect(commandForLog('')).toBe('');
   });
 });
