@@ -291,4 +291,82 @@ describe('FileBrowser', () => {
       expect(event.detail).not.toContain('..');
     });
   });
+
+  describe('image preview', () => {
+    it('loads the image with the auth header and shows a blob URL', async () => {
+      const calls: Array<{ url: string; headers?: HeadersInit }> = [];
+      global.fetch = vi.fn(async (url: string, options?: RequestInit) => {
+        calls.push({ url, headers: options?.headers });
+        if (url.startsWith('/api/fs/preview')) {
+          return {
+            ok: true,
+            json: async () => ({ type: 'image', url: '/api/fs/raw?path=a.png', size: 3 }),
+          };
+        }
+        if (url.startsWith('/api/fs/browse')) {
+          return { ok: true, json: async () => ({ path: '/', fullPath: '/', files: [] }) };
+        }
+        return { ok: true, blob: async () => new Blob(['png']) };
+      }) as unknown as typeof global.fetch;
+      const createObjectURL = vi.fn(() => 'blob:preview-1');
+      URL.createObjectURL = createObjectURL;
+      URL.revokeObjectURL = vi.fn();
+
+      element.visible = true;
+      await element.updateComplete;
+      await (element as unknown as { loadPreview(f: unknown): Promise<void> }).loadPreview({
+        name: 'a.png',
+        path: 'a.png',
+        type: 'file',
+        size: 3,
+        modified: '',
+      });
+      await element.updateComplete;
+
+      const raw = calls.find((c) => c.url === '/api/fs/raw?path=a.png');
+      expect(raw?.headers).toEqual({ Authorization: 'Bearer test-token' });
+      expect(element.querySelector('img')?.getAttribute('src')).toBe('blob:preview-1');
+    });
+
+    it('a slow image for an earlier tap does not replace the newer one', async () => {
+      let releaseA: () => void = () => {};
+      global.fetch = vi.fn(async (url: string) => {
+        if (url.startsWith('/api/fs/preview')) {
+          const name = new URLSearchParams(url.split('?')[1]).get('path');
+          return {
+            ok: true,
+            json: async () => ({ type: 'image', url: `/api/fs/raw?path=${name}`, size: 3 }),
+          };
+        }
+        if (url.startsWith('/api/fs/browse')) {
+          return { ok: true, json: async () => ({ path: '/', fullPath: '/', files: [] }) };
+        }
+        if (url.endsWith('a.png')) await new Promise<void>((resolve) => (releaseA = resolve));
+        return { ok: true, blob: async () => new Blob([url]) };
+      }) as unknown as typeof global.fetch;
+      let n = 0;
+      URL.createObjectURL = vi.fn(() => `blob:${++n}`);
+      const revoke = vi.fn();
+      URL.revokeObjectURL = revoke;
+      element.visible = true;
+      await element.updateComplete;
+      const load = (name: string) =>
+        (element as unknown as { loadPreview(f: unknown): Promise<void> }).loadPreview({
+          name,
+          path: name,
+          type: 'file',
+          size: 3,
+          modified: '',
+        });
+
+      const a = load('a.png');
+      await load('b.png'); // B finishes first and is shown
+      releaseA();
+      await a;
+      await element.updateComplete;
+
+      expect(element.querySelector('img')?.getAttribute('src')).toBe('blob:1');
+      expect(revoke).toHaveBeenCalledWith('blob:2'); // A's late image is dropped, not leaked
+    });
+  });
 });

@@ -111,6 +111,9 @@ export class FileBrowser extends LitElement {
   @state() private isMobile = window.innerWidth < 768;
   @state() private editingPath = false;
   @state() private pathInputValue = '';
+  // Object URL of the previewed image. `<img src>` can't carry the Bearer header, so behind
+  // the login gate /api/fs/raw answers 401; fetch it with auth and show a blob URL instead.
+  @state() private imageObjectUrl = '';
 
   private editorRef = createRef<HTMLElement>();
   private pathInputRef = createRef<HTMLInputElement>();
@@ -222,7 +225,20 @@ export class FileBrowser extends LitElement {
         headers,
       });
       if (response.ok) {
-        this.preview = await response.json();
+        const preview: FilePreview = await response.json();
+        const imageUrl =
+          preview.type === 'image' && preview.url
+            ? await this.loadImageObjectUrl(preview.url, headers)
+            : '';
+        // A newer tap may have selected another file while this one loaded: don't let this
+        // (slower) image replace that file's preview.
+        if (this.selectedFile?.path !== file.path) {
+          if (imageUrl) URL.revokeObjectURL(imageUrl);
+          return;
+        }
+        this.revokeImageObjectUrl();
+        this.imageObjectUrl = imageUrl;
+        this.preview = preview;
         this.requestUpdate(); // Trigger re-render to initialize Monaco if needed
       } else {
         logger.error(`preview failed: ${response.status}`, new Error(await response.text()));
@@ -231,6 +247,28 @@ export class FileBrowser extends LitElement {
       logger.error('error loading preview:', error);
     } finally {
       this.previewLoading = false;
+    }
+  }
+
+  /** The image as a blob URL ('' on failure); the caller decides whether it's still wanted. */
+  private async loadImageObjectUrl(url: string, headers: Record<string, string>): Promise<string> {
+    try {
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        logger.error(`image fetch failed: ${response.status}`);
+        return '';
+      }
+      return URL.createObjectURL(await response.blob());
+    } catch (error) {
+      logger.error('error loading image:', error);
+      return '';
+    }
+  }
+
+  private revokeImageObjectUrl() {
+    if (this.imageObjectUrl) {
+      URL.revokeObjectURL(this.imageObjectUrl);
+      this.imageObjectUrl = '';
     }
   }
 
@@ -432,7 +470,7 @@ export class FileBrowser extends LitElement {
         return html`
           <div class="flex items-center justify-center p-4 h-full">
             <img
-              src="${this.preview.url}"
+              src="${this.imageObjectUrl || this.preview.url}"
               alt="${this.selectedFile?.name}"
               class="max-w-full max-h-full object-contain rounded"
             />
@@ -873,6 +911,7 @@ export class FileBrowser extends LitElement {
     document.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('resize', this.handleResize);
     this.removeTouchHandlers();
+    this.revokeImageObjectUrl();
   }
 
   private async checkAuthConfig() {
