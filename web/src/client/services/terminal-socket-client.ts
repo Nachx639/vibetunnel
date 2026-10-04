@@ -11,6 +11,23 @@ import { authClient } from './auth-client.js';
 
 const logger = createLogger('terminal-socket-client');
 
+const PING_INTERVAL_MS = 20000;
+/** Two missed pongs: the server answers every PING, so silence means the socket is dead. */
+const PONG_TIMEOUT_MS = 2 * PING_INTERVAL_MS + 5000;
+/** Answer expected after coming back to the foreground before the socket is replaced. */
+const PROBE_TIMEOUT_MS = 4000;
+/** Typed input older than this when the socket comes back is dropped, not replayed. */
+export const OFFLINE_INPUT_MAX_AGE_MS = 30_000;
+/** Most recent typed input kept while offline; older bytes beyond it are dropped. */
+export const OFFLINE_INPUT_MAX_BYTES = 64 * 1024;
+
+type QueuedFrame = {
+  frame: Uint8Array;
+  type: WsV3MessageType | undefined;
+  sessionId: string;
+  queuedAt: number;
+};
+
 export interface BufferCell {
   char: string;
   width: number;
@@ -53,6 +70,8 @@ export class TerminalSocketClient {
   private reconnectAttempts = 0;
   private reconnectTimer: number | null = null;
   private pingInterval: number | null = null;
+  private probeTimer: number | null = null;
+  private lastInboundAt = 0;
   private isConnected = false;
   private connectionStateHandlers: Set<(connected: boolean) => void> = new Set();
 
@@ -60,15 +79,58 @@ export class TerminalSocketClient {
   private noAuthMode: boolean | null = null;
 
   private sessions = new Map<string, SessionSubs>();
-  private messageQueue: Uint8Array[] = [];
+  private messageQueue: QueuedFrame[] = [];
   private encoder = new TextEncoder();
 
   async initialize() {
     if (this.initialized) return;
     this.initialized = true;
 
+    // Back from the background with the socket down: reconnect now instead of waiting out
+    // the backoff (up to 30 s after a long sleep), so the terminal is live when you look.
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+
     await this.checkNoAuthMode();
     setTimeout(() => this.connect(), 100);
+  }
+
+  private readonly handleVisibilityChange = () => {
+    if (document.visibilityState !== 'visible') return;
+    if (this.reconnectTimer) {
+      this.forceReconnect();
+      return;
+    }
+    // After a lock or a Wi-Fi ↔ cellular switch the socket often still says OPEN while
+    // its TCP connection is gone: nothing arrives and the terminal looks frozen. Ask.
+    this.probeConnection();
+  };
+
+  private probeConnection() {
+    const socket = this.ws;
+    if (!socket || socket.readyState !== WebSocket.OPEN || this.probeTimer) return;
+    const sentAt = Date.now();
+    this.sendPing();
+    this.probeTimer = window.setTimeout(() => {
+      this.probeTimer = null;
+      if (this.ws === socket && this.lastInboundAt < sentAt) this.dropDeadSocket(socket);
+    }, PROBE_TIMEOUT_MS);
+  }
+
+  /** Abandon a socket that stopped answering and reconnect right away. */
+  private dropDeadSocket(socket: WebSocket) {
+    if (this.ws !== socket) return;
+    logger.warn('v3 socket stopped answering, reconnecting');
+    this.ws = null;
+    this.isConnecting = false;
+    this.stopPingPong();
+    this.setConnected(false);
+    try {
+      socket.close();
+    } catch {
+      // already gone
+    }
+    this.reconnectAttempts = 0;
+    this.connect();
   }
 
   private async checkNoAuthMode(): Promise<void> {
@@ -111,18 +173,22 @@ export class TerminalSocketClient {
     try {
       this.ws = new WebSocket(wsUrl);
       this.ws.binaryType = 'arraybuffer';
+      // Capture this socket instance so late-firing handlers from a previous socket
+      // can't clobber a newer one (e.g. when reconnecting after iOS background).
+      const socket = this.ws;
 
-      this.ws.onopen = () => {
+      socket.onopen = () => {
+        if (this.ws !== socket) return;
         this.isConnecting = false;
         this.reconnectAttempts = 0;
+        this.lastInboundAt = Date.now();
         this.setConnected(true);
         this.startPingPong();
 
         // Flush queued frames
-        while (this.messageQueue.length > 0) {
-          const msg = this.messageQueue.shift();
-          if (msg) this.safeSend(msg);
-        }
+        const queued = this.trimOfflineQueue(this.messageQueue);
+        this.messageQueue = [];
+        for (const item of queued) this.safeSend(item.frame);
 
         // Re-subscribe all sessions (aggregate flags)
         for (const [sessionId, info] of this.sessions) {
@@ -131,17 +197,22 @@ export class TerminalSocketClient {
         }
       };
 
-      this.ws.onmessage = (event) => {
+      socket.onmessage = (event) => {
+        if (this.ws !== socket) return;
+        this.lastInboundAt = Date.now();
         if (event.data instanceof ArrayBuffer) {
           this.handleBinary(event.data);
         }
       };
 
-      this.ws.onerror = (error) => {
+      socket.onerror = (error) => {
         logger.debug('v3 socket error', error);
       };
 
-      this.ws.onclose = () => {
+      socket.onclose = () => {
+        // Only react if this is still the active socket. A stale onclose (from a
+        // socket we already replaced) must not null out the new reference.
+        if (this.ws !== socket) return;
         this.isConnecting = false;
         this.stopPingPong();
         this.setConnected(false);
@@ -158,6 +229,26 @@ export class TerminalSocketClient {
 
   getConnectionStatus(): boolean {
     return this.isConnected;
+  }
+
+  /**
+   * Force an immediate reconnection attempt, bypassing the exponential backoff.
+   * Used when the page is restored from the iOS/Safari bfcache (pageshow.persisted),
+   * where the old socket is typically dead but timers were frozen while backgrounded.
+   * If the current socket is genuinely OPEN it is left alone (ping/pong will catch a
+   * dead one); otherwise we reset backoff and reconnect now.
+   */
+  forceReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectAttempts = 0;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      return;
+    }
+    this.isConnecting = false;
+    this.connect();
   }
 
   onConnectionStateChange(handler: (connected: boolean) => void): () => void {
@@ -190,16 +281,31 @@ export class TerminalSocketClient {
   private startPingPong() {
     if (this.pingInterval) return;
     this.pingInterval = window.setInterval(() => {
-      this.sendFrame(
-        encodeWsV3Frame({ type: WsV3MessageType.PING, payload: this.encoder.encode('ping') })
-      );
-    }, 20000);
+      // Pings went out but nobody checked for the pong, so a half-open
+      // socket (network switch, NAT timeout) froze the terminal until a reload.
+      const socket = this.ws;
+      if (socket && Date.now() - this.lastInboundAt > PONG_TIMEOUT_MS) {
+        this.dropDeadSocket(socket);
+        return;
+      }
+      this.sendPing();
+    }, PING_INTERVAL_MS);
+  }
+
+  private sendPing() {
+    this.sendFrame(
+      encodeWsV3Frame({ type: WsV3MessageType.PING, payload: this.encoder.encode('ping') })
+    );
   }
 
   private stopPingPong() {
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
+    }
+    if (this.probeTimer) {
+      clearTimeout(this.probeTimer);
+      this.probeTimer = null;
     }
   }
 
@@ -209,13 +315,84 @@ export class TerminalSocketClient {
       new Uint8Array(payload).set(buffer);
       this.ws.send(payload);
     } else {
-      this.messageQueue.push(buffer);
+      const frame = decodeWsV3Frame(buffer);
+      this.messageQueue.push({
+        frame: buffer,
+        type: frame?.type,
+        sessionId: frame?.sessionId ?? '',
+        queuedAt: Date.now(),
+      });
+      this.messageQueue = this.trimOfflineQueue(this.messageQueue);
       if (this.initialized && !this.ws) this.connect();
     }
   }
 
+  /**
+   * The offline queue was never trimmed, so a phone that came back after an
+   * hour replayed every old keystroke into the session (and every intermediate resize).
+   * Keep typed input from the last 30 s, at most 64 KB of it (newest first), and only
+   * the last resize per session; pings are pointless on a new socket.
+   */
+  private trimOfflineQueue(queue: QueuedFrame[]): QueuedFrame[] {
+    const now = Date.now();
+    const lastSizeIndex = new Map<string, number>();
+    queue.forEach((item, index) => {
+      if (item.type === WsV3MessageType.RESIZE || item.type === WsV3MessageType.RESET_SIZE) {
+        lastSizeIndex.set(item.sessionId, index);
+      }
+    });
+
+    let inputBytes = 0;
+    let inputFull = false;
+    const keep = new Array<boolean>(queue.length).fill(false);
+    for (let index = queue.length - 1; index >= 0; index--) {
+      const item = queue[index];
+      switch (item.type) {
+        case WsV3MessageType.PING:
+          break;
+        case WsV3MessageType.RESIZE:
+        case WsV3MessageType.RESET_SIZE:
+          keep[index] = lastSizeIndex.get(item.sessionId) === index;
+          break;
+        case WsV3MessageType.INPUT_TEXT:
+        case WsV3MessageType.INPUT_KEY:
+        case WsV3MessageType.KILL:
+          // Walking newest to oldest: once the budget is spent, nothing older is kept,
+          // so the kept input is one contiguous recent stretch.
+          if (inputFull || now - item.queuedAt > OFFLINE_INPUT_MAX_AGE_MS) break;
+          if (inputBytes + item.frame.byteLength > OFFLINE_INPUT_MAX_BYTES) {
+            inputFull = true;
+            break;
+          }
+          inputBytes += item.frame.byteLength;
+          keep[index] = true;
+          break;
+        default:
+          keep[index] = true;
+      }
+    }
+    if (keep.every(Boolean)) return queue;
+    const dropped = keep.filter((k) => !k).length;
+    logger.debug(`dropped ${dropped} stale frame(s) queued while offline`);
+    return queue.filter((_, index) => keep[index]);
+  }
+
   private sendFrame(buffer: Uint8Array) {
     this.safeSend(buffer);
+  }
+
+  /**
+   * Subscription changes only matter to the socket they are sent on: a new socket starts
+   * with no subscriptions and `onopen` subscribes every session with its current flags.
+   * Queuing them too made a reconnect send SUBSCRIBE twice per session, and
+   * the server answered each with a full history replay.
+   */
+  private sendSubscriptionFrame(buffer: Uint8Array) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.safeSend(buffer);
+    } else if (this.initialized && !this.ws) {
+      this.connect();
+    }
   }
 
   subscribe(
@@ -257,7 +434,9 @@ export class TerminalSocketClient {
       s.subs.delete(subscription);
       if (s.subs.size === 0) {
         this.sessions.delete(sessionId);
-        this.sendFrame(encodeWsV3Frame({ type: WsV3MessageType.UNSUBSCRIBE, sessionId }));
+        this.sendSubscriptionFrame(
+          encodeWsV3Frame({ type: WsV3MessageType.UNSUBSCRIBE, sessionId })
+        );
       } else {
         this.updateSessionFlagsAndNotify(sessionId);
       }
@@ -278,7 +457,9 @@ export class TerminalSocketClient {
     if (flags === s.flags) return;
     s.flags = flags;
     const payload = encodeWsV3SubscribePayload({ flags });
-    this.sendFrame(encodeWsV3Frame({ type: WsV3MessageType.SUBSCRIBE, sessionId, payload }));
+    this.sendSubscriptionFrame(
+      encodeWsV3Frame({ type: WsV3MessageType.SUBSCRIBE, sessionId, payload })
+    );
   }
 
   sendInputText(sessionId: string, text: string): boolean {
