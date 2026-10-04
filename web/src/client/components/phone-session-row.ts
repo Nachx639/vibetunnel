@@ -27,6 +27,7 @@ import { sessionActionService } from '../services/session-action-service.js';
 import { formatActivity, isBackgroundWait, sessionActivity } from '../utils/claude-activity.js';
 import { claudeWaitingLabel } from '../utils/claude-waiting-label.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
+import { announceMacSessionsChanged } from '../utils/mac-sessions.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
 import { endsADrag } from '../utils/pointer-drag.js';
 import { renameSession } from '../utils/session-actions.js';
@@ -683,6 +684,8 @@ export class PhoneSessionRow extends LitElement {
       },
     });
     if (!result.success) this.killing = false;
+    // Its row under "On this computer" no longer says "In VibeTunnel".
+    else if (isTmuxAttachment(this.session)) announceMacSessionsChanged();
   }
 
   /**

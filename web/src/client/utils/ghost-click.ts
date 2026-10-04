@@ -46,3 +46,39 @@ export function swallowNextClick(ms = 700): void {
     if (pending === swallow) resetGhostClickGuard();
   }, ms);
 }
+
+const TAP_SLOP_PX = 10;
+const OPEN_GUARD_MS = 500;
+
+/**
+ * Touch acts on pointerup (iOS can take the first tap on a fresh button as a hover and send
+ * no click); the click that follows is swallowed. Mouse and keyboard use the click. With
+ * `openedAt`, nothing acts in the first moments after a sheet opened. Bind the result to
+ * pointerdown, pointerup and click.
+ */
+export function tapHandler(fn: () => void, openedAt = 0) {
+  let touchActedAt = 0;
+  let down: { x: number; y: number } | null = null;
+  return {
+    handleEvent: (e: Event) => {
+      if (e.type === 'pointerdown') {
+        const p = e as PointerEvent;
+        down = { x: p.clientX, y: p.clientY };
+        return;
+      }
+      if (Date.now() - openedAt < OPEN_GUARD_MS) return;
+      if (e.type === 'pointerup') {
+        const p = e as PointerEvent;
+        if (p.pointerType === 'mouse') return;
+        const moved = down && Math.hypot(p.clientX - down.x, p.clientY - down.y) > TAP_SLOP_PX;
+        down = null;
+        if (moved) return;
+        touchActedAt = Date.now();
+        swallowNextClick();
+      } else if (Date.now() - touchActedAt < 700) {
+        return;
+      }
+      fn();
+    },
+  };
+}

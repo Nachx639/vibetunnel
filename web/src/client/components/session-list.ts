@@ -19,12 +19,14 @@
 import { html, LitElement, nothing, render } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
+import type { MacSessionItem, MacSessionsResponse } from '../../shared/mac-sessions.js';
 import type { Session } from '../../shared/types.js';
 import { HttpMethod } from '../../shared/types.js';
 import { LocaleController, t } from '../i18n/index.js';
 import type { AuthClient } from '../services/auth-client.js';
 import type { Worktree } from '../services/git-service.js';
 import './phone-session-row.js';
+import './mac-session-row.js';
 import './session-card.js';
 import './inline-edit.js';
 import './session-list/compact-session-card.js';
@@ -38,6 +40,14 @@ import { parseCommand } from '../utils/command-utils.js';
 import { Z_INDEX } from '../utils/constants.js';
 import { swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
+import {
+  macSessionsHeading,
+  macSessionsPlatform,
+  macWarningTexts,
+  matchesMacQuery,
+  readMacSectionCollapsed,
+  writeMacSectionCollapsed,
+} from '../utils/mac-sessions.js';
 import { formatPathForDisplay } from '../utils/path-utils.js';
 import { PHONE_UI_CHANGED_EVENT, usesCompactPhoneUi } from '../utils/phone-ui.js';
 import { loadPinned, pinnedFirst, setPinned } from '../utils/pinned-sessions.js';
@@ -86,6 +96,8 @@ export function isPhoneListLayout(): boolean {
   return usesCompactPhoneUi();
 }
 
+let macSectionIds = 0;
+
 @customElement('session-list')
 export class SessionList extends LitElement {
   // Disable shadow DOM to use Tailwind
@@ -102,6 +114,11 @@ export class SessionList extends LitElement {
   @property({ type: String }) selectedSessionId: string | null = null;
   @property({ type: Boolean }) compactMode = false;
   @property({ type: String }) activeSessionId: string | null = null;
+  /**
+   * "On this computer" (GET /api/mac-sessions), polled by the app on phones; null until it
+   * answers, while the server has it off, or from a server without it.
+   */
+  @property({ attribute: false }) macSessions: MacSessionsResponse | null = null;
 
   @state() private cleaningExited = false;
   @state() private repoFollowMode = new Map<string, string | undefined>();
@@ -1142,13 +1159,125 @@ export class SessionList extends LitElement {
     `;
   }
 
+  // ---- "On this computer" -----------------------------------------------------------------
+
+  /** Collapsed on this device (localStorage), from the section's disclosure button. */
+  @state() private macCollapsed = readMacSectionCollapsed();
+  private readonly macSectionId = `mac-section-${++macSectionIds}`;
+  private macToggleTouchedAt = 0;
+
+  /** What the server lists: tmux sessions and agents outside VibeTunnel (none while it's off). */
+  private listedMacItems(): MacSessionItem[] {
+    return this.macSessions?.enabled ? this.macSessions.items : [];
+  }
+
+  private toggleMacSection = (e: Event) => {
+    e.stopPropagation();
+    if (e.type === 'pointerup') {
+      if ((e as PointerEvent).pointerType === 'mouse') return;
+      // A scroll that started on the button ends here too: not a tap.
+      if (endsADrag(e as PointerEvent)) return;
+      this.macToggleTouchedAt = Date.now();
+      swallowNextClick();
+    } else if (Date.now() - this.macToggleTouchedAt < 700) {
+      return;
+    }
+    this.macCollapsed = !this.macCollapsed;
+    writeMacSectionCollapsed(this.macCollapsed);
+  };
+
+  /**
+   * "On this Mac" ("On this computer" off macOS), below the running sessions: the tmux sessions
+   * and agents the server found outside VibeTunnel. Hidden while there is nothing to show.
+   */
+  private renderMacSection(items: MacSessionItem[], options: { warnings: boolean }) {
+    const response = this.macSessions;
+    const count = items.length;
+    // No tmux is how this computer is, not a failure: it only explains a list of agents, and
+    // alone it would keep an empty section on screen for good.
+    const warnings =
+      options.warnings && response?.enabled
+        ? macWarningTexts(
+            response.warnings.filter(
+              (warning) => warning.code !== 'tmux-unavailable' || items.length > 0
+            )
+          )
+        : [];
+    if (!count && !warnings.length) return nothing;
+    const platform = response?.platform || macSessionsPlatform();
+    const collapsed = this.macCollapsed;
+    const headingId = `${this.macSectionId}-heading`;
+    const rowsId = `${this.macSectionId}-rows`;
+    const toggleLabel = t(
+      collapsed ? 'macSessions.section.expand' : 'macSessions.section.collapse'
+    );
+    return html`
+      <div data-testid="mac-section" role="group" aria-labelledby=${headingId}>
+        <div class="flex items-center justify-between mt-4 mb-1">
+          <h3
+            id=${headingId}
+            class="text-xs font-semibold text-text-muted uppercase tracking-wider"
+            data-testid="mac-section-heading"
+          >
+            ${macSessionsHeading(platform)} <span class="text-text-dim">(${count})</span>
+          </h3>
+          <button
+            type="button"
+            aria-expanded=${collapsed ? 'false' : 'true'}
+            aria-controls=${rowsId}
+            aria-label=${toggleLabel}
+            title=${toggleLabel}
+            data-testid="mac-section-toggle"
+            style="display: inline-flex; align-items: center; justify-content: center; min-width: 44px;
+              min-height: 44px; margin-inline-end: -12px; color: var(--color-text-muted);
+              touch-action: manipulation"
+            @pointerup=${this.toggleMacSection}
+            @click=${this.toggleMacSection}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+              style="transform: rotate(${collapsed ? 0 : 180}deg)"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+        </div>
+        <div id=${rowsId} ?hidden=${collapsed}>
+          ${
+            collapsed
+              ? nothing
+              : html`${warnings.map(
+                  (text) =>
+                    html`<p class="text-xs text-text-dim mb-2" data-testid="mac-section-warning">${text}</p>`
+                )}${
+                  count
+                    ? html`<div class="psr-list" data-testid="mac-session-list">
+                        ${repeat(
+                          items,
+                          (item) => item.id,
+                          (item) => html`<mac-session-row
+                            .item=${item}
+                            .authClient=${this.authClient}
+                            .openMode=${response?.openMode ?? 'control'}
+                            @session-killed=${this.handleSessionKilled}
+                          ></mac-session-row>`
+                        )}
+                      </div>`
+                    : nothing
+                }`
+          }
+        </div>
+      </div>
+    `;
+  }
+
   private renderPhoneRows(allRunning: Session[], allExited: Session[]) {
-    // Count every session, hidden finished ones included (2 running + 30 finished needs search).
-    const searchable = this.sessions.length > 6;
+    const macItems = this.listedMacItems();
+    // Count every session, hidden finished ones included (2 running + 30 finished needs search),
+    // and what "On this computer" lists.
+    const searchable = this.sessions.length + macItems.length > 6;
     // A query only filters while its box is visible; otherwise it could hide sessions with no
     // way to clear it.
     const query = searchable ? this.phoneQuery : '';
     const running = allRunning.filter((session) => this.matchesQuery(session, query));
+    const macMatches = macItems.filter((item) => matchesMacQuery(item, query));
     // While searching, finished sessions are searched too even if the list hides them.
     const exitedPool = query.trim()
       ? this.sessions.filter((session) => session.status === 'exited')
@@ -1181,7 +1310,7 @@ export class SessionList extends LitElement {
           : ''
       }
       ${
-        query.trim() && !running.length && !exited.length
+        query.trim() && !running.length && !exited.length && !macMatches.length
           ? html`<div class="phone-search-empty">${t('sessions.searchEmpty')}</div>`
           : ''
       }
@@ -1191,6 +1320,11 @@ export class SessionList extends LitElement {
               ${repeat(this.orderRunning(running), (session) => session.id, row)}
             </div>`
           : ''
+      }
+      ${
+        // Below the running rows: arriving after them, it moves nothing under the finger.
+        // Warnings are about the listing, not search results.
+        this.renderMacSection(macMatches, { warnings: !query.trim() })
       }
       ${
         exited.length
@@ -1295,6 +1429,7 @@ export class SessionList extends LitElement {
             : ''
         }
       </div>
+      ${this.renderMacSection(this.listedMacItems(), { warnings: true })}
     `;
   }
 

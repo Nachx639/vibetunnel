@@ -3558,3 +3558,72 @@ claude-activity-elapsed {
   font-size: 12px;
   color: var(--color-status-error);
 }
+
+/* "On this computer" (components/mac-session-row.ts): session rows that also say where the tmux
+   session or the agent runs, with small badges ("In VibeTunnel", "Read-only"). */
+.psr-avatar-claude {
+  background: linear-gradient(145deg, #e58a68, #c96442);
+  color: #fff7f2;
+}
+.psr-time-alert {
+  color: var(--color-status-warning);
+  font-weight: 600;
+}
+.msr-where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--color-text-dim);
+}
+.msr-where-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msr-badge {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.psr-top .msr-badge {
+  align-self: center;
+}
+.msr-badge-vt {
+  background: var(--color-primary-muted);
+  color: var(--color-primary-text);
+}
+.msr-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.msr-more {
+  color: var(--color-text-dim);
+}
+.msr-pending .psr-main {
+  opacity: 0.6;
+}
+/* "Opening…" / "Disconnecting…": a live region kept in place, empty most of the time. */
+.psr-live:not(:empty) {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary-text);
+}
+.psr-sheet-note {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}

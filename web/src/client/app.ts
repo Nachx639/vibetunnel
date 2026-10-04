@@ -6,6 +6,14 @@ import { customElement, state } from 'lit/decorators.js';
 import { keyed } from 'lit/directives/keyed.js';
 
 // Import shared types
+import {
+  MAC_SESSION_VIEW_EVENT,
+  MAC_SESSIONS_CHANGED_EVENT,
+  MAC_TMUX_OPEN_EVENT,
+  type MacSessionsResponse,
+  type MacSessionViewDetail,
+  type MacTmuxOpenDetail,
+} from '../shared/mac-sessions.js';
 import type { Session } from '../shared/types.js';
 import { HttpMethod, ServerEventType } from '../shared/types.js';
 import { LocaleController, t, whenLocaleReady } from './i18n/index.js';
@@ -36,10 +44,18 @@ import './components/auth-login.js';
 import './components/ssh-key-manager.js';
 
 import { openAnswerSheet } from './components/answer-sheet.js';
+import { closeMacSessionView, openMacSessionView } from './components/mac-session-view.js';
+import { isPhoneListLayout } from './components/session-list.js';
 import { authClient } from './services/auth-client.js';
 import { pushNotificationService } from './services/push-notification-service.js';
 import { serverEventService } from './services/server-event-service.js';
 import { terminalSocketClient } from './services/terminal-socket-client.js';
+import {
+  fetchMacSessions,
+  MacSessionsApiError,
+  macOpenErrorText,
+  openMacSession,
+} from './utils/mac-sessions.js';
 import { usesCompactPhoneUi } from './utils/phone-ui.js';
 import { prunePinned } from './utils/pinned-sessions.js';
 import { VisibilityPoller } from './utils/visibility-poller.js';
@@ -66,6 +82,11 @@ interface SessionViewElement extends HTMLElement {
   } | null;
 }
 
+/** "On this computer": asked with the session poll, at most this often (the server caches 3 s). */
+const MAC_SESSIONS_REFRESH_MS = 4000;
+/** How long failing requests keep the last list on screen before the section hides. */
+const MAC_SESSIONS_STALE_MS = 60_000;
+
 @customElement('vibetunnel-app')
 export class VibeTunnelApp extends LitElement {
   // Disable shadow DOM to use Tailwind
@@ -91,6 +112,23 @@ export class VibeTunnelApp extends LitElement {
   @state() private loading = false;
   @state() private currentView: 'list' | 'session' | 'auth' | 'file-browser' = 'auth';
   @state() private selectedSessionId: string | null = null;
+  /**
+   * "On this computer" (GET /api/mac-sessions) for the phone list: null until it answers, while
+   * the server has it off, or from a server without it. Never mixed into `sessions`: unread
+   * counts, pins, Kill all and broadcast all assume VibeTunnel ids.
+   */
+  @state() private macSessions: MacSessionsResponse | null = null;
+  /** What the shown list says, without its scan time (see showMacSessions). */
+  private macSessionsShown = 'null';
+  private macSessionsAskedAt = 0;
+  /** The last answer said the section is off, or the server has no such API. */
+  private macSessionsOff = false;
+  private macSessionsFailingSince = 0;
+  private macSessionsLoad: Promise<void> | null = null;
+  /** Bumped on logout: an answer asked for before it is dropped. */
+  private macSessionsGeneration = 0;
+  /** tmux sessions being opened from a conversation sheet (their ids). */
+  private macTmuxOpening = new Set<string>();
   private loadFailures = 0;
   private everLoaded = false;
   @state() private reconnecting = false;
@@ -126,6 +164,7 @@ export class VibeTunnelApp extends LitElement {
   private autoRefresh = new VisibilityPoller({
     task: async () => {
       if (this.currentView === 'list' || this.currentView === 'session') {
+        if (this.showsMacSessions()) void this.loadMacSessions();
         return this.loadSessions();
       }
       return false;
@@ -268,6 +307,13 @@ export class VibeTunnelApp extends LitElement {
     // Clean up keyboard shortcuts
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('vt-open-answer-sheet', this.handleOpenAnswerSheet as EventListener);
+    window.removeEventListener(MAC_SESSIONS_CHANGED_EVENT, this.handleMacSessionsChanged);
+    window.removeEventListener(
+      MAC_SESSION_VIEW_EVENT,
+      this.handleOpenMacSessionView as EventListener
+    );
+    window.removeEventListener(MAC_TMUX_OPEN_EVENT, this.handleOpenMacTmux as EventListener);
+    closeMacSessionView();
     window.removeEventListener(
       'notification-action',
       this.handleClaudeNotification as EventListener
@@ -712,6 +758,125 @@ export class VibeTunnelApp extends LitElement {
     this.isAuthenticated = false;
     this.currentView = 'auth';
     this.sessions = [];
+    closeMacSessionView();
+    this.resetMacSessions();
+  }
+
+  /**
+   * A phone showing the session list, or the sidebar opened from a session: the places with
+   * "On this computer". Only then is it asked for (the server scans the computer for each
+   * answer).
+   */
+  private showsMacSessions(): boolean {
+    return (
+      isPhoneListLayout() &&
+      (this.currentView === 'list' || (this.currentView === 'session' && !this.sidebarCollapsed))
+    );
+  }
+
+  /**
+   * "On this computer", asked at most every 4 s with the session poll while it shows; `force`
+   * (also past the server's 3 s cache) after an open, a disconnect, a mode change or a settings
+   * save. Once the server says it is off (the default) nothing is polled: only a settings save
+   * or a new login asks again. A failed request keeps the last list, until a minute of
+   * failures hides the section.
+   */
+  private loadMacSessions(force = false): Promise<void> {
+    if (this.macSessionsLoad) {
+      // A forced load (after a change) must not settle for one that started before it.
+      return force
+        ? this.macSessionsLoad.then(() => this.loadMacSessions(true))
+        : this.macSessionsLoad;
+    }
+    // Off (the answer said so, or the server has no such API): never asked again until a
+    // settings save or a new login asks with `force`.
+    if (!force && this.macSessionsOff) return Promise.resolve();
+    if (!force && Date.now() - this.macSessionsAskedAt < MAC_SESSIONS_REFRESH_MS) {
+      return Promise.resolve();
+    }
+    this.macSessionsAskedAt = Date.now();
+    const generation = this.macSessionsGeneration;
+    this.macSessionsLoad = fetchMacSessions(authClient.getAuthHeader(), { force })
+      .then((response) => {
+        if (generation !== this.macSessionsGeneration) return;
+        this.macSessionsFailingSince = 0;
+        this.macSessionsOff = !response?.enabled;
+        this.showMacSessions(response?.enabled ? response : null);
+      })
+      .catch(() => {
+        if (generation !== this.macSessionsGeneration) return;
+        const now = Date.now();
+        if (!this.macSessionsFailingSince) this.macSessionsFailingSince = now;
+        else if (now - this.macSessionsFailingSince >= MAC_SESSIONS_STALE_MS) {
+          this.showMacSessions(null);
+        }
+      })
+      .finally(() => {
+        if (generation === this.macSessionsGeneration) this.macSessionsLoad = null;
+      });
+    return this.macSessionsLoad;
+  }
+
+  /** Only a list that says something new re-renders: each scan has a new `scannedAt`. */
+  private showMacSessions(response: MacSessionsResponse | null) {
+    const shown = JSON.stringify(response && { ...response, scannedAt: undefined });
+    if (shown === this.macSessionsShown) return;
+    this.macSessionsShown = shown;
+    this.macSessions = response;
+  }
+
+  private resetMacSessions() {
+    this.macSessionsGeneration++;
+    this.macSessionsLoad = null;
+    this.macSessionsAskedAt = 0;
+    this.macSessionsOff = false;
+    this.macSessionsFailingSince = 0;
+    this.macSessionsShown = 'null';
+    this.macSessions = null;
+  }
+
+  private handleMacSessionsChanged = () => {
+    if (this.isAuthenticated && isPhoneListLayout()) void this.loadMacSessions(true);
+  };
+
+  /** An agent's or tmux pane's conversation outside VibeTunnel, read-only (from its row). */
+  private handleOpenMacSessionView = (e: CustomEvent<MacSessionViewDetail>) => {
+    if (e.detail?.chatId) openMacSessionView(e.detail);
+  };
+
+  private handleOpenMacTmux = (e: CustomEvent<MacTmuxOpenDetail>) => {
+    void this.openMacTmux(e.detail);
+  };
+
+  /**
+   * "Open" from a conversation sheet: the tmux session opens in a new VibeTunnel session, shown
+   * once it is listed, or the one already attached to it is shown.
+   */
+  private async openMacTmux(detail: MacTmuxOpenDetail | undefined) {
+    if (!detail?.id || this.macTmuxOpening.has(detail.id)) return;
+    const { id } = detail;
+    this.macTmuxOpening.add(id);
+    try {
+      const result = await openMacSession(
+        id,
+        { mode: detail.mode ?? this.macSessions?.openMode ?? 'control' },
+        authClient.getAuthHeader()
+      );
+      if (result.reused) {
+        await this.handleNavigateToSession(
+          new CustomEvent('navigate-to-session', { detail: { sessionId: result.sessionId } })
+        );
+      } else {
+        await this.waitForSessionAndSwitch(result.sessionId);
+      }
+    } catch (error) {
+      this.showError(macOpenErrorText(error));
+      if (error instanceof MacSessionsApiError && error.code === 'gone') {
+        void this.loadMacSessions(true);
+      }
+    } finally {
+      this.macTmuxOpening.delete(id);
+    }
   }
 
   private handleShowSSHKeyManager() {
@@ -858,6 +1023,9 @@ export class VibeTunnelApp extends LitElement {
                 existingSession.codexActive !== newSession.codexActive ||
                 existingSession.geminiTitle !== newSession.geminiTitle ||
                 existingSession.geminiActive !== newSession.geminiActive ||
+                // A tmux session opened here: whether it only watches, and how it is sized.
+                JSON.stringify(existingSession.multiplexer) !==
+                  JSON.stringify(newSession.multiplexer) ||
                 // Shell rows: last output line (the server re-reads it at most every 2 s).
                 existingSession.lastLine !== newSession.lastLine ||
                 // Check if Git info has been added in the new data
@@ -1025,6 +1193,8 @@ export class VibeTunnelApp extends LitElement {
     // is hidden (a phone kept the 1 s poll going with the screen locked) and run at once
     // when it is shown again.
     this.autoRefresh.start();
+    // "On this computer" right away rather than with the first poll.
+    if (this.showsMacSessions()) void this.loadMacSessions();
     // The poll slows down while nothing changes; a session starting or ending is pushed
     // by the server, so the list still shows it at once.
     if (this.unsubscribeSessionEvents.length === 0) {
@@ -1831,6 +2001,10 @@ export class VibeTunnelApp extends LitElement {
   }
 
   private setupNotificationHandlers() {
+    // "On this computer": its rows, their conversation sheet and Settings.
+    window.addEventListener(MAC_SESSIONS_CHANGED_EVENT, this.handleMacSessionsChanged);
+    window.addEventListener(MAC_SESSION_VIEW_EVENT, this.handleOpenMacSessionView as EventListener);
+    window.addEventListener(MAC_TMUX_OPEN_EVENT, this.handleOpenMacTmux as EventListener);
     // Listen for notification settings events
   }
 
@@ -2152,6 +2326,7 @@ export class VibeTunnelApp extends LitElement {
           <div class="${this.showSplitView ? 'flex-1 sidebar-scroll-area' : 'flex-1'} bg-secondary">
             <session-list
               .sessions=${this.sessions}
+              .macSessions=${this.macSessions}
               .loading=${this.loading}
               .hideExited=${this.hideExited}
               .selectedSessionId=${this.selectedSessionId}

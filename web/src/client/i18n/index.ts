@@ -238,6 +238,21 @@ export function t(key: MessageKey, params?: TranslationParams): string {
 }
 
 /**
+ * `t(key, params)` split around one parameter's value, so the caller can wrap only that value
+ * (a user's name in <bdi>) while the phrase around it follows the page's language and order.
+ */
+export function tAround(
+  key: MessageKey,
+  params: TranslationParams,
+  name: string
+): [before: string, value: string, after: string] {
+  const marker = '\u0000';
+  const value = String(params[name] ?? '');
+  const [before, ...rest] = t(key, { ...params, [name]: marker }).split(marker);
+  return rest.length ? [before, value, rest.join(value)] : [before, '', ''];
+}
+
+/**
  * Lit controller that re-renders its host whenever the locale changes.
  * Add it as a field: `protected readonly i18n = new LocaleController(this);`
  */
