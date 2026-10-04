@@ -837,4 +837,9 @@ export const zhCN: Messages = {
   'theme.cyber': '赛博',
   'theme.gold': '金色',
   'theme.clay': '陶土',
+  'settings.terminalFont': '终端字体',
+  'settings.terminalFont.description':
+    'Hack Nerd Font 可显示许多提示符和工具输出的图标；系统等宽字体使用设备自带字体。之后打开的终端生效。',
+  'settings.terminalFont.system': '系统等宽字体',
+  'settings.terminalFont.nerd': 'Hack Nerd Font',
 };

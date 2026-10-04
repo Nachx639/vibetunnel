@@ -846,4 +846,9 @@ export const hi: Messages = {
   'theme.cyber': 'साइबर',
   'theme.gold': 'सुनहरा',
   'theme.clay': 'मिट्टी',
+  'settings.terminalFont': 'टर्मिनल फ़ॉन्ट',
+  'settings.terminalFont.description':
+    'Hack Nerd Font कई प्रॉम्प्ट और टूल के आइकन दिखाता है; सिस्टम मोनोस्पेस डिवाइस का फ़ॉन्ट इस्तेमाल करता है। बाद में खुलने वाले टर्मिनलों पर लागू।',
+  'settings.terminalFont.system': 'सिस्टम मोनोस्पेस',
+  'settings.terminalFont.nerd': 'Hack Nerd Font',
 };

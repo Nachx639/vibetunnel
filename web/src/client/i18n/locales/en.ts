@@ -866,6 +866,11 @@ export const en = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Gold',
   'theme.clay': 'Clay',
+  'settings.terminalFont': 'Terminal font',
+  'settings.terminalFont.description':
+    "Hack Nerd Font shows the icons many prompts and tools print; system monospace draws with your device's font. Applies to terminals opened afterwards.",
+  'settings.terminalFont.system': 'System monospace',
+  'settings.terminalFont.nerd': 'Hack Nerd Font',
 };
 
 export type MessageKey = keyof typeof en;

@@ -25,6 +25,12 @@ export const TERMINAL_FONT_FAMILY =
   'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace';
 
 /**
+ * The terminal font with Hack Nerd Font Mono (styles.css) first, for users who chose it
+ * (utils/terminal-font.ts): it has the Nerd Font icons the system fonts lack.
+ */
+export const TERMINAL_NERD_FONT_FAMILY = `"Hack Nerd Font Mono", ${TERMINAL_FONT_FAMILY}`;
+
+/**
  * IME input vertical offset in pixels for better alignment
  */
 export const IME_VERTICAL_OFFSET_PX = 3;

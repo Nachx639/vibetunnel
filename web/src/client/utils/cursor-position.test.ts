@@ -220,8 +220,9 @@ describe('cursor-position', () => {
       calculateCursorPosition(1, 1, fontSize, mockContainer, 'running');
 
       expect(createElementSpy).toHaveBeenCalledWith('span');
+      // The canvas terminal's font (utils/terminal-font.ts): the cursor lines up with its cells.
       expect(testElement.style.fontFamily).toBe(
-        'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace'
+        '"Hack Nerd Font Mono", ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace'
       );
       expect(testElement.style.fontSize).toBe('14px');
       expect(testElement.textContent).toBe('0');

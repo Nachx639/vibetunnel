@@ -845,4 +845,9 @@ export const ar: Messages = {
   'theme.cyber': 'سايبر',
   'theme.gold': 'ذهبي',
   'theme.clay': 'طيني',
+  'settings.terminalFont': 'خط الطرفية',
+  'settings.terminalFont.description':
+    'يعرض Hack Nerd Font الأيقونات التي تطبعها كثير من الموجّهات والأدوات؛ ويستخدم الخط أحادي المسافة للنظام خط جهازك. يُطبَّق على الطرفيات التي تُفتح بعد ذلك.',
+  'settings.terminalFont.system': 'خط النظام أحادي المسافة',
+  'settings.terminalFont.nerd': 'Hack Nerd Font',
 };

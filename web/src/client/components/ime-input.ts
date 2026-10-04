@@ -11,7 +11,8 @@
 
 import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
-import { IME_VERTICAL_OFFSET_PX, TERMINAL_FONT_FAMILY } from '../utils/terminal-constants.js';
+import { IME_VERTICAL_OFFSET_PX } from '../utils/terminal-constants.js';
+import { terminalFontFamily } from '../utils/terminal-font.js';
 
 const logger = createLogger('ime-input');
 
@@ -74,7 +75,7 @@ export class DesktopIMEInput {
     input.style.opacity = '1';
     input.style.visibility = 'visible';
     input.style.pointerEvents = 'auto';
-    input.style.fontFamily = TERMINAL_FONT_FAMILY;
+    input.style.fontFamily = terminalFontFamily();
     input.style.outline = 'none';
     input.style.caretColor = 'transparent'; // Hide the blinking cursor
     input.autocapitalize = 'off';

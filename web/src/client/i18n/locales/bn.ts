@@ -848,4 +848,9 @@ export const bn: Messages = {
   'theme.cyber': 'সাইবার',
   'theme.gold': 'সোনালি',
   'theme.clay': 'মাটি',
+  'settings.terminalFont': 'টার্মিনাল ফন্ট',
+  'settings.terminalFont.description':
+    'Hack Nerd Font অনেক প্রম্পট ও টুলের আইকন দেখায়; সিস্টেম মনোস্পেস ডিভাইসের ফন্ট ব্যবহার করে। এরপর খোলা টার্মিনালে প্রযোজ্য।',
+  'settings.terminalFont.system': 'সিস্টেম মনোস্পেস',
+  'settings.terminalFont.nerd': 'Hack Nerd Font',
 };

@@ -28,6 +28,7 @@ vi.mock('../services/server-config-service.js', () => ({
 }));
 
 import { applyAccent } from '../utils/accent-themes.js';
+import { getTerminalFont } from '../utils/terminal-font.js';
 import { applyThemeMode } from '../utils/theme-mode.js';
 import { Settings } from './settings.js';
 
@@ -83,6 +84,22 @@ describe('Settings', () => {
 
       expect(button('settings-theme-light')?.getAttribute('aria-pressed')).toBe('true');
       expect(button('settings-accent-gold')?.getAttribute('aria-pressed')).toBe('true');
+    });
+  });
+
+  describe('terminal font', () => {
+    const option = (value: string) =>
+      component.querySelector(`[data-terminal-font="${value}"]`) as HTMLButtonElement | null;
+
+    it('starts on Hack Nerd Font and stores the system font when chosen', async () => {
+      expect(option('nerd')?.getAttribute('aria-pressed')).toBe('true');
+      expect(getTerminalFont()).toBe('nerd');
+
+      option('system')?.click();
+      await component.updateComplete;
+
+      expect(option('system')?.getAttribute('aria-pressed')).toBe('true');
+      expect(getTerminalFont()).toBe('system');
     });
   });
 });

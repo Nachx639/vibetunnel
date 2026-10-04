@@ -14,7 +14,17 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { LocaleController, t } from '../i18n/index.js';
 import { KeyboardShortcutLinkProvider } from '../utils/keyboard-shortcut-link-provider.js';
 import { createLogger } from '../utils/logger.js';
-import { TERMINAL_FONT_FAMILY, TERMINAL_IDS } from '../utils/terminal-constants.js';
+import { TERMINAL_IDS } from '../utils/terminal-constants.js';
+import {
+  getTerminalFont,
+  type TerminalFontChoice,
+  terminalFontFamily,
+} from '../utils/terminal-font.js';
+import {
+  loadTerminalIconFonts,
+  onTerminalFontsLoaded,
+  waitForTerminalFonts,
+} from '../utils/terminal-fonts.js';
 import { TerminalPreferencesManager } from '../utils/terminal-preferences.js';
 import { TERMINAL_THEMES, type TerminalThemeId } from '../utils/terminal-themes.js';
 import { getCurrentTheme } from '../utils/theme-utils.js';
@@ -83,8 +93,14 @@ export class Terminal extends LitElement {
   private pendingResizeSource: string | null = null;
   private pendingResizePrev: { cols: number; rows: number } | null = null;
   private initializationId = 0;
+  /** Settings > Terminal font, read when the terminal connects. */
+  private terminalFont: TerminalFontChoice = 'system';
+  private stopWatchingFonts: (() => void) | null = null;
+  /** Icon files this terminal asked for (terminal-fonts.ts), so it repaints once each loads. */
+  private iconFontParts = new Set<string>();
 
   connectedCallback() {
+    this.terminalFont = getTerminalFont();
     const prefs = TerminalPreferencesManager.getInstance();
     this.theme = prefs.getTheme();
     super.connectedCallback();
@@ -175,6 +191,13 @@ export class Terminal extends LitElement {
   };
 
   public write(data: string, followCursor = true) {
+    // Every path that puts text in the terminal comes here: the stream, the snapshot replayed
+    // on load (pendingOutput before ghostty opens), cast playback.
+    if (this.terminalFont === 'nerd') {
+      loadTerminalIconFonts(data, this.iconFontParts)?.then((loaded) => {
+        if (loaded) this.handleTerminalFontsLoaded();
+      });
+    }
     if (!this.terminal) {
       this.pendingOutput += data;
       this.pendingFollowCursor = this.pendingFollowCursor && followCursor;
@@ -360,6 +383,8 @@ export class Terminal extends LitElement {
 
   private cleanup() {
     this.initializationId++;
+    this.stopWatchingFonts?.();
+    this.stopWatchingFonts = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.detachTouchScrollHandlers();
@@ -371,6 +396,29 @@ export class Terminal extends LitElement {
     this.pasteInput = null;
     this.preservedScrollPosition = null;
   }
+
+  /**
+   * A file of the Nerd font arrived (terminal-fonts.ts): the core after the wait gave up, or an
+   * icon file. Cells measured on a fallback are measured again and the canvas resized to them;
+   * otherwise every row is redrawn, so a fallback glyph or tofu does not stay on screen.
+   */
+  private handleTerminalFontsLoaded = () => {
+    const term = this.terminal;
+    const renderer = term?.renderer;
+    if (!term || !renderer || !term.wasmTerm) return;
+    const before = renderer.getMetrics();
+    renderer.remeasureFont();
+    const after = renderer.getMetrics();
+    if (
+      before.width !== after.width ||
+      before.height !== after.height ||
+      before.baseline !== after.baseline
+    ) {
+      renderer.resize(term.cols, term.rows);
+      this.requestResize('font-loaded');
+    }
+    renderer.render(term.wasmTerm, true, term.getViewportY(), term, 0);
+  };
 
   private requestResize(source: string) {
     requestAnimationFrame(() => this.fitTerminal(source));
@@ -471,7 +519,15 @@ export class Terminal extends LitElement {
     this.container = container;
 
     try {
-      const ghostty = await ensureGhostty();
+      // With the Nerd font chosen, wait for it too: ghostty measures its cells when it opens
+      // and a canvas does not wait for a web font, so opening first would draw (and size) the
+      // cells with a fallback. At most 1.5 s; a font that comes later is picked up by
+      // handleTerminalFontsLoaded.
+      const nerdFont = this.terminalFont === 'nerd';
+      const [ghostty] = await Promise.all([
+        ensureGhostty(),
+        nerdFont ? waitForTerminalFonts() : Promise.resolve(false),
+      ]);
       if (
         initializationId !== this.initializationId ||
         !this.isConnected ||
@@ -483,7 +539,7 @@ export class Terminal extends LitElement {
         cols: this.cols,
         rows: this.rows,
         fontSize: this.fontSize,
-        fontFamily: TERMINAL_FONT_FAMILY,
+        fontFamily: terminalFontFamily(this.terminalFont),
         theme: this.getResolvedTheme(),
         cursorBlink: true,
         smoothScrollDuration: 120,
@@ -538,6 +594,7 @@ export class Terminal extends LitElement {
 
       this.terminal = term;
       this.fitAddon = fitAddon;
+      if (nerdFont) this.stopWatchingFonts = onTerminalFontsLoaded(this.handleTerminalFontsLoaded);
 
       // Size first, then initialize every cell; ghostty-web can reuse uncleared WASM memory.
       this.fitTerminal('initial');
@@ -734,7 +791,7 @@ export class Terminal extends LitElement {
           width: 100%;
           height: 100%;
           overflow: hidden;
-          font-family: ${TERMINAL_FONT_FAMILY};
+          font-family: ${terminalFontFamily(this.terminalFont)};
           /* Own one-finger pans for scrollback while retaining two-finger page zoom. */
           touch-action: pinch-zoom;
           -webkit-user-select: text;
@@ -756,7 +813,7 @@ export class Terminal extends LitElement {
           z-index: 20;
         }
         .scroll-to-bottom button {
-          font-family: ${TERMINAL_FONT_FAMILY};
+          font-family: ${terminalFontFamily(this.terminalFont)};
           background: rgba(0, 0, 0, 0.55);
           color: #fff;
           border: 1px solid rgba(255, 255, 255, 0.18);

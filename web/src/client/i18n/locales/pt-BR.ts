@@ -870,4 +870,9 @@ export const ptBR: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Ouro',
   'theme.clay': 'Argila',
+  'settings.terminalFont': 'Fonte do terminal',
+  'settings.terminalFont.description':
+    'Hack Nerd Font mostra os ícones que muitos prompts e ferramentas imprimem; monoespaçada do sistema usa a fonte do dispositivo. Vale para os terminais abertos depois.',
+  'settings.terminalFont.system': 'Monoespaçada do sistema',
+  'settings.terminalFont.nerd': 'Hack Nerd Font',
 };

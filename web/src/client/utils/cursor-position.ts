@@ -1,7 +1,8 @@
 /**
  * Shared cursor position calculation utility for terminal components
  */
-import { TERMINAL_FONT_FAMILY, TERMINAL_IDS } from './terminal-constants.js';
+import { TERMINAL_IDS } from './terminal-constants.js';
+import { terminalFontFamily } from './terminal-font.js';
 
 // Cache for character width measurements per font size
 const charWidthCache = new Map<number, number>();
@@ -26,7 +27,7 @@ function measureCharacterWidth(fontSize: number, container: Element): number {
   testElement.style.position = 'absolute';
   testElement.style.visibility = 'hidden';
   testElement.style.fontSize = `${fontSize}px`;
-  testElement.style.fontFamily = TERMINAL_FONT_FAMILY;
+  testElement.style.fontFamily = terminalFontFamily();
   testElement.textContent = '0';
 
   try {

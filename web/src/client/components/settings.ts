@@ -13,6 +13,11 @@ import { RepositoryService } from '../services/repository-service.js';
 import { ServerConfigService } from '../services/server-config-service.js';
 import { ACCENT_THEMES, accentName, applyAccent, getAccent } from '../utils/accent-themes.js';
 import { createLogger } from '../utils/logger.js';
+import {
+  getTerminalFont,
+  setTerminalFont,
+  type TerminalFontChoice,
+} from '../utils/terminal-font.js';
 import { applyThemeMode, getThemeMode, type ThemeMode } from '../utils/theme-mode.js';
 import { VERSION } from '../version.js';
 import './language-picker.js';
@@ -43,6 +48,7 @@ export class Settings extends LitElement {
   @state() private repositoryCount = 0;
   @state() private isDiscoveringRepositories = false;
   @state() private showQuickKeysEditor = false;
+  @state() private terminalFont: TerminalFontChoice = getTerminalFont();
 
   // Appearance state (shared with the header toggle and the session compact menu)
   @state() private themeMode: ThemeMode = getThemeMode();
@@ -776,6 +782,30 @@ export class Settings extends LitElement {
         <h3 class="text-md font-bold text-primary mb-3">${t('settings.application')}</h3>
 
         ${this.renderAppearance()}
+
+        <!-- Terminal font -->
+        <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-terminal-font">
+          <label class="text-primary font-medium">${t('settings.terminalFont')}</label>
+          <p class="text-muted text-xs mt-1">${t('settings.terminalFont.description')}</p>
+          <div class="appearance-modes mt-3" role="group" aria-label=${t('settings.terminalFont')}>
+            ${(['nerd', 'system'] as const).map(
+              (value) => html`
+                <button
+                  type="button"
+                  class="appearance-mode min-h-[44px] ${this.terminalFont === value ? 'active' : ''}"
+                  aria-pressed=${this.terminalFont === value ? 'true' : 'false'}
+                  data-terminal-font=${value}
+                  @click=${() => {
+                    setTerminalFont(value);
+                    this.terminalFont = value;
+                  }}
+                >
+                  ${t(value === 'system' ? 'settings.terminalFont.system' : 'settings.terminalFont.nerd')}
+                </button>
+              `
+            )}
+          </div>
+        </div>
 
         <!-- Language -->
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">

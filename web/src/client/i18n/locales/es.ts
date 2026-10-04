@@ -871,4 +871,9 @@ export const es: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Oro',
   'theme.clay': 'Arcilla',
+  'settings.terminalFont': 'Fuente del terminal',
+  'settings.terminalFont.description':
+    'Hack Nerd Font muestra los iconos que imprimen muchos prompts y herramientas; monoespaciada del sistema usa la fuente del dispositivo. Se aplica a los terminales que se abran después.',
+  'settings.terminalFont.system': 'Monoespaciada del sistema',
+  'settings.terminalFont.nerd': 'Hack Nerd Font',
 };

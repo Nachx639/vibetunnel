@@ -880,4 +880,9 @@ export const fr: Messages = {
   'theme.cyber': 'Cyber',
   'theme.gold': 'Or',
   'theme.clay': 'Argile',
+  'settings.terminalFont': 'Police du terminal',
+  'settings.terminalFont.description':
+    'Hack Nerd Font affiche les icônes de nombreux prompts et outils ; la police à chasse fixe du système utilise celle de l’appareil. S’applique aux terminaux ouverts ensuite.',
+  'settings.terminalFont.system': 'Chasse fixe du système',
+  'settings.terminalFont.nerd': 'Hack Nerd Font',
 };
