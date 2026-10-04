@@ -35,35 +35,48 @@ export function resolveGhosttyWasmPath(moduleDir: string = __dirname): string {
   );
 }
 
-let ghosttyPromise: Promise<Ghostty> | null = null;
-async function ensureGhostty(): Promise<Ghostty> {
-  if (!ghosttyPromise) {
-    ghosttyPromise = (async () => {
+type GhosttyWasmInstance = ConstructorParameters<typeof Ghostty>[0];
+/** A compiled ghostty-vt.wasm, opaque: the server's TypeScript lib has no WebAssembly types. */
+type GhosttyWasmModule = object;
+type WebAssemblyLike = {
+  compile: (bytes: Uint8Array) => Promise<GhosttyWasmModule>;
+  Instance: new (
+    module: GhosttyWasmModule,
+    imports: Record<string, unknown>
+  ) => GhosttyWasmInstance;
+};
+
+let ghosttyModulePromise: Promise<GhosttyWasmModule> | null = null;
+function compileGhosttyModule(): Promise<GhosttyWasmModule> {
+  if (!ghosttyModulePromise) {
+    ghosttyModulePromise = (async () => {
       const wasmPath = resolveGhosttyWasmPath();
       const wasmBytes = await fs.promises.readFile(wasmPath);
-
-      type GhosttyWasmInstance = ConstructorParameters<typeof Ghostty>[0];
-      type WebAssemblyInstantiateResult = { instance: GhosttyWasmInstance };
-      type WebAssemblyLike = {
-        instantiate: (
-          bytes: Uint8Array,
-          imports: Record<string, unknown>
-        ) => Promise<WebAssemblyInstantiateResult>;
-      };
-
       const wasm = (globalThis as unknown as { WebAssembly: WebAssemblyLike }).WebAssembly;
-      const { instance } = await wasm.instantiate(wasmBytes, {
-        env: {
-          log: (_ptr: number, _len: number) => {
-            // Intentionally no-op: ghostty can be noisy with stream warnings.
-          },
-        },
-      });
-
-      return new Ghostty(instance);
+      return wasm.compile(wasmBytes);
     })();
   }
-  return ghosttyPromise;
+  return ghosttyModulePromise;
+}
+
+/**
+ * A WASM instance of its own for each terminal. On one shared instance a new terminal showed
+ * another session's text: ghostty gives a new terminal the pages a freed one used without
+ * zeroing them (release builds take fresh pages to be zero), so every cell it had not written
+ * yet still held the old text, and a brand-new session's /text could show lines from another
+ * session that its own cast never had. The module compiles once; an instance starts at about
+ * 1.2 MB and goes away with its terminal.
+ */
+function createGhostty(ghosttyModule: GhosttyWasmModule): Ghostty {
+  const wasm = (globalThis as unknown as { WebAssembly: WebAssemblyLike }).WebAssembly;
+  const instance = new wasm.Instance(ghosttyModule, {
+    env: {
+      log: (_ptr: number, _len: number) => {
+        // Intentionally no-op: ghostty can be noisy with stream warnings.
+      },
+    },
+  });
+  return new Ghostty(instance);
 }
 
 // Helper function to truncate long strings for logging
@@ -96,6 +109,8 @@ const FLOW_CONTROL_CONFIG = {
 
 interface SessionTerminal {
   terminal: GhosttyTerminal;
+  /** The terminal's own WASM instance (createGhostty), dropped with this record. */
+  ghostty: Ghostty;
   watcher?: fs.FSWatcher;
   lastUpdate: number;
   isPaused?: boolean;
@@ -197,15 +212,20 @@ export class TerminalManager {
    * Get or create a terminal for a session
    */
   async getTerminal(sessionId: string): Promise<GhosttyTerminal> {
+    // Awaited before the lookup, so nothing awaits between it and a new terminal in the map: two
+    // reads of a new session at once made a terminal each, and the first, left out of the map,
+    // was never freed (with an instance per terminal, a whole WASM memory).
+    const ghosttyModule = await compileGhosttyModule();
     let sessionTerminal = this.terminals.get(sessionId);
 
     if (!sessionTerminal) {
-      // Create new terminal
-      const ghostty = await ensureGhostty();
+      // Create new terminal, on a WASM instance of its own
+      const ghostty = createGhostty(ghosttyModule);
       const terminal = ghostty.createTerminal(80, 24, { scrollbackLimit: SCROLLBACK_LIMIT });
 
       sessionTerminal = {
         terminal,
+        ghostty,
         lastUpdate: Date.now(),
       };
 
@@ -1157,6 +1177,7 @@ export class TerminalManager {
       if (sessionTerminal.watcher) {
         sessionTerminal.watcher.close();
       }
+      // The record holds the terminal's own WASM instance: once dropped, all its memory can go.
       sessionTerminal.terminal.free();
       this.terminals.delete(sessionId);
 
