@@ -120,7 +120,11 @@ test.describe('mobile session header', () => {
     const keyboardButton = page.getByRole('button', { name: 'Keyboard', exact: true });
     await expect(keyboardButton).toBeVisible();
     await expectInsideViewport(page, keyboardButton);
-    await keyboardButton.click();
+    // A transparent field covers the Keyboard button so that a tap focuses it and iOS opens
+    // the soft keyboard (mobile-action-bar.ts): a tap on the button lands there.
+    const keyboardProxy = page.locator('.keyboard-proxy');
+    await expect(keyboardProxy).toHaveCount(1);
+    await keyboardProxy.click();
     await expect(
       page.getByRole('button', { name: 'Toggle mobile keyboard', exact: true })
     ).toBeVisible();
