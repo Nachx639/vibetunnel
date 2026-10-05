@@ -664,6 +664,33 @@ describe('SessionView', () => {
       await element.updateComplete;
     });
 
+    it("the action bar's New session opens the form and Theme flips light and dark", async () => {
+      const bar = element.querySelector('mobile-action-bar') as HTMLElement & {
+        callbacks: { onCreateSession: () => void; onToggleTheme: () => void };
+      };
+      const created = vi.fn();
+      const listed = vi.fn();
+      const themed = vi.fn();
+      element.addEventListener('create-session', created);
+      element.addEventListener('navigate-to-list', listed);
+      window.addEventListener('theme-changed', themed);
+      try {
+        bar.callbacks.onCreateSession();
+        expect(created).toHaveBeenCalledTimes(1);
+        expect(listed).not.toHaveBeenCalled();
+
+        document.documentElement.setAttribute('data-theme', 'dark');
+        bar.callbacks.onToggleTheme();
+        expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+        bar.callbacks.onToggleTheme();
+        expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+        expect(themed).toHaveBeenCalledTimes(2);
+      } finally {
+        window.removeEventListener('theme-changed', themed);
+        document.documentElement.removeAttribute('data-theme');
+      }
+    });
+
     it('should render mobile action bar', async () => {
       await element.updateComplete;
 

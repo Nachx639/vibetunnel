@@ -26,6 +26,7 @@ import { Z_INDEX } from '../utils/constants.js';
 import { createLogger } from '../utils/logger.js';
 import { TERMINAL_IDS } from '../utils/terminal-constants.js';
 import type { TerminalThemeId } from '../utils/terminal-themes.js';
+import { getCurrentTheme } from '../utils/theme-utils.js';
 // Manager imports
 import { ConnectionManager } from './session-view/connection-manager.js';
 import {
@@ -1139,13 +1140,24 @@ export class SessionView extends LitElement {
     }
   }
 
+  /**
+   * The action bar's Theme button: flip between light and dark from what is on screen, as
+   * the session menu's theme button applies it. It used to dispatch a `theme-toggle` event
+   * that nothing listened to, so it did nothing.
+   */
   private handleThemeToggle() {
-    // Dispatch theme toggle event
+    const next = getCurrentTheme() === 'dark' ? 'light' : 'dark';
+    try {
+      localStorage.setItem('vibetunnel-theme', next);
+    } catch {
+      // Not persisted (storage blocked); still applied for this page.
+    }
+    document.documentElement.setAttribute('data-theme', next);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', next === 'dark' ? '#0a0a0a' : '#fafafa');
     this.dispatchEvent(
-      new CustomEvent('theme-toggle', {
-        bubbles: true,
-        composed: true,
-      })
+      new CustomEvent('theme-changed', { detail: { theme: next }, bubbles: true, composed: true })
     );
   }
 
@@ -1562,7 +1574,8 @@ export class SessionView extends LitElement {
                 onExecuteSlashCommand: (command: string) => this.handleExecuteSlashCommand(command),
 
                 // Session management callbacks
-                onCreateSession: () => this.dispatchEvent(new CustomEvent('navigate-to-list')), // Navigate back to create new session
+                // Open the new-session form, as the header's + does (it used to go back to the list).
+                onCreateSession: () => this.handleCreateSession(),
                 onTerminateSession: () => this.sessionActionsHandler.handleTerminateSession(),
                 onClearSession: () => this.sessionActionsHandler.handleClearSession(),
 
