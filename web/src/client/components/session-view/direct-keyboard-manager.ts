@@ -61,6 +61,17 @@ export interface DirectKeyboardCallbacks {
   getChatMode(): boolean;
 }
 
+/**
+ * What a backward delete from the hidden input sends: one character, a word (Ctrl+W, as
+ * Alt+Backspace does) or the line up to the cursor (Ctrl+U).
+ */
+const BACKWARD_DELETE_SEQUENCES: Record<string, string> = {
+  deleteContentBackward: 'backspace',
+  deleteWordBackward: '\x17',
+  deleteSoftLineBackward: '\x15',
+  deleteHardLineBackward: '\x15',
+};
+
 export class DirectKeyboardManager extends ManagerEventEmitter {
   private hiddenInput: HTMLInputElement | null = null;
   private focusRetentionInterval: number | null = null;
@@ -371,10 +382,18 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
       // Handle backspace/delete via inputType (critical for iOS key repeat)
       // On iOS, holding backspace sends repeated 'input' events with inputType='deleteContentBackward'
       // instead of repeated 'keydown' events like on desktop
-      if (inputEvent.inputType === 'deleteContentBackward' && this.inputManager) {
+      // Held long enough, iOS's backspace repeat moves on to whole words
+      // (deleteWordBackward), and ⌘⌫ on a hardware keyboard deletes the line. Those
+      // used to fall through: the placeholder was gone, nothing reached the terminal and,
+      // with an empty field, iOS stopped repeating ("deletes a few, then stops").
+      const backwardDelete = BACKWARD_DELETE_SEQUENCES[inputEvent.inputType];
+      if (backwardDelete && this.inputManager) {
         const now = Date.now();
-        // Skip if keydown just handled this (within 50ms) to avoid double-delete
-        if (now - this.lastBackspaceTime > 50) {
+        if (inputEvent.inputType !== 'deleteContentBackward') {
+          this.inputManager.sendInput(backwardDelete);
+          this.lastBackspaceTime = now;
+        } else if (now - this.lastBackspaceTime > 50) {
+          // Skip if keydown just handled this (within 50ms) to avoid double-delete
           this.inputManager.sendInput('backspace');
           this.lastBackspaceTime = now;
         }
@@ -398,6 +417,14 @@ export class DirectKeyboardManager extends ManagerEventEmitter {
             this.hiddenInput.setSelectionRange(0, 0);
           }
         });
+        return;
+      }
+
+      // Any other edit that emptied the field: put the placeholder back, or the next
+      // backspace has nothing to delete and iOS sends nothing at all.
+      if (!input.value) {
+        input.value = ' ';
+        input.setSelectionRange(1, 1);
         return;
       }
 

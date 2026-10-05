@@ -136,6 +136,37 @@ describe('DirectKeyboardManager', () => {
     expect(mockInputManager.sendInputText).toHaveBeenCalledWith(expected);
   });
 
+  it('keeps deleting when a held backspace moves on to words (iOS) or the line', async () => {
+    const hiddenInput = getManagerState().hiddenInput;
+    expect(hiddenInput).toBeTruthy();
+    if (!hiddenInput) return;
+    hiddenInput.focus();
+
+    const del = async (inputType: string) => {
+      hiddenInput.value = '';
+      hiddenInput.dispatchEvent(new InputEvent('input', { bubbles: true, inputType }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // The placeholder is back: iOS has something to delete and keeps repeating.
+      expect(hiddenInput.value).toBe(' ');
+    };
+
+    await del('deleteContentBackward');
+    await del('deleteWordBackward');
+    await del('deleteWordBackward');
+    await del('deleteSoftLineBackward');
+    expect(vi.mocked(mockInputManager.sendInput).mock.calls).toEqual([
+      ['backspace'],
+      ['\x17'],
+      ['\x17'],
+      ['\x15'],
+    ]);
+
+    // Any other edit that empties the field gets the placeholder back too.
+    hiddenInput.value = '';
+    hiddenInput.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteByCut' }));
+    expect(hiddenInput.value).toBe(' ');
+  });
+
   it('sends Escape without bubbling to app navigation', () => {
     const hiddenInput = getManagerState().hiddenInput;
     expect(hiddenInput).toBeTruthy();
