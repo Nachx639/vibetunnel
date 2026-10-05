@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   findTailscaleExecutable,
   getTailscaleSearchPaths,
+  refusesRealTailscaleReset,
   TailscaleServeServiceImpl,
 } from './tailscale-serve-service.js';
 
@@ -521,5 +522,17 @@ describe('Tailscale Integration Tests (Requires ENABLE_TAILSCALE_TESTS=1)', () =
       expect(error).toBeInstanceOf(Error);
       console.warn('Tailscale test failed (this may be expected):', (error as Error).message);
     }
+  });
+});
+
+describe('refusesRealTailscaleReset', () => {
+  it('refuses a reset under tests unless a fake binary or an explicit opt-in is set', () => {
+    expect(refusesRealTailscaleReset({ VITEST: 'true' })).toBe(true);
+    expect(refusesRealTailscaleReset({ NODE_ENV: 'test' })).toBe(true);
+    expect(
+      refusesRealTailscaleReset({ VITEST: 'true', VIBETUNNEL_TAILSCALE_BIN: '/tmp/fake' })
+    ).toBe(false);
+    expect(refusesRealTailscaleReset({ VITEST: 'true', ENABLE_TAILSCALE_TESTS: '1' })).toBe(false);
+    expect(refusesRealTailscaleReset({ NODE_ENV: 'production' })).toBe(false);
   });
 });

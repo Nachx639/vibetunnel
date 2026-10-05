@@ -6,6 +6,20 @@ import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('tailscale-serve');
 
+/**
+ * `tailscale serve|funnel reset` wipes every Serve/Funnel route on the machine, not only
+ * VibeTunnel's. Under a test runner it may only ever reach a fake binary
+ * (VIBETUNNEL_TAILSCALE_BIN) unless ENABLE_TAILSCALE_TESTS=1 asks for the real one.
+ * Otherwise a test run that stops the service would drop every route on the developer's
+ * machine, including the one their phone uses to reach VibeTunnel.
+ */
+export function refusesRealTailscaleReset(environment: NodeJS.ProcessEnv = process.env): boolean {
+  const underTest = Boolean(environment.VITEST) || environment.NODE_ENV === 'test';
+  return (
+    underTest && !environment.VIBETUNNEL_TAILSCALE_BIN && environment.ENABLE_TAILSCALE_TESTS !== '1'
+  );
+}
+
 export function getTailscaleSearchPaths(
   platform = process.platform,
   environment: NodeJS.ProcessEnv = process.env
@@ -143,9 +157,7 @@ export class TailscaleServeServiceImpl implements TailscaleServeService {
       // First, reset any existing serve configuration
       try {
         logger.debug('Resetting Tailscale Serve configuration...');
-        const resetProcess = spawn(this.tailscaleExecutable, ['serve', 'reset'], {
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
+        const resetProcess = this.spawnReset('serve');
 
         await new Promise<void>((resolve) => {
           resetProcess.on('exit', () => resolve());
@@ -313,9 +325,7 @@ export class TailscaleServeServiceImpl implements TailscaleServeService {
     // First, reset any existing Funnel configuration to avoid "foreground already exists" error
     try {
       logger.debug('Resetting Funnel configuration before starting...');
-      const resetProcess = spawn(this.tailscaleExecutable, ['funnel', 'reset'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      const resetProcess = this.spawnReset('funnel');
 
       await new Promise<void>((resolve) => {
         resetProcess.on('exit', () => resolve());
@@ -413,9 +423,7 @@ export class TailscaleServeServiceImpl implements TailscaleServeService {
       logger.info('Stopping Tailscale Funnel...');
 
       // Reset funnel configuration
-      const resetProcess = spawn(this.tailscaleExecutable, ['funnel', 'reset'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      const resetProcess = this.spawnReset('funnel');
 
       await new Promise<void>((resolve) => {
         resetProcess.on('exit', (code) => {
@@ -517,13 +525,22 @@ export class TailscaleServeServiceImpl implements TailscaleServeService {
     });
   }
 
+  private spawnReset(kind: 'serve' | 'funnel'): ChildProcess {
+    if (refusesRealTailscaleReset()) {
+      throw new Error(
+        `Refusing \`tailscale ${kind} reset\` under tests without VIBETUNNEL_TAILSCALE_BIN`
+      );
+    }
+    return spawn(this.tailscaleExecutable, [kind, 'reset'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  }
+
   private async resetServeConfiguration(): Promise<boolean> {
     logger.debug('Removing Tailscale Serve configuration...');
 
     try {
-      const resetProcess = spawn(this.tailscaleExecutable, ['serve', 'reset'], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      const resetProcess = this.spawnReset('serve');
 
       return await new Promise<boolean>((resolve) => {
         let settled = false;
