@@ -575,6 +575,26 @@ describe.skipIf(!canOpen)('MacAttach on a tmux server', () => {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
+  /**
+   * `kill-server` returns before the server process is gone. A new server started on the
+   * same socket meanwhile can attach to the dying one and fail with "server exited
+   * unexpectedly" (seen on Linux CI), so wait for the old process to exit first.
+   */
+  async function killServer(): Promise<void> {
+    const pid = Number(tmux('display-message', '-p', '#{pid}').trim());
+    tmux('kill-server');
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      try {
+        process.kill(pid, 0);
+      } catch {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error(`tmux server ${pid} still running 5 s after kill-server`);
+  }
+
   /** What the scanner's index would name for `$0` of the server running now. */
   async function listedTarget(): Promise<MacSessionTarget> {
     const pid = Number(tmux('display-message', '-p', '#{pid}').trim());
@@ -671,10 +691,10 @@ describe.skipIf(!canOpen)('MacAttach on a tmux server', () => {
     tmux('kill-session', '-t', '$0');
     await gone();
     // The same socket answers with a $0 named "work" again, from another server.
-    tmux('kill-server');
+    await killServer();
     tmux('new-session', '-d', '-s', 'work', '-c', dir, 'sleep 300');
     await gone();
-    tmux('kill-server');
+    await killServer();
     await gone();
     expect(created).toEqual([]);
   });
