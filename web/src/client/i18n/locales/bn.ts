@@ -852,6 +852,9 @@ export const bn: Messages = {
   'sessions.killAllConfirm': 'চলমান {n}টি সেশন সব বন্ধ করবেন? সংরক্ষিত না থাকা কাজ হারিয়ে যাবে।',
   'sessions.killAllConfirm.one': 'চলমান সেশনটি বন্ধ করবেন? সংরক্ষিত না থাকা কাজ হারিয়ে যাবে।',
   // Compact phone layout
+  'settings.chatStatusLine': 'চ্যাটে Claude-এর স্ট্যাটাস লাইন',
+  'settings.chatStatusLine.description':
+    'কথোপকথনের নিচে সেই লাইনগুলো যা Claude Code টার্মিনালে তার ইনপুট বক্সের নিচে দেখায়: মোড এবং আপনার স্ট্যাটাস লাইন যা যোগ করে (মডেল, ব্যবহারের সীমা, প্রসঙ্গ)।',
   'settings.phoneLayout': 'ফোন লেআউট',
   'settings.phoneLayout.description':
     'এই ব্রাউজারে ফোনে VibeTunnel কেমন দেখাবে। ক্লাসিক সেশন কার্ড রাখে; কমপ্যাক্ট খোঁজ, পিন এবং দ্রুত নতুন সেশন শুরুর উপায়সহ চ্যাটের মতো তালিকা দেখায়।',

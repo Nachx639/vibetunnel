@@ -849,6 +849,9 @@ export const ar: Messages = {
   'sessions.killAllConfirm': 'إنهاء جميع الجلسات الـ {n} قيد التشغيل؟ سيضيع العمل غير المحفوظ.',
   'sessions.killAllConfirm.one': 'إنهاء الجلسة قيد التشغيل؟ سيضيع العمل غير المحفوظ.',
   // Compact phone layout
+  'settings.chatStatusLine': 'سطر حالة Claude في المحادثة',
+  'settings.chatStatusLine.description':
+    'أسفل المحادثة، الأسطر التي يعرضها Claude Code تحت مربع الإدخال في الطرفية: الوضع وما يضيفه سطر الحالة لديك (النموذج، حدود الاستخدام، السياق).',
   'settings.phoneLayout': 'تخطيط الهاتف',
   'settings.phoneLayout.description':
     'شكل VibeTunnel على الهاتف في هذا المتصفح. الكلاسيكي يُبقي بطاقات الجلسات؛ والمضغوط يعرض قائمة على نمط المحادثات مع البحث والتثبيت وطريقة سريعة لبدء جلسة.',

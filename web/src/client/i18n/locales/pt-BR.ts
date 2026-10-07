@@ -874,6 +874,9 @@ export const ptBR: Messages = {
   'sessions.killAllConfirm': 'Encerrar as {n} sessões ativas? O trabalho não salvo será perdido.',
   'sessions.killAllConfirm.one': 'Encerrar a sessão ativa? O trabalho não salvo será perdido.',
   // Compact phone layout
+  'settings.chatStatusLine': 'Linha de status do Claude no chat',
+  'settings.chatStatusLine.description':
+    'Abaixo da conversa, as linhas que o Claude Code mostra sob a caixa de texto no terminal: o modo e o que a sua linha de status adicionar (modelo, limites de uso, contexto).',
   'settings.phoneLayout': 'Layout no celular',
   'settings.phoneLayout.description':
     'Como o VibeTunnel aparece em um celular neste navegador. Clássico mantém os cartões de sessão; Compacto mostra uma lista estilo chat, com busca, fixados e um jeito rápido de abrir uma sessão.',

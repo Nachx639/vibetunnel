@@ -850,6 +850,9 @@ export const hi: Messages = {
   'sessions.killAllConfirm': 'सभी {n} चालू सत्र बंद करें? बिना सहेजा काम खो जाएगा।',
   'sessions.killAllConfirm.one': 'चालू सत्र बंद करें? बिना सहेजा काम खो जाएगा।',
   // Compact phone layout
+  'settings.chatStatusLine': 'चैट में Claude की स्टेटस लाइन',
+  'settings.chatStatusLine.description':
+    'बातचीत के नीचे वे पंक्तियाँ जो Claude Code टर्मिनल में अपने इनपुट बॉक्स के नीचे दिखाता है: मोड और आपकी स्टेटस लाइन जो जोड़ती है (मॉडल, उपयोग सीमाएँ, संदर्भ)।',
   'settings.phoneLayout': 'फ़ोन लेआउट',
   'settings.phoneLayout.description':
     'इस ब्राउज़र में फ़ोन पर VibeTunnel कैसा दिखे। क्लासिक सत्र कार्ड रखता है; कॉम्पैक्ट खोज, पिन और नया सत्र जल्दी शुरू करने के तरीके के साथ चैट जैसी सूची दिखाता है।',

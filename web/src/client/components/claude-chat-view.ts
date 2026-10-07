@@ -12,6 +12,12 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { LocaleController, type MessageKey, t } from '../i18n/index.js';
 import { authClient } from '../services/auth-client.js';
 import { announce } from '../utils/announce.js';
+import {
+  CHAT_STATUS_LINE_CHANGED_EVENT,
+  compactStatusSegments,
+  parseClaudeStatusLine,
+  readChatStatusLinePref,
+} from '../utils/claude-status-line.js';
 import { isSwallowingGhostClick, swallowNextClick } from '../utils/ghost-click.js';
 import { createLogger } from '../utils/logger.js';
 import { endsADrag } from '../utils/pointer-drag.js';
@@ -635,6 +641,70 @@ export class ClaudeChatView extends LitElement {
       color: var(--chat-muted);
       font-size: 11px;
     }
+    /* Claude Code's status line beside the mode chip: one small chip per piece, a bar per
+       usage percentage. Nothing is cut: what doesn't fit goes onto the next line, and the mode
+       chip never wraps its own text. */
+    .mode-row {
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px 6px;
+      min-width: 0;
+    }
+    .mode-row .mode {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .status-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      color: var(--chat-muted);
+      font-size: 0.6875rem;
+      line-height: 1;
+    }
+    .status-chip {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 6px;
+      border-radius: 999px;
+      background: var(--chat-panel);
+      border: 1px solid var(--chat-border);
+      white-space: nowrap;
+    }
+    .status-label {
+      color: var(--chat-text);
+    }
+    .status-bar {
+      width: 16px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--chat-border-strong);
+      overflow: hidden;
+    }
+    .status-fill {
+      display: block;
+      height: 100%;
+      border-radius: 2px;
+      background: #34d399;
+    }
+    .status-fill.mid {
+      background: #f59e0b;
+    }
+    .status-fill.high {
+      background: #f87171;
+    }
+    .status-pct {
+      font-variant-numeric: tabular-nums;
+      color: var(--chat-text);
+    }
+    .status-reset {
+      opacity: 0.75;
+      font-size: 0.625rem;
+    }
     .scroll-area {
       position: relative;
       flex: 1 1 auto;
@@ -1257,6 +1327,9 @@ export class ClaudeChatView extends LitElement {
   @state() private imageUrls = new Map<string, string>();
   private loadingImages = new Set<string>();
   @state() private mode: string | null = null;
+  /** Claude Code's status line under its prompt box, when Settings shows it in chat. */
+  @state() private statusLines: string[] = [];
+  private statusLineOn = readChatStatusLinePref();
   private signature = '';
   /** The server's fingerprint of the messages shown (null: none yet, or an older server). */
   private messagesVersion: string | null = null;
@@ -1308,6 +1381,7 @@ export class ClaudeChatView extends LitElement {
     document.addEventListener('focusin', this.trackFieldFocus, true);
     document.addEventListener('focusout', this.trackFieldFocus, true);
     this.trackFieldFocus();
+    window.addEventListener(CHAT_STATUS_LINE_CHANGED_EVENT, this.handleStatusLinePref);
     this.poll();
   }
 
@@ -1319,6 +1393,7 @@ export class ClaudeChatView extends LitElement {
     document.removeEventListener('pointerdown', this.handleUserActivity, true);
     document.removeEventListener('focusin', this.trackFieldFocus, true);
     document.removeEventListener('focusout', this.trackFieldFocus, true);
+    window.removeEventListener(CHAT_STATUS_LINE_CHANGED_EVENT, this.handleStatusLinePref);
     if (this.pollTimer) clearTimeout(this.pollTimer);
     this.pollTimer = null;
     this.resizeObserver?.disconnect();
@@ -1539,6 +1614,7 @@ export class ClaudeChatView extends LitElement {
     } else {
       this.mode = rememberedMode(this.sessionId);
     }
+    this.syncStatusLines(screen);
     this.waitingFor = chat.status === 'waiting' ? chat.waitingFor || t('chat.yourInput') : null;
     // Tool results attach to existing messages, so compare more than the last id.
     const signature = `${chat.messages.length}:${chat.messages[chat.messages.length - 1]?.id}:${
@@ -2371,23 +2447,59 @@ export class ClaudeChatView extends LitElement {
           : nothing
       }
       </div>
+      ${this.mode || this.statusLines.length ? this.renderModeRow(this.mode) : nothing}
+    `;
+  }
+
+  private renderModeRow(mode: string | null) {
+    const segments = compactStatusSegments(this.statusLines);
+    return html`<div class="mode-row">
       ${
-        this.mode
-          ? html`<div class="mode-row">
-              <button
-                class="mode"
-                data-testid="mode-chip"
-                aria-haspopup="dialog"
-                @click=${this.openModePicker}
-                aria-label=${t('chat.changeMode')}
-              >
-                ${modeLabel(this.mode)}<span aria-hidden="true">▾</span>
-              </button>
+        mode
+          ? html`<button
+              class="mode"
+              data-testid="mode-chip"
+              aria-haspopup="dialog"
+              @click=${this.openModePicker}
+              aria-label=${t('chat.changeMode')}
+            >
+              ${modeLabel(mode)}<span aria-hidden="true">▾</span>
+            </button>`
+          : nothing
+      }
+      ${
+        segments.length
+          ? html`<div class="status-line" data-testid="chat-status-line" dir="ltr" title=${this.statusLines.join('\n')}>
+              ${segments.map(
+                (seg) => html`<span class="status-chip" data-testid="chat-status-chip">
+                  ${seg.text ? html`<span class="status-label">${seg.text}</span>` : nothing}
+                  ${
+                    seg.percent !== undefined
+                      ? html`<span class="status-bar" aria-hidden="true"><span
+                            class="status-fill ${seg.percent >= 85 ? 'high' : seg.percent >= 60 ? 'mid' : ''}"
+                            style="width: ${Math.max(4, seg.percent)}%"
+                          ></span></span><span class="status-pct">${seg.percent}%</span>`
+                      : nothing
+                  }
+                  ${seg.reset ? html`<span class="status-reset">↻${seg.reset}</span>` : nothing}
+                </span>`
+              )}
             </div>`
           : nothing
       }
-    `;
+    </div>`;
   }
+
+  /** Lines under Claude Code's prompt box (Settings → status line in chat). */
+  private syncStatusLines(screen = this.getScreenTail?.() ?? '') {
+    const lines = this.statusLineOn ? parseClaudeStatusLine(screen) : [];
+    if (lines.join('\n') !== this.statusLines.join('\n')) this.statusLines = lines;
+  }
+
+  private handleStatusLinePref = (e: Event) => {
+    this.statusLineOn = (e as CustomEvent<boolean>).detail === true;
+    this.syncStatusLines();
+  };
 }
 
 declare global {

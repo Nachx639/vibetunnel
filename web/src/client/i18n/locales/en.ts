@@ -870,6 +870,9 @@ export const en = {
   'sessions.killAllConfirm': 'Kill all {n} running sessions? Unsaved work in them is lost.',
   'sessions.killAllConfirm.one': 'Kill the running session? Unsaved work in it is lost.',
   // Compact phone layout
+  'settings.chatStatusLine': "Claude's status line in chat",
+  'settings.chatStatusLine.description':
+    'Under the conversation, the lines Claude Code shows below its prompt in the terminal: the mode and anything your status line adds (model, usage limits, context).',
   'settings.phoneLayout': 'Phone layout',
   'settings.phoneLayout.description':
     'How VibeTunnel looks on a phone in this browser. Classic keeps the session cards; Compact shows a chat-style list with search, pins and a quick way to start a session.',

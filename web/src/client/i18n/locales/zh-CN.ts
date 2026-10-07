@@ -841,6 +841,9 @@ export const zhCN: Messages = {
   'sessions.killAllConfirm': '结束全部 {n} 个运行中的会话？未保存的工作将丢失。',
   'sessions.killAllConfirm.one': '结束运行中的会话？未保存的工作将丢失。',
   // Compact phone layout
+  'settings.chatStatusLine': '在聊天中显示 Claude 状态栏',
+  'settings.chatStatusLine.description':
+    '在对话下方显示 Claude Code 在终端输入框下方的内容：模式以及状态栏添加的信息（模型、用量限制、上下文）。',
   'settings.phoneLayout': '手机布局',
   'settings.phoneLayout.description':
     '此浏览器在手机上显示 VibeTunnel 的方式。经典保留会话卡片；紧凑显示类似聊天的列表，支持搜索、置顶和快速新建会话。',

@@ -13,6 +13,7 @@ import {
 } from './claude-chat-view.js';
 import './claude-chat-view.js';
 import { resetAnnouncerForTests } from '../utils/announce.js';
+import { writeChatStatusLinePref } from '../utils/claude-status-line.js';
 import { resetGhostClickGuard, swallowNextClick } from '../utils/ghost-click.js';
 
 describe('renderChatMarkdown', () => {
@@ -1294,5 +1295,47 @@ describe('ClaudeChatView errors', () => {
     document.body.appendChild(view);
     await vi.waitFor(() => expect(errors).toHaveBeenCalledWith(404));
     expect(view.hasAttribute('unavailable')).toBe(true);
+  });
+  it("shows Claude's status line under the conversation only when Settings turns it on", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ available: true, agent: 'claude', status: 'idle', messages: [] }),
+      }))
+    );
+    const screen = [
+      '─────────────────────────────',
+      '❯ ',
+      '─────────────────────────────',
+      '  Opus 5.5 · 5h 5% · week 16%',
+      '  ⏵⏵ bypass permissions on · 1 shell',
+    ].join('\n');
+    const view = document.createElement('claude-chat-view') as ClaudeChatView;
+    view.sessionId = 's';
+    view.getScreenTail = () => screen;
+    document.body.appendChild(view);
+    const internals = view as unknown as { loaded: boolean };
+    await vi.waitFor(() => expect(internals.loaded).toBe(true));
+    await view.updateComplete;
+    const statusLine = () => view.shadowRoot?.querySelector('[data-testid="chat-status-line"]');
+    expect(statusLine()).toBeNull();
+
+    writeChatStatusLinePref(true);
+    await view.updateComplete;
+    // One chip per piece; the mode (already the mode chip) is left out.
+    const chips = [...(statusLine()?.querySelectorAll('[data-testid="chat-status-chip"]') ?? [])];
+    expect(chips.map((chip) => chip.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+      'Opus 5.5',
+      '5h 5%',
+      'week 16%',
+      '1 shell',
+    ]);
+    expect(chips[1].querySelector('.status-fill')?.getAttribute('style')).toContain('width: 5%');
+
+    writeChatStatusLinePref(false);
+    await view.updateComplete;
+    expect(statusLine()).toBeNull();
+    view.remove();
   });
 });

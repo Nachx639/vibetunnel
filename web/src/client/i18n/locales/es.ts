@@ -876,6 +876,9 @@ export const es: Messages = {
     '¿Cerrar las {n} sesiones activas? Se perderá lo que no esté guardado.',
   'sessions.killAllConfirm.one': '¿Cerrar la sesión activa? Se perderá lo que no esté guardado.',
   // Compact phone layout
+  'settings.chatStatusLine': 'Línea de estado de Claude en el chat',
+  'settings.chatStatusLine.description':
+    'Bajo la conversación, las líneas que Claude Code muestra bajo su cuadro de texto en la terminal: el modo y lo que añada tu línea de estado (modelo, límites de uso, contexto).',
   'settings.phoneLayout': 'Diseño en el móvil',
   'settings.phoneLayout.description':
     'Cómo se ve VibeTunnel en un móvil con este navegador. Clásico mantiene las tarjetas de sesión; Compacto muestra una lista tipo chat con búsqueda, fijados y una forma rápida de abrir una sesión.',

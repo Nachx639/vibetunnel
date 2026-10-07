@@ -886,6 +886,9 @@ export const fr: Messages = {
   'sessions.killAllConfirm.one':
     'Arrêter la session active ? Le travail non enregistré sera perdu.',
   // Compact phone layout
+  'settings.chatStatusLine': "Ligne d'état de Claude dans le chat",
+  'settings.chatStatusLine.description':
+    "Sous la conversation, les lignes que Claude Code affiche sous sa zone de saisie dans le terminal : le mode et ce qu'ajoute votre ligne d'état (modèle, limites d'utilisation, contexte).",
   'settings.phoneLayout': 'Affichage sur téléphone',
   'settings.phoneLayout.description':
     'L’apparence de VibeTunnel sur un téléphone dans ce navigateur. Classique garde les cartes de session ; Compact affiche une liste façon messagerie, avec recherche, épingles et un moyen rapide de lancer une session.',

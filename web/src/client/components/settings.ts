@@ -19,6 +19,7 @@ import { VERSION } from '../version.js';
 import { isQuickSwitcherEnabled, setQuickSwitcherEnabled } from './session-quick-switcher.js';
 import './language-picker.js';
 import './quick-keys-editor.js';
+import { readChatStatusLinePref, writeChatStatusLinePref } from '../utils/claude-status-line.js';
 
 const logger = createLogger('settings');
 
@@ -808,6 +809,44 @@ export class Settings extends LitElement {
     `;
   }
 
+  /** "Claude's status line in chat" (utils/claude-status-line.ts): this device only. */
+  @state() private chatStatusLine = readChatStatusLinePref();
+
+  private handleChatStatusLineToggle = () => {
+    this.chatStatusLine = !this.chatStatusLine;
+    writeChatStatusLinePref(this.chatStatusLine);
+  };
+
+  private renderChatStatusLine() {
+    const on = this.chatStatusLine;
+    return html`
+      <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50" data-testid="settings-chat-status-line">
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="text-primary font-medium">${t('settings.chatStatusLine')}</label>
+            <p class="text-muted text-xs mt-1">${t('settings.chatStatusLine.description')}</p>
+          </div>
+          <button
+            role="switch"
+            aria-checked=${on ? 'true' : 'false'}
+            aria-label=${t('settings.chatStatusLine')}
+            data-testid="settings-chat-status-line-toggle"
+            @click=${this.handleChatStatusLineToggle}
+            class="relative flex-shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              on ? 'bg-primary' : 'bg-border'
+            }"
+          >
+            <span
+              class="inline-block h-5 w-5 transform rounded-full bg-bg-elevated transition-transform ${
+                on ? 'translate-x-5' : 'translate-x-0.5'
+              }"
+            ></span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   private renderAppSettings() {
     return html`
       <div class="space-y-4">
@@ -816,6 +855,8 @@ export class Settings extends LitElement {
         ${this.renderAppearance()}
 
         ${this.renderPhoneLayout()}
+
+        ${this.renderChatStatusLine()}
 
         <!-- Language -->
         <div class="p-4 bg-bg-tertiary rounded-lg border border-border/50">
