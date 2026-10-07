@@ -3587,9 +3587,23 @@ body.preview-split-open session-view .session-header-area {
 }
 .pv-back-name {
   max-width: 34vw;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Opened from a session, Back carries its name ("‹ claude (~/project…)"). On a wide phone that
+   name plus six fixed buttons left the address no room: ":4321" slid under the reload button.
+   The name gives way first, down to the arrow, and the address keeps room for the port. */
+.pv-view .pv-btn.pv-back {
+  flex-shrink: 1;
+  min-width: 40px;
+}
+.pv-view .pv-address-form {
+  min-width: 6.5rem;
+}
+.pv-view .pv-btn.pv-back svg {
+  flex-shrink: 0;
 }
 .pv-down {
   height: 100%;
